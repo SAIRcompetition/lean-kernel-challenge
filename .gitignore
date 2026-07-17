@@ -1,0 +1,10 @@
+# Build artifacts
+.lake/
+# Judge outputs (verdict JSONs + generated leaderboard live under results/)
+results/
+# Export intermediates
+*.export.ndjson
+# Python
+__pycache__/
+*.pyc
+.DS_Store

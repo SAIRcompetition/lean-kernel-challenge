@@ -1,0 +1,5 @@
+results/
+**/.lake/
+**/*.export.ndjson
+__pycache__/
+.git/

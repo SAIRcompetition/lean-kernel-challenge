@@ -1,0 +1,25 @@
+{
+  "description": "Green-gate manifest for the Lean kernel-computation track. Each case names an example submission and the expected judge outcome. run_harness.py asserts the judge reproduces every expected outcome. Accepted cases also record a rough local wall-time ceiling (seconds) as a smoke check, not a score.",
+  "cases": [
+    {"problem": "fib", "submission": "loop", "expect": "accepted", "note": "tail-recursive pair loop"},
+    {"problem": "fib", "submission": "doubling", "expect": "accepted", "note": "fast doubling, ~12x faster than loop"},
+    {"problem": "partition", "submission": "baseline", "expect": "accepted"},
+    {"problem": "mertens", "submission": "baseline", "expect": "accepted", "note": "Int-valued answer -1"},
+    {"problem": "primecount", "submission": "baseline", "expect": "accepted"},
+    {"problem": "permanent", "submission": "baseline", "expect": "accepted"},
+    {"problem": "permanent", "submission": "multifile", "expect": "accepted", "note": "proof in Submission/Helpers.lean"},
+    {"problem": "saw", "submission": "baseline", "expect": "accepted"},
+    {"problem": "ca-rule110", "submission": "baseline", "expect": "accepted"},
+
+    {"problem": "fib", "submission": "cheat-sorry", "expect": "rejected", "reason_contains": "sorryAx",
+     "note": "R3: sorry introduces sorryAx"},
+    {"problem": "partition", "submission": "cheat-native", "expect": "rejected", "reason_contains": "native_decide",
+     "note": "R3: native_decide per-computation axiom"},
+    {"problem": "permanent", "submission": "cheat-rfl", "expect": "rejected", "reason_contains": "R2",
+     "note": "R2: answer is a compound expression, zero-computation rfl"},
+    {"problem": "permanent", "submission": "cheat-statement", "expect": "rejected", "reason_contains": "comparator",
+     "note": "statement tampering: bridge type mismatch, fails closed"},
+    {"problem": "permanent", "submission": "cheat-mathlib", "expect": "rejected", "reason_contains": "comparator",
+     "note": "R5: import Mathlib, workspace has no Mathlib dep, build fails"}
+  ]
+}

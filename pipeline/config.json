@@ -1,0 +1,27 @@
+{
+  "judge": {
+    "comparator_timeout_seconds": 3600,
+    "export_timeout_seconds": 1800,
+    "audit_timeout_seconds": 300,
+    "timing_timeout_seconds": 1800,
+    "timing_reps": 3,
+    "max_submission_bytes": 8388608,
+    "max_submission_files": 256
+  },
+  "timing": {
+    "metric": "wall_time",
+    "note": "Local dev uses wall_time. On the Linux evaluation host set metric to 'perf_instructions' (perf stat -e instructions), normalized to 6.0 Ginstr/s virtual CPU time."
+  },
+  "sandbox": {
+    "mode": "none",
+    "note": "'none' = local dev via the landrun pass-through shim (NO sandboxing). The Docker image sets mode 'container' with real landrun + resource limits.",
+    "memory_mb": 4096,
+    "cpus": 2
+  },
+  "toolchain": {
+    "lean": "leanprover/lean4:v4.32.0-rc1",
+    "comparator_rev": "71b52ec29e06d4b7d882726553b1ceb99a2499e0",
+    "lean4export_rev": "3de59f10bc4b4a0f2de698597aeb1246caa0df0a",
+    "lean4checker_rev": "b7398199245524275543dec6113229c9bb4902e5"
+  }
+}
