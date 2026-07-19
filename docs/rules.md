@@ -1,6 +1,8 @@
 # Lean Kernel Challenge — Official Rules (Kernel Computation Track)
 
-Status: **finalized for Stage 1**. Version 1.1 (2026-07-19).
+Status: **pre-launch draft**. Version 1.1 (2026-07-19). The submission format and
+rules R1–R6 are stable and enforced by the judge; the scoring aggregation (§4)
+and logistics (§6) are not yet finalized/implemented and may change before launch.
 
 The task of this track is simple to state: **for a given problem, compute the
 answer and prove it correct, such that the official Lean kernel re-checks your
@@ -114,10 +116,11 @@ documented in `README.md`.
   is used only for local development.
 - A rejected submission does not score. There is no partial credit within a
   problem: the answer must be correct *and* proven under these rules.
-- Each problem has its own leaderboard. The overall standing aggregates your
-  best **N** problems with a relative-placement component; the exact aggregation
-  formula is published separately in the scoring appendix and may be finalized
-  mid-competition (per SAIR convention) once the field's distribution is known.
+- Each problem has its own leaderboard. The overall standing is intended to
+  aggregate your best **N** problems with a relative-placement ("red queen")
+  component — **this aggregation is not yet implemented**; the exact formula will
+  be published in a scoring appendix and may be finalized mid-competition (per
+  SAIR convention) once the field's distribution is known.
 
 ---
 
@@ -136,14 +139,16 @@ documented in `README.md`.
 
 ---
 
-## 6. Submission logistics
+## 6. Submission logistics *(planned — the submission platform is not built yet)*
 
 - One `Submission.lean` (+ optional `Submission/` directory of `.lean` files)
   per problem, per submission. Symlinks are rejected; total payload is capped.
-- You may submit to as many problems as you like and resubmit; your best
-  accepted result per problem stands.
-- Submit through the competition platform (details in the problem pack). The
-  local judge (`judge/judge.py`) reproduces the exact evaluation pipeline so you
+- The intent is that you may submit to as many problems as you like and resubmit,
+  with your best accepted result per problem kept. Contestant identity and
+  "keep-personal-best" tracking are platform features that are **not yet
+  implemented**; the local judge scores one submission at a time.
+- Submissions will go through the competition platform (details in the problem
+  pack). The local judge (`judge/judge.py`) reproduces the exact evaluation pipeline so you
   can check a submission before sending it.
 
 ---

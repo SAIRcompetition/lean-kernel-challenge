@@ -174,7 +174,10 @@ these pins; the third-party checkouts are not committed.
 
 ## Status
 
-Stage 1 prototype: 7 problems, full judge pipeline, worked + adversarial example
-submissions, green-gate harness. Prizes, timeline, and the submission platform are
-announced separately. Track 1 (certificate verification) and Track 3 (open problems) are
-planned for later stages.
+**Prototype / pre-launch.** The judging pipeline is complete and self-audited (7 problems,
+15 example submissions, green-gate harness). Not yet finalized for a live competition:
+the perf instruction-counting path and container isolation are implemented but not yet
+run on PMU hardware; multi-tier / hidden instances and the scoring layer (best-N +
+relative placement) are not built; prizes, timeline, and the submission platform are TBD.
+Rule text may still change before launch (see `docs/rules.md`). Track 1 (certificate
+verification) and Track 3 (open problems) are planned for later stages.
