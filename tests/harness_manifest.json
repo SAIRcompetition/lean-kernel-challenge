@@ -1,5 +1,5 @@
 {
-  "description": "Green-gate manifest for the Lean kernel-computation track. Each case names an example submission and the expected judge outcome. run_harness.py asserts the judge reproduces every expected outcome. Accepted cases also record a rough local wall-time ceiling (seconds) as a smoke check, not a score.",
+  "description": "Green-gate manifest for the Lean Kernel Challenge. Each case names an example submission and the expected judge outcome (accepted/rejected). run_harness.py deletes any stale verdict, runs the judge, checks its exit code (0=judged, 2=infra), and asserts the recorded status and (for rejections) a reason substring.",
   "cases": [
     {"problem": "fib", "submission": "loop", "expect": "accepted", "note": "tail-recursive pair loop"},
     {"problem": "fib", "submission": "doubling", "expect": "accepted", "note": "fast doubling, ~12x faster than loop"},
@@ -20,6 +20,8 @@
     {"problem": "permanent", "submission": "cheat-statement", "expect": "rejected", "reason_contains": "comparator",
      "note": "statement tampering: bridge type mismatch, fails closed"},
     {"problem": "permanent", "submission": "cheat-mathlib", "expect": "rejected", "reason_contains": "comparator",
-     "note": "R5: import Mathlib, workspace has no Mathlib dep, build fails"}
+     "note": "R5: import Mathlib, workspace has no Mathlib dep, build fails"},
+    {"problem": "permanent", "submission": "cheat-indirect-axiom", "expect": "rejected",
+     "note": "R3 closure: illegal axiom reached through a helper, must be caught by the export-closure audit"}
   ]
 }

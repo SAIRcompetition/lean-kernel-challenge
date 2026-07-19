@@ -1,4 +1,4 @@
-# Lean Competition — kernel-computation track evaluation image.
+# Lean Kernel Challenge — kernel-computation track evaluation image.
 #
 # Reproduces the official evaluation environment: Linux, pinned Lean toolchain,
 # the pinned verification tools (comparator, lean4export, timer-kernel), perf for
@@ -37,12 +37,17 @@ WORKDIR /work/lean-kernel-challenge
 ENV TOOLS_DIR=/work/tools
 RUN bash scripts/setup.sh
 
-# Point the judge at the image-built tools (override of the repo-relative defaults).
+# Point the judge at the image-built tools (override of the repo-relative defaults) and
+# switch to the production timing metric + sandbox policy.
 ENV COMPARATOR_BIN=/work/tools/comparator/.lake/build/bin/comparator \
     LEAN4EXPORT_BIN=/work/tools/lean4export/.lake/build/bin \
-    TIMER_BIN=/work/lean-kernel-challenge/judge/timer-kernel/.lake/build/bin/kernel
+    TIMER_BIN=/work/lean-kernel-challenge/judge/timer-kernel/.lake/build/bin/kernel \
+    TIMING_METRIC=perf_instructions \
+    SANDBOX_MODE=container
 
-# Green-gate on build so a broken image fails fast.
-# RUN python3 scripts/run_harness.py --quick   # (enable once perf/PMU is available in CI)
+# Green-gate on build so a broken image fails fast (needs PMU access at build time).
+# RUN TIMING_METRIC=wall_time python3 scripts/run_harness.py --quick
 
-ENTRYPOINT ["/bin/bash"]
+# CMD (not ENTRYPOINT) so `docker run IMAGE python3 judge/judge.py ...` works as shown
+# in the header, while a bare `docker run IMAGE` still drops into a shell.
+CMD ["/bin/bash"]

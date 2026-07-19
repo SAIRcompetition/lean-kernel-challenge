@@ -1,7 +1,7 @@
 # Contributing
 
 This repository holds the Stage 1 (kernel-computation track) infrastructure for
-the Lean Competition. Contributions we welcome:
+the Lean Kernel Challenge. Contributions we welcome:
 
 ## New problems
 A problem is a locked workspace under `problems/<id>/` (see any existing problem

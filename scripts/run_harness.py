@@ -27,21 +27,27 @@ def run_case(case, reps):
     problem, name = case["problem"], case["submission"]
     sub_dir = SUBS / problem / name
     tag = f"harness-{problem}-{name}"
+    verdict_file = ROOT / "results" / problem / f"{tag}.json"
+    # Delete any stale verdict first, so a crashed judge can't pass on last run's file.
+    if verdict_file.exists():
+        verdict_file.unlink()
     cmd = [sys.executable, str(JUDGE), "run", "--problem", problem,
            "--submission", str(sub_dir), "--tag", tag, "--reps", str(reps)]
     proc = subprocess.run(cmd, capture_output=True, text=True)
-    verdict_file = ROOT / "results" / problem / f"{tag}.json"
     if not verdict_file.exists():
         return False, f"no verdict file (exit {proc.returncode}); stderr: {proc.stderr.strip()[:200]}"
     v = json.loads(verdict_file.read_text())
     status, reason = v.get("status"), (v.get("reason") or "")
+    # Exit-code contract: 0 = judged (accepted/rejected), 2 = infra failure.
+    if proc.returncode == 2 and case["expect"] != "error":
+        return False, f"infra error (exit 2): {reason[:140]}"
+    if proc.returncode not in (0, 2):
+        return False, f"unexpected judge exit {proc.returncode}"
     if status != case["expect"]:
         return False, f"expected {case['expect']}, got {status} ({reason[:120]})"
     if "reason_contains" in case and case["reason_contains"] not in reason:
         return False, f"reason missing '{case['reason_contains']}': {reason[:120]}"
-    detail = f"{status}"
-    if v.get("timing"):
-        detail += f", {v['timing']['median_s']}s"
+    detail = status + (f", {v['score']}" if v.get("score") else "")
     return True, detail
 
 

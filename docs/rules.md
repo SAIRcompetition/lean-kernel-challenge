@@ -1,6 +1,6 @@
-# Lean Competition — Kernel Computation Track: Official Rules
+# Lean Kernel Challenge — Official Rules (Kernel Computation Track)
 
-Status: **finalized for Stage 1**. Version 1.0 (2026-07-13).
+Status: **finalized for Stage 1**. Version 1.1 (2026-07-19).
 
 The task of this track is simple to state: **for a given problem, compute the
 answer and prove it correct, such that the official Lean kernel re-checks your
@@ -61,14 +61,17 @@ axiom is rejected. In particular:
 - `native_decide` (introduces per-computation axioms and routes evaluation
   through the compiler, not the kernel) — rejected.
 
-**R4 — The computation happens in the kernel.** The correctness of your answer
-must be established by the **official Lean kernel actually performing the
-computation** (e.g. by kernel reduction / `decide +kernel`). You may not rely
-on any value computed outside the kernel and imported as a certificate or
-axiom. *(R4 is a consequence of R2 + R3 + the scoring in §4, but is stated
-explicitly so the track's intent is unambiguous: this is a kernel-computation
-track, not a certificate track. Certificate-style problems are Track 1, a
-separate future stage.)*
+**R4 — Only kernel checking is scored.** What is measured is the cost for the
+official Lean kernel to re-check your submitted proof (§4). How you *found* the
+proof is unconstrained — you may compute, search, or synthesize it with any
+external tooling. There is no attempt to police whether a proof term was
+"computed in the kernel" versus generated externally and then checked; that
+distinction is not machine-decidable and is not enforced. In practice, because
+the answer must be a literal (R2), no non-standard axioms are allowed (R3), and
+only kernel re-checking is timed, the competitive strategies are those the
+kernel reduces cheaply. *(This is the kernel-computation track: the score is
+kernel checking cost. Certificate-structure problems, where the game is designing
+and shipping a separate certificate, are Track 1 — a future stage.)*
 
 **R5 — No Mathlib; core Lean only.** `Submission.lean` and `Submission/` may
 import the problem's provided modules (e.g. `Spec`) and the Lean core library.
@@ -91,7 +94,7 @@ Because the kernel evaluates by call-by-name reduction and the elaborator caps
 recursion depth, the standard pattern is: write your fast algorithm as total,
 structurally-recursive Lean definitions, prove it equal to the naive spec, and
 close the final numeric goal with **`decide +kernel`**, which hands the
-evaluation to the kernel. See `submissions/fib/doubling/` for a worked example
+evaluation to the kernel. See `examples/submissions/fib/doubling/` for a worked example
 (fast doubling with a full core-Lean equivalence proof). Idioms that matter
 (accumulator forcing, the fuel pattern for non-structural recursion) are
 documented in `README.md`.
