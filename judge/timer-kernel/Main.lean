@@ -78,7 +78,7 @@ def main (args : List String) : IO Unit := do
   | ["--check-axioms", whitelist, inputPath] =>
     let env ← parseFile inputPath
     let names := (whitelist.splitOn ",").filterMap (fun s =>
-      let s := s.trim
+      let s := s.trimAscii.toString
       if s.isEmpty then none else some s.toName)
     checkAxioms env names
   | [inputPath] =>
