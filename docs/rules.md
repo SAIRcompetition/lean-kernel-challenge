@@ -108,9 +108,10 @@ documented in `README.md`.
   kernel-checks), the R2 literal audit, and the R3 axiom re-audit on the exact
   export that is timed.
 - The **score** of an accepted submission is the **instruction count** for the
-  official kernel to re-check the exported `Solution` (Linux `perf`, normalized
-  to virtual CPU time; lower is better). Peak memory is recorded as a tiebreaker
-  and reported. Wall-clock is used only for local development.
+  official kernel to re-check the export comparator verified (Linux `perf -e
+  instructions`, median of N reps; lower is better). Instruction counts are
+  hardware-independent, so no cross-machine normalization is applied. Wall-clock
+  is used only for local development.
 - A rejected submission does not score. There is no partial credit within a
   problem: the answer must be correct *and* proven under these rules.
 - Each problem has its own leaderboard. The overall standing aggregates your
@@ -123,14 +124,15 @@ documented in `README.md`.
 ## 5. Evaluation environment
 
 - Official evaluation runs on a fixed Linux host (bare-metal, PMU access for
-  `perf`) inside a sandboxed container. Toolchain is pinned: **Lean
-  v4.32.0-rc1**, comparator `71b52ec`, lean4export `3de59f1`, Lean4Checker
-  `b73981`. The pinned versions are frozen for the duration of a stage.
+  `perf`). Each submission is judged in its own container, which is the sandbox
+  and resource boundary: no network, bounded memory/CPU/PID, one job per
+  container, non-root, and the whole job is killed on completion. Toolchain is
+  pinned: **Lean v4.32.0-rc1**, comparator `71b52ec` (+ the emit-export patch in
+  `patches/`), lean4export `3de59f1`, Lean4Checker `b73981`, frozen for the stage.
 - Each judged stage has a wall-clock cap (build, and per-timing-rep); exceeding
   it rejects the submission. Timing is the median of N reps.
-- Submissions run without network access and under resource limits. Do not
-  attempt to escape the sandbox or exploit the harness; such submissions are
-  disqualified.
+- Do not attempt to escape the sandbox or exploit the harness; such submissions
+  are disqualified.
 
 ---
 

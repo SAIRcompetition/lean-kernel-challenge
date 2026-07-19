@@ -126,9 +126,9 @@ count as a verdict.
 ## Scoring
 
 The score of an accepted submission is the **kernel re-check instruction count** on the
-Linux evaluation host (`perf`, normalized to virtual CPU time; peak memory is a reported
-tiebreaker). Instruction counts are hardware-independent and reproducible — the same
-methodology the Lean community uses in the Arena and Mathlib Speedcenter.
+Linux evaluation host (`perf -e instructions`, median of N reps; lower is better).
+Instruction counts are hardware-independent and reproducible — the same methodology the
+Lean community uses in the Arena and Mathlib Speedcenter.
 
 Each problem has its own leaderboard. Your overall standing aggregates your best problems
 with a relative-placement component; the exact formula is published with the scoring

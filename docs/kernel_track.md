@@ -46,8 +46,9 @@ The judge returns one of:
 ## Scoring
 
 - Score of an accepted submission = **kernel re-check instruction count** on the
-  Linux host (`perf`), normalized to virtual CPU time (6.0 Ginstr/s); lower is
-  better. Peak memory is a reported tiebreaker. Locally, wall time is used.
+  Linux host (`perf -e instructions`, median of N reps); lower is better.
+  Instruction counts are hardware-independent (no cross-machine normalization).
+  Locally, wall time is used.
 - Per-problem leaderboards; overall standing aggregates your best N problems with
   a relative-placement component (scoring appendix, finalized mid-competition).
 

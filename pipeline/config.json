@@ -10,11 +10,11 @@
   },
   "timing": {
     "metric": "wall_time",
-    "note": "Local dev uses wall_time. On the Linux evaluation host set metric to 'perf_instructions' (perf stat -e instructions), normalized to 6.0 Ginstr/s virtual CPU time."
+    "note": "Local dev uses wall_time. The Linux evaluation host sets metric to 'perf_instructions' (perf stat -e instructions); the median instruction count is the score (hardware-independent, no normalization)."
   },
   "sandbox": {
     "mode": "none",
-    "note": "'none' = local dev via the landrun pass-through shim (NO sandboxing). The Docker image sets mode 'container' with real landrun + resource limits.",
+    "note": "'none' = local dev via the landrun pass-through shim (NO sandboxing). 'container' asserts a real landrun is present and is set by the Docker image. Resource/isolation limits (memory, cpus, pids, network, non-root, kill-all-on-exit) are ENFORCED BY THE CONTAINER RUNTIME, not the judge process — see the docker run flags in the Dockerfile header.",
     "memory_mb": 4096,
     "cpus": 2
   },

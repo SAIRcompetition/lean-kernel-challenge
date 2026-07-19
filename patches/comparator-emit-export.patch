@@ -1,0 +1,18 @@
+diff --git a/Main.lean b/Main.lean
+index 3b29057..4919588 100644
+--- a/Main.lean
++++ b/Main.lean
+@@ -261,6 +261,13 @@ def compareIt : M Unit := do
+ 
+   verifyMatch challengeExport solutionExport
+ 
++  -- Lean Kernel Challenge extension: emit the EXACT export that was just
++  -- statement-matched, axiom-checked and kernel-replayed, so the judge can time
++  -- that immutable file instead of re-exporting (which would reopen a TOCTOU
++  -- window on the workspace .olean). No-op unless the env var is set.
++  if let some out ← IO.getEnv "COMPARATOR_SOLUTION_EXPORT" then
++    IO.FS.writeFile out solutionExport
++
+   IO.println "Your solution is okay!"
+ 
+ structure Config where

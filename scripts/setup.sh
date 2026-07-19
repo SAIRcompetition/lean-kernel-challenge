@@ -22,14 +22,21 @@ command -v gtimeout >/dev/null || echo "WARN: gtimeout not found (macOS: brew in
 mkdir -p "$TOOLS_DIR"
 
 clone_build() {
-  local name="$1" url="$2" rev="$3" target="$4"
+  local name="$1" url="$2" rev="$3" target="$4" patch="$5"
   local dir="$TOOLS_DIR/$name"
   if [ ! -d "$dir/.git" ]; then git clone "$url" "$dir"; fi
-  ( cd "$dir" && git checkout "$rev" && lake build "$target" )
+  ( cd "$dir" && git checkout -- . && git checkout "$rev"
+    if [ -n "$patch" ]; then
+      echo "   applying $patch"
+      git apply --3way "$HERE/$patch" || { echo "ERROR: failed to apply $patch"; exit 1; }
+    fi
+    lake build "$target" )
 }
 
-echo "== building comparator @ $COMPARATOR_REV =="
-clone_build comparator https://github.com/leanprover/comparator.git "$COMPARATOR_REV" comparator
+echo "== building comparator @ $COMPARATOR_REV (+ emit-export patch) =="
+# The Lean Kernel Challenge requires comparator to emit the exact export it verified,
+# so the judge can time that immutable file (closes the comparator→timed-export TOCTOU).
+clone_build comparator https://github.com/leanprover/comparator.git "$COMPARATOR_REV" comparator patches/comparator-emit-export.patch
 echo "== building lean4export @ $LEAN4EXPORT_REV =="
 clone_build lean4export https://github.com/leanprover/lean4export.git "$LEAN4EXPORT_REV" lean4export
 

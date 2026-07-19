@@ -5,10 +5,17 @@
 # instruction counting, and landrun for sandboxing untrusted submissions.
 #
 # Build:  docker build -t lean-kernel-judge .
-# Judge:  docker run --rm -v "$PWD/examples:/work/examples:ro" lean-kernel-judge \
-#           python3 judge/judge.py run --problem fib --submission examples/submissions/fib/doubling
-# Note: instruction counting needs a host that exposes PMU counters to the container
-#       (bare-metal Linux; --privileged or --cap-add PERFMON may be required).
+# Judge one untrusted submission — the container IS the sandbox boundary. Run each job
+# with resource + isolation limits (the judge process does not enforce these itself):
+#   docker run --rm \
+#     --network none --memory 4g --cpus 2 --pids-limit 512 \
+#     --cap-add PERFMON --security-opt no-new-privileges \
+#     --user judge \
+#     -v "$PWD/examples:/work/examples:ro" lean-kernel-judge \
+#     python3 judge/judge.py run --problem fib --submission examples/submissions/fib/doubling
+# --network none stops exfiltration; --memory/--cpus/--pids-limit bound the job and let
+# the runtime kill EVERY process in it (a setsid escape cannot outlive the container);
+# --cap-add PERFMON exposes PMU counters for perf; run one job per container.
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -47,6 +54,11 @@ ENV COMPARATOR_BIN=/work/tools/comparator/.lake/build/bin/comparator \
 
 # Green-gate on build so a broken image fails fast (needs PMU access at build time).
 # RUN TIMING_METRIC=wall_time python3 scripts/run_harness.py --quick
+
+# Non-root user for running untrusted submissions (a same-UID descendant must not be
+# able to chmod/replace image files or the tools). The judge writes only under results/.
+RUN useradd -m -u 10001 judge && chown -R judge:judge /work
+USER judge
 
 # CMD (not ENTRYPOINT) so `docker run IMAGE python3 judge/judge.py ...` works as shown
 # in the header, while a bare `docker run IMAGE` still drops into a shell.

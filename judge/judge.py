@@ -8,23 +8,23 @@ Pipeline per submission (each contestant job runs in a unique temp workspace):
      validate-then-copy TOCTOU window.
   2. Correctness: run comparator (statement match, axiom whitelist, kernel replay).
      Sandboxed via landrun on Linux; on macOS the pass-through shim strips sandboxing.
-  3. Freeze: kill any stray descendants and make the workspace read-only, so the exact
-     .olean comparator verified is the one that gets exported and timed.
-  4. Export the Solution closure with lean4export (into the writable job dir).
-  5. R2 audit: each definition hole (e.g. Submission.answer) must be a raw literal.
-  6. R3 re-audit: the exact timed export declares only whitelisted axioms.
-  7. Timing (the score): official-kernel replay of the export, N reps.
+     The patched comparator EMITS the exact export it just verified (via
+     COMPARATOR_SOLUTION_EXPORT); we time that immutable file. The judge never
+     re-exports, so there is no comparator→timed-export TOCTOU: what is audited and
+     timed is byte-for-byte what comparator statement-matched and kernel-replayed.
+  3. R2 audit: each definition hole (e.g. Submission.answer) must be a raw literal.
+  4. R3 re-audit: the timed export declares only whitelisted axioms.
+  5. Timing (the score): official-kernel replay of the export, N reps.
        metric=wall_time         → median wall seconds (dev only)
        metric=perf_instructions → perf instruction count (Linux eval host; fail-closed)
 
 Exit codes: 0 = judged (verdict JSON, accepted OR rejected); 2 = infrastructure error.
 Every infra failure still writes an error JSON and exits 2, never a traceback.
 
-RESIDUAL RISK (documented): comparator builds+verifies its own in-process export, while
-this judge re-exports the same frozen .olean. Freezing + descendant-kill + (in production)
-landrun's exec restrictions close the window in which a submission-spawned process could
-swap the .olean between the two. The fully robust fix is upstream: have comparator emit
-the immutable export it verified and time exactly that file. Tracked for the Lean side.
+ISOLATION (not the judge's job): killing EVERY process a submission spawns (incl. setsid
+escapes), resource caps, and non-root execution are enforced by the container/cgroup, not
+this process — see the Dockerfile `docker run` flags. The bundled process-group kill and
+read-only freeze here are defense in depth, not a security boundary.
 """
 import argparse
 import json
@@ -47,7 +47,6 @@ RESULTS = ROOT / "results"
 _CFG = json.loads((ROOT / "pipeline" / "config.json").read_text())
 _J = _CFG["judge"]
 COMPARATOR_TIMEOUT = _J["comparator_timeout_seconds"]
-EXPORT_TIMEOUT = _J["export_timeout_seconds"]
 AUDIT_TIMEOUT = _J["audit_timeout_seconds"]
 TIMING_TIMEOUT = _J["timing_timeout_seconds"]
 DEFAULT_REPS = _J["timing_reps"]
@@ -86,6 +85,20 @@ def valid_slug(s: str) -> bool:
     return bool(s) and s != ".." and SLUG.match(s) is not None
 
 
+def _write_infra_verdict(problem, sub_name, reason):
+    """Best-effort error verdict so the contract 'always a verdict file, never a
+    traceback' holds even for unexpected failures."""
+    try:
+        outdir = RESULTS / (problem if valid_slug(problem or "") else "_infra")
+        outdir.mkdir(parents=True, exist_ok=True)
+        name = sub_name if valid_slug(sub_name or "") else "_invalid"
+        (outdir / f"{name}.json").write_text(json.dumps(
+            {"problem": problem, "submission": sub_name,
+             "status": "error", "reason": reason, "stages": {}}, indent=2))
+    except Exception:
+        pass
+
+
 def has_real_landrun(env):
     return shutil.which("landrun", path=env.get("PATH", "")) not in (None, str(SHIM_DIR / "landrun"))
 
@@ -100,49 +113,53 @@ def tool_env():
     return env
 
 
-def _kill_group(p):
+def _kill_group(pgid):
+    """Kill a saved process-group id. NOTE: this reaps descendants that stayed in the
+    group; it is NOT a security boundary — a descendant can `setsid()` out of the group,
+    and same-UID processes can race files. Real isolation (kill-all, resource caps) is
+    the container/cgroup + non-root user's job (see Dockerfile). This is defense in depth."""
+    if pgid is None:
+        return
     try:
-        os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+        os.killpg(pgid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
-        pass
-    try:
-        p.wait(timeout=10)
-    except Exception:
         pass
 
 
 def run(cmd, cwd, env, timeout, stdout_path=None):
-    """Run a command in its own process group. The whole group is killed on timeout AND
-    on normal exit, so a submission-spawned descendant cannot linger past the stage that
-    started it. Returns (exit_code | 'timeout', output_tail)."""
+    """Run a command in its own process group. The saved pgid is killed on timeout AND on
+    normal exit (pgid captured at spawn, not via getpgid on an already-exited child).
+    Returns (exit_code | 'timeout', output_tail)."""
     popen_kw = dict(cwd=cwd, env=env, start_new_session=True)
     p = None
+    pgid = None
     try:
         if stdout_path:
             with open(stdout_path, "wb") as f:
                 p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.PIPE, **popen_kw)
+                pgid = p.pid  # start_new_session=True → child is its own group leader
                 try:
                     _, err = p.communicate(timeout=timeout)
                 except subprocess.TimeoutExpired:
-                    _kill_group(p)
+                    _kill_group(pgid); p.wait()
                     return "timeout", f"timed out after {timeout}s"
             out = (err or b"").decode(errors="replace")
         else:
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **popen_kw)
+            pgid = p.pid
             try:
                 out_b, _ = p.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
-                _kill_group(p)
+                _kill_group(pgid); p.wait()
                 return "timeout", f"timed out after {timeout}s"
             out = (out_b or b"").decode(errors="replace")
         return p.returncode, out
     except FileNotFoundError as e:
         raise InfraError(f"tool not found: {e}")
     finally:
-        # Reap any descendants the command detached (e.g. a setsid daemon on a dev box
-        # without landrun); on the sandboxed host landrun blocks such spawns entirely.
-        if p is not None:
-            _kill_group(p)
+        # Reap any descendants left in the group (dev boxes without landrun). Uses the
+        # pgid captured at spawn, so it works even though the direct child has exited.
+        _kill_group(pgid)
 
 
 def last_line(out):
@@ -283,10 +300,19 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         raise InfraError("sandbox.mode=container but no real landrun on PATH (refusing to run unsandboxed)")
 
     work = assemble(job_dir, problem, submission_dir)
+    cfg = json.loads((PROBLEMS / problem / "config.json").read_text())
+    axioms = cfg["permitted_axioms"]
 
     # ---- Comparator: correctness gate (statement match + axioms + kernel replay) ----
+    # The patched comparator writes the EXACT export it just verified to this file
+    # (see patches/comparator-emit-export.patch). We time that immutable file rather
+    # than re-exporting the workspace, which closes the comparator→timed-export TOCTOU:
+    # there is no window in which a submission-spawned process could swap the .olean
+    # between what comparator verified and what we measure.
+    export_file = job_dir / "solution.export.ndjson"
+    cenv = dict(env, COMPARATOR_SOLUTION_EXPORT=str(export_file))
     t0 = time.monotonic()
-    rc, out = run(["lake", "env", str(COMPARATOR), "config.json"], work, env, COMPARATOR_TIMEOUT)
+    rc, out = run(["lake", "env", str(COMPARATOR), "config.json"], work, cenv, COMPARATOR_TIMEOUT)
     result["stages"]["comparator"] = {"exit": rc, "seconds": round(time.monotonic() - t0, 1),
                                       "tail": out[-3000:]}
     if rc == "timeout":
@@ -295,22 +321,12 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if rc != 0:
         result["status"], result["reason"] = "rejected", f"comparator: {last_line(out)}"
         return finish()
-
-    # ---- Freeze: the .olean comparator just verified must be the one we export+time.
-    freeze_readonly(work)
-
-    # ---- Export Solution closure (into the writable job dir, not the frozen workspace) ----
-    cfg = json.loads((PROBLEMS / problem / "config.json").read_text())
-    axioms = cfg["permitted_axioms"]
-    decls = cfg["theorem_names"] + cfg.get("definition_names", []) + axioms + PRIMITIVES
-    export_file = job_dir / "solution.export.ndjson"
-    rc, out = run(["lake", "env", "lean4export", cfg["solution_module"], "--"] + decls,
-                  work, env, EXPORT_TIMEOUT, stdout_path=export_file)
-    result["stages"]["export"] = {"exit": rc,
-                                  "bytes": export_file.stat().st_size if export_file.exists() else 0}
-    if rc != 0:
-        result["status"], result["reason"] = "error", f"lean4export failed after comparator accepted: {last_line(out)}"
+    if not export_file.exists() or export_file.stat().st_size == 0:
+        result["status"], result["reason"] = "error", "comparator accepted but emitted no export (patched comparator required)"
         return finish()
+    result["stages"]["export"] = {"source": "comparator-verified", "bytes": export_file.stat().st_size}
+    # The workspace is no longer read after this point; freeze it anyway as belt-and-suspenders.
+    freeze_readonly(work)
 
     # ---- R2 audit: definition holes must be raw literals ----
     for d in cfg.get("definition_names", []):
@@ -441,16 +457,14 @@ def main():
         job_dir = Path(tempfile.mkdtemp(dir=RESULTS / "work", prefix=f"{problem}__{sub_name}__"))
         sys.exit(judge(job_dir, problem, args.submission, args.reps, tag))
     except InfraError as e:
-        try:
-            outdir = RESULTS / (problem if valid_slug(problem) else "_infra")
-            outdir.mkdir(parents=True, exist_ok=True)
-            name = sub_name if valid_slug(sub_name) else "_invalid"
-            (outdir / f"{name}.json").write_text(json.dumps(
-                {"problem": problem, "submission": sub_name,
-                 "status": "error", "reason": f"infra: {e}", "stages": {}}, indent=2))
-        except Exception:
-            pass
+        _write_infra_verdict(problem, sub_name, f"infra: {e}")
         print(f"💥 infra error: {e}", file=sys.stderr)
+        sys.exit(2)
+    except Exception as e:
+        # Catch-all: any unexpected error (OSError, ValueError from perf parsing,
+        # schema issues, …) still yields a verdict + exit 2, never a bare traceback.
+        _write_infra_verdict(problem, sub_name, f"unexpected {type(e).__name__}: {e}")
+        print(f"💥 unexpected infra error: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(2)
     finally:
         if job_dir is not None and job_dir.exists() and not args.keep_workspace:
