@@ -1,7 +1,6 @@
 {
   "judge": {
     "comparator_timeout_seconds": 3600,
-    "export_timeout_seconds": 1800,
     "audit_timeout_seconds": 300,
     "timing_timeout_seconds": 1800,
     "timing_reps": 3,

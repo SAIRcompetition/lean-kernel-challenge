@@ -392,6 +392,11 @@ def _score_key(r):
     return t.get("median_instructions") if r.get("metric") == "perf_instructions" else t.get("median_s")
 
 
+# Human label + sort order for each metric; scores of different metrics are NOT comparable
+# (wall seconds vs instruction counts), so the leaderboard ranks within a metric only.
+_METRIC_LABEL = {"perf_instructions": "instructions", "wall_time": "wall seconds (dev)"}
+
+
 def leaderboard():
     rows = []
     for pdir in sorted(RESULTS.iterdir()):
@@ -406,18 +411,28 @@ def leaderboard():
     for problem in sorted({r["problem"] for r in rows}):
         lines.append(f"## {md_cell(problem)}")
         lines.append("")
-        lines.append("| rank | submission | status | score | note |")
-        lines.append("|---|---|---|---|---|")
         prows = [r for r in rows if r["problem"] == problem]
-        accepted = sorted([r for r in prows if r["status"] == "accepted"],
-                          key=lambda r: (_score_key(r) is None, _score_key(r)))
-        for i, r in enumerate(accepted, 1):
-            lines.append(f"| {i} | {md_cell(r['submission'])} | ✅ accepted | {md_cell(r.get('score'))} | |")
-        for r in prows:
-            if r["status"] != "accepted":
+        accepted = [r for r in prows if r["status"] == "accepted"]
+        # Rank within each metric separately — never mix seconds and instruction counts.
+        metrics = sorted({r.get("metric", "wall_time") for r in accepted})
+        for metric in metrics:
+            grp = sorted([r for r in accepted if r.get("metric", "wall_time") == metric],
+                         key=lambda r: (_score_key(r) is None, _score_key(r)))
+            lines.append(f"**ranked by {_METRIC_LABEL.get(metric, metric)}** (lower is better)")
+            lines.append("")
+            lines.append("| rank | submission | score |")
+            lines.append("|---|---|---|")
+            for i, r in enumerate(grp, 1):
+                lines.append(f"| {i} | {md_cell(r['submission'])} | {md_cell(r.get('score'))} |")
+            lines.append("")
+        rejected = [r for r in prows if r["status"] != "accepted"]
+        if rejected:
+            lines.append("| submission | status | note |")
+            lines.append("|---|---|---|")
+            for r in rejected:
                 icon = "❌ rejected" if r["status"] == "rejected" else "💥 error"
-                lines.append(f"| – | {md_cell(r['submission'])} | {icon} | – | {md_cell(r.get('reason'))} |")
-        lines.append("")
+                lines.append(f"| {md_cell(r['submission'])} | {icon} | {md_cell(r.get('reason'))} |")
+            lines.append("")
     RESULTS.mkdir(parents=True, exist_ok=True)
     out = RESULTS / "leaderboard.md"
     out.write_text("\n".join(lines))
@@ -453,6 +468,9 @@ def main():
             raise InfraError(f"submission name '{sub_name}' is not a safe slug; pass --tag")
         if args.reps < 1:
             raise InfraError(f"--reps must be >= 1 (got {args.reps})")
+        if TIMING_METRIC not in ("wall_time", "perf_instructions"):
+            raise InfraError(f"invalid TIMING_METRIC '{TIMING_METRIC}' "
+                             "(must be 'wall_time' or 'perf_instructions')")
         (RESULTS / "work").mkdir(parents=True, exist_ok=True)
         job_dir = Path(tempfile.mkdtemp(dir=RESULTS / "work", prefix=f"{problem}__{sub_name}__"))
         sys.exit(judge(job_dir, problem, args.submission, args.reps, tag))

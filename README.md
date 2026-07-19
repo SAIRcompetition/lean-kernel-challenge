@@ -111,13 +111,17 @@ linear loop and fast doubling; the latter is checked roughly **12× faster**.
 ```
 Submission.lean
   → validate (slugs, symlinks, size caps)
-  → comparator   : your statement matches the locked challenge? axioms within R3? proof kernel-checks?
-  → lean4export  : export the proof's full dependency closure
+  → comparator   : statement matches the locked challenge? axioms within R3? proof kernel-checks?
+                   → emits the exact verified export (no separate re-export step)
   → R2 audit     : `answer` is a literal
-  → R3 re-audit  : the *exact timed export* declares only whitelisted axioms
-  → timing       : official kernel replays the export, N reps, median   ← the score
+  → R3 re-audit  : the exact verified export declares only whitelisted axioms
+  → timing       : official kernel replays that export, N reps, median   ← the score
   → verdict JSON + leaderboard
 ```
+
+The judge times the export comparator itself verified, byte-for-byte — there is no
+independent re-export, so what is measured is exactly what was statement-matched and
+kernel-replayed.
 
 A submission is **accepted** (and scored) only if it clears every gate; otherwise it is
 **rejected** with a reason. Infrastructure failures are a separate channel and never

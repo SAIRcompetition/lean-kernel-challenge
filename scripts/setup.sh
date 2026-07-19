@@ -22,7 +22,7 @@ command -v gtimeout >/dev/null || echo "WARN: gtimeout not found (macOS: brew in
 mkdir -p "$TOOLS_DIR"
 
 clone_build() {
-  local name="$1" url="$2" rev="$3" target="$4" patch="$5"
+  local name="$1" url="$2" rev="$3" target="$4" patch="${5:-}"   # patch optional (set -u safe)
   local dir="$TOOLS_DIR/$name"
   if [ ! -d "$dir/.git" ]; then git clone "$url" "$dir"; fi
   ( cd "$dir" && git checkout -- . && git checkout "$rev"

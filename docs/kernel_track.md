@@ -36,8 +36,7 @@ The judge returns one of:
 
 | Budget | Default | Meaning |
 |---|---|---|
-| comparator | 3600 s | build + verify (correctness gate; not scored) |
-| export | 1800 s | lean4export of the Solution closure |
+| comparator | 3600 s | build + verify + emit the verified export (correctness gate; not scored) |
 | audit | 300 s | R2 literal + R3 axiom checks |
 | timing rep | 1800 s | each of N kernel-replay reps |
 | reps | 3 | timing is the median |
