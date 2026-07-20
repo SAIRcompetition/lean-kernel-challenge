@@ -74,13 +74,13 @@ end Submission
 ```
 
 The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, `config.json`) are
-fixed; the judge supplies its own copies. See **[`docs/rules.md`](docs/rules.md)** for the
-binding rules and **[`docs/kernel_track.md`](docs/kernel_track.md)** for the full I/O contract.
+fixed; the judge supplies its own copies. See **[`rules/overview.md`](rules/overview.md)** for the
+binding rules and **[`rules/evaluation.md`](rules/evaluation.md)** for the full I/O contract.
 
 ## Rules in brief
 
 The computation must happen **inside the kernel** — this is a kernel-computation track,
-not a certificate track. Concretely (full text in [`docs/rules.md`](docs/rules.md)):
+not a certificate track. Concretely (full text in [`rules/overview.md`](rules/overview.md)):
 
 - **R1** Edit only `Submission.lean` and `Submission/`.
 - **R2** `answer` must be a raw numeral literal (no `answer := spec instance` + `rfl`).
@@ -181,5 +181,5 @@ these pins; the third-party checkouts are not committed.
 the perf instruction-counting path and container isolation are implemented but not yet
 run on PMU hardware; multi-tier / hidden instances and the scoring layer (best-N +
 relative placement) are not built; prizes, timeline, and the submission platform are TBD.
-Rule text may still change before launch (see `docs/rules.md`). Track 1 (certificate
+Rule text may still change before launch (see `rules/overview.md`). Track 1 (certificate
 verification) and Track 3 (open problems) are planned for later stages.

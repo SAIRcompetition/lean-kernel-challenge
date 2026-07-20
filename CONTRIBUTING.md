@@ -24,7 +24,7 @@ manifest with a `reason_contains` substring.
 
 ## Green gate
 Every change must keep `python3 scripts/run_harness.py` green. See `README.md`
-for the pipeline and `docs/rules.md` for the finalized rules.
+for the pipeline and `rules/overview.md` for the finalized rules.
 
 ## Reporting a soundness issue
 If you find a way to get an incorrect submission **accepted**, do not open a
