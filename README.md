@@ -1,7 +1,9 @@
 # Lean Kernel Challenge
 
-*A competition on the performance of verified computation in the Lean 4 kernel,
-co-organized by the **SAIR Foundation** and the **Lean community**.*
+*A competition on the performance of verified computation in the Lean 4 kernel.*
+
+Co-organized by Joachim Breitner, Leonardo de Moura, Kim Morrison, and Terence Tao —
+with the **Lean FRO** and the **SAIR Foundation**.
 
 ## Background
 
