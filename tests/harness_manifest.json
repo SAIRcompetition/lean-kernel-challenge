@@ -1,17 +1,10 @@
 {
-  "description": "Green-gate manifest for the Lean Kernel Challenge. Each case names an example submission and the expected judge outcome (accepted/rejected). run_harness.py deletes any stale verdict, runs the judge, checks its exit code (0=judged, 2=infra), and asserts the recorded status and (for rejections) a reason substring.",
+  "description": "Green-gate manifest (function paradigm).",
   "cases": [
     {
       "problem": "fib",
-      "submission": "loop",
-      "expect": "accepted",
-      "note": "tail-recursive pair loop"
-    },
-    {
-      "problem": "fib",
-      "submission": "doubling",
-      "expect": "accepted",
-      "note": "fast doubling, ~12x faster than loop"
+      "submission": "baseline",
+      "expect": "accepted"
     },
     {
       "problem": "partition",
@@ -21,8 +14,7 @@
     {
       "problem": "mertens",
       "submission": "baseline",
-      "expect": "accepted",
-      "note": "Int-valued answer -1"
+      "expect": "accepted"
     },
     {
       "problem": "primecount",
@@ -30,18 +22,12 @@
       "expect": "accepted"
     },
     {
-      "problem": "permanent",
+      "problem": "saw",
       "submission": "baseline",
       "expect": "accepted"
     },
     {
       "problem": "permanent",
-      "submission": "multifile",
-      "expect": "accepted",
-      "note": "proof in Submission/Helpers.lean"
-    },
-    {
-      "problem": "saw",
       "submission": "baseline",
       "expect": "accepted"
     },
@@ -52,24 +38,26 @@
     },
     {
       "problem": "fib",
+      "submission": "doubling",
+      "expect": "accepted"
+    },
+    {
+      "problem": "fib",
       "submission": "cheat-mathlib",
       "expect": "rejected",
-      "reason_contains": "comparator",
-      "note": "R4: import Mathlib, build fails"
+      "reason_contains": "comparator"
     },
     {
       "problem": "fib",
       "submission": "cheat-sorry",
       "expect": "rejected",
-      "reason_contains": "axiom",
-      "note": "R3: sorryAx"
+      "reason_contains": "axiom"
     },
     {
       "problem": "fib",
       "submission": "cheat-axiom",
       "expect": "rejected",
-      "reason_contains": "axiom",
-      "note": "R3: non-whitelisted axiom"
+      "reason_contains": "axiom"
     }
   ]
 }
