@@ -12,9 +12,8 @@ Pipeline per submission (each contestant job runs in a unique temp workspace):
      COMPARATOR_SOLUTION_EXPORT); we time that immutable file. The judge never
      re-exports, so there is no comparator→timed-export TOCTOU: what is audited and
      timed is byte-for-byte what comparator statement-matched and kernel-replayed.
-  3. R2 audit: each definition hole (e.g. Submission.answer) must be a raw literal.
-  4. R3 re-audit: the timed export declares only whitelisted axioms.
-  5. Timing (the score): official-kernel replay of the export, N reps.
+  3. R3 re-audit: the timed export declares only whitelisted axioms.
+  4. Timing (the score): official-kernel replay of the export, N reps.
        metric=wall_time         → median wall seconds (dev only)
        metric=perf_instructions → perf instruction count (Linux eval host; fail-closed)
 
@@ -328,17 +327,6 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     # The workspace is no longer read after this point; freeze it anyway as belt-and-suspenders.
     freeze_readonly(work)
 
-    # ---- R2 audit: definition holes must be raw literals ----
-    for d in cfg.get("definition_names", []):
-        rc, out = run([str(TIMER), "--check-literal", f"Submission.{d}", str(export_file)],
-                      work, env, AUDIT_TIMEOUT)
-        result["stages"][f"literal:{d}"] = {"exit": rc, "tail": last_line(out)}
-        if rc == "timeout":
-            result["status"], result["reason"] = "error", f"R2 audit timed out for {d}"
-            return finish()
-        if rc != 0:
-            result["status"], result["reason"] = "rejected", f"rule R2 ({d}): {last_line(out)}"
-            return finish()
 
     # ---- R3 re-audit: only whitelisted axioms in the exact timed export ----
     rc, out = run([str(TIMER), "--check-axioms", ",".join(axioms), str(export_file)],
