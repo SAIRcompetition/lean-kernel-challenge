@@ -1,8 +1,8 @@
 import Spec
 import Submission
 
-/-! # Lean Competition problem `mertens` — SOLUTION BRIDGE (trusted, locked) -/
+/-! SOLUTION BRIDGE (trusted, locked). Do not edit. -/
 
-@[reducible] noncomputable def answer : Int := Submission.answer
+@[reducible] def impl : Nat → Int := Submission.impl
 
-theorem answer_correct : mertensSpec mertensInstance = answer := Submission.answer_correct
+theorem impl_correct : ∀ n, impl n = mertensSpec n := Submission.impl_correct

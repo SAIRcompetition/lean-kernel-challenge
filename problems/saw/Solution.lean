@@ -1,8 +1,8 @@
 import Spec
 import Submission
 
-/-! # Lean Competition problem `saw` — SOLUTION BRIDGE (trusted, locked) -/
+/-! SOLUTION BRIDGE (locked). -/
 
-@[reducible] noncomputable def answer : Nat := Submission.answer
+@[reducible] def impl : Nat → Nat := Submission.impl
 
-theorem answer_correct : sawSpec sawInstance = answer := Submission.answer_correct
+theorem impl_correct : ∀ n, impl n = sawSpec n := Submission.impl_correct

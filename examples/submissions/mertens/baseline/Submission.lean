@@ -1,16 +1,12 @@
 import Spec
 import Submission.Helpers
 
-/-!
-Baseline: no algorithmic cleverness — let the official kernel grind the naive
-spec directly. `decide +kernel` routes the evaluation to the C++ kernel,
-bypassing elaborator-side reduction (which burns maxRecDepth per step).
--/
+/-! Baseline: naive spec as implementation. -/
 
 namespace Submission
 
-def answer : Int := -1
+def impl : Nat → Int := mertensSpec
 
-theorem answer_correct : mertensSpec mertensInstance = answer := by decide +kernel
+theorem impl_correct : ∀ n, impl n = mertensSpec n := fun _ => rfl
 
 end Submission

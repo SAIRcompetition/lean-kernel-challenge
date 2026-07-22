@@ -14,5 +14,3 @@ def isPrime (p : Nat) : Bool :=
 def primeCountSpec (n : Nat) : Nat :=
   ((List.range (n + 1)).filter isPrime).length
 
-/-- The instance parameter for this problem. -/
-def primeCountInstance : Nat := 600

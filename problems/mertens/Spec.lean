@@ -28,5 +28,3 @@ def mu (n : Nat) : Int :=
 def mertensSpec (n : Nat) : Int :=
   ((List.range (n + 1)).map mu).foldl (· + ·) 0
 
-/-- The instance parameter for this problem. -/
-def mertensInstance : Nat := 250

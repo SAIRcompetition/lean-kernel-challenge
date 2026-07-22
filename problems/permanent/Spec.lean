@@ -35,3 +35,10 @@ def matrixInstance : List (List Nat) := [
   [1, 0, 1, 0, 1, 1, 0],
   [1, 1, 0, 1, 1, 1, 0]
 ]
+
+/-- Deterministic n×n 0/1 matrix family (seeded), parametric in n. -/
+def genRow (n i : Nat) : List Nat := (List.range n).map (fun j => (i * 31 + j * 17 + 7) % 2)
+def genMatrix (n : Nat) : List (List Nat) := (List.range n).map (genRow n)
+
+/-- Parametric spec: permanent of the n-th matrix. -/
+def permanentSpecN (n : Nat) : Nat := permanentSpec (genMatrix n)

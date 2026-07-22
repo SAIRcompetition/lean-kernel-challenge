@@ -9,7 +9,6 @@ bit-packed representation) and prove the result against this spec.
 -/
 
 def ruleWidth : Nat := 32
-def ruleSteps : Nat := 128
 
 def rule110 (l c r : Bool) : Bool :=
   match l, c, r with
@@ -34,4 +33,5 @@ def encodeRow (row : List Bool) : Nat :=
 /-- The instance: a fixed pseudo-random initial row (LCG seed 20260709). -/
 def initRow : List Bool := [true, true, true, true, true, false, false, false, true, false, true, false, true, false, false, true, false, true, true, false, false, true, true, true, true, true, false, true, false, false, false, true]
 
-def caSpec : Nat := encodeRow (iterRow ruleSteps initRow)
+/-- Parametric spec: automaton state after n steps, parametric in n. -/
+def caSpecN (n : Nat) : Nat := encodeRow (iterRow n initRow)

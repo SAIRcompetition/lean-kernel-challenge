@@ -1,13 +1,8 @@
 import Spec
 import Submission
 
-/-!
-# Lean Competition problem `fib` — SOLUTION BRIDGE (trusted, locked)
+/-! SOLUTION BRIDGE (trusted, locked). Do not edit. -/
 
-Fixed bridge from the contestant's `Submission` namespace to the challenge
-statement. Contestants must not edit this file.
--/
+@[reducible] def impl : Nat → Nat := Submission.impl
 
-@[reducible] noncomputable def answer : Nat := Submission.answer
-
-theorem answer_correct : fibSpec fibInstance = answer := Submission.answer_correct
+theorem impl_correct : ∀ n, impl n = fibSpec n := Submission.impl_correct

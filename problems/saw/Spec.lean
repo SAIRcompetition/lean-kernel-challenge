@@ -27,5 +27,3 @@ def walks : Nat → List (List (Int × Int))
 
 def sawSpec (n : Nat) : Nat := (walks n).length
 
-/-- The instance parameter for this problem. -/
-def sawInstance : Nat := 8

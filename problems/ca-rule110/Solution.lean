@@ -1,8 +1,8 @@
 import Spec
 import Submission
 
-/-! # Lean Competition problem `ca-rule110` — SOLUTION BRIDGE (trusted, locked) -/
+/-! SOLUTION BRIDGE (locked). -/
 
-@[reducible] noncomputable def answer : Nat := Submission.answer
+@[reducible] def impl : Nat → Nat := Submission.impl
 
-theorem answer_correct : caSpec = answer := Submission.answer_correct
+theorem impl_correct : ∀ n, impl n = caSpecN n := Submission.impl_correct

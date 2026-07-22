@@ -1,18 +1,12 @@
 /-!
-# Lean Competition problem `fib` — SPEC (trusted, locked)
+# Lean Kernel Challenge problem `fib` — SPEC (trusted, locked)
 
-Textbook Fibonacci, deliberately naive. Evaluating `fibSpec fibInstance` by
-kernel reduction directly is astronomically infeasible (exponential call tree);
-submissions are expected to provide a fast computation together with a
-correctness proof against this spec.
-
-This file is part of the trusted problem statement. Contestants must not edit it.
+Textbook Fibonacci, deliberately naive: an exponential call tree, infeasible to
+reduce in the kernel beyond small n. Submissions provide a fast function
+`impl : Nat -> Nat` plus a proof it agrees with this spec on every input.
 -/
 
 def fibSpec : Nat → Nat
   | 0 => 0
   | 1 => 1
   | n + 2 => fibSpec n + fibSpec (n + 1)
-
-/-- The instance parameter for this problem. -/
-def fibInstance : Nat := 100000

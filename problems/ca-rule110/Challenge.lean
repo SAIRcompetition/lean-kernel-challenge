@@ -1,9 +1,7 @@
 import Spec
 
-/-! # Lean Competition problem `ca-rule110` — CHALLENGE (trusted, locked) -/
+/-! CHALLENGE (locked). impl : Nat -> Nat, prove = caSpecN on all n. -/
 
-/-- The computed value. Rule R2: must elaborate to a raw numeral literal. -/
-def answer : Nat := sorry
+def impl : Nat → Nat := sorry
 
-/-- Correctness of the computed value. -/
-theorem answer_correct : caSpec = answer := sorry
+theorem impl_correct : ∀ n, impl n = caSpecN n := sorry

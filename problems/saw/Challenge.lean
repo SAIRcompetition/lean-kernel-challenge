@@ -1,9 +1,7 @@
 import Spec
 
-/-! # Lean Competition problem `saw` — CHALLENGE (trusted, locked) -/
+/-! CHALLENGE (locked). impl : Nat -> Nat, prove = sawSpec on all n. -/
 
-/-- The computed value. Rule R2: must elaborate to a raw numeral literal. -/
-def answer : Nat := sorry
+def impl : Nat → Nat := sorry
 
-/-- Correctness of the computed value. -/
-theorem answer_correct : sawSpec sawInstance = answer := sorry
+theorem impl_correct : ∀ n, impl n = sawSpec n := sorry

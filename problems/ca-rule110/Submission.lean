@@ -1,17 +1,12 @@
 import Spec
 import Submission.Helpers
 
-/-!
-# Lean Competition problem `ca-rule110` — SUBMISSION (yours to edit)
-R1: only this file and files under `Submission/` may be edited.
-R2: `Submission.answer` must be a raw numeral literal.
-R3: only the standard axioms (propext, Quot.sound, Classical.choice).
--/
+/-! SUBMISSION (yours). Fill both holes. -/
 
 namespace Submission
 
-def answer : Nat := sorry
+def impl : Nat → Nat := sorry
 
-theorem answer_correct : caSpec = answer := sorry
+theorem impl_correct : ∀ n, impl n = caSpecN n := sorry
 
 end Submission
