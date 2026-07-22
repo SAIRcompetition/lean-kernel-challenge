@@ -1,9 +1,8 @@
 import Spec
 
-/-! # Lean Competition problem `partition` — CHALLENGE (trusted, locked) -/
+/-! CHALLENGE (locked). Provide a total `impl : Nat -> Nat` and prove it equals
+partitionSpec on every input. -/
 
-/-- The computed value. Rule R2: must elaborate to a raw numeral literal. -/
-def answer : Nat := sorry
+def impl : Nat → Nat := sorry
 
-/-- Correctness of the computed value. -/
-theorem answer_correct : partitionSpec partitionInstance = answer := sorry
+theorem impl_correct : ∀ n, impl n = partitionSpec n := sorry

@@ -60,18 +60,7 @@ the judge.
 One file, **`Submission.lean`** (optionally with helper files under `Submission/`).
 Nothing else. You fill two holes in a locked workspace:
 
-```lean
-namespace Submission
 
-def answer : Nat := 37338                                   -- ① the computed value (a literal)
-
-theorem answer_correct :                                    -- ② its proof of correctness
-    partitionSpec partitionInstance = answer := by
-  ...                                                       -- your fast algorithm, proved equal
-                                                            --   to the spec, checked by the kernel
-
-end Submission
-```
 
 The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, `config.json`) are
 fixed; the judge supplies its own copies. See **[`rules/overview.md`](rules/overview.md)** for the

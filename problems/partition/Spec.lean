@@ -21,5 +21,3 @@ def partAux : Nat → Nat → Nat
 /-- The partition function. -/
 def partitionSpec (n : Nat) : Nat := partAux n n
 
-/-- The instance parameter for this problem. -/
-def partitionInstance : Nat := 40
