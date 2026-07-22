@@ -8,7 +8,7 @@ with the **Lean FRO** and the **SAIR Foundation**.
 | | |
 |---|---|
 | **Stage** | Stage 1 — Kernel Computation Track |
-| **Status** | Pre-launch draft (rules R1–R6 stable; scoring & logistics TBD) |
+| **Status** | Pre-launch draft (rules stable; scoring & logistics TBD) |
 | **Start** | 2026-09-01 |
 | **End** | TBD |
 | **Prizes** | TBD |
@@ -18,102 +18,90 @@ with the **Lean FRO** and the **SAIR Foundation**.
 
 ## Background
 
-The Lean 4 kernel is the trusted core that type-checks every proof the system accepts.
-Type-checking includes definitional-equality checking, which the kernel discharges by reduction
-(β/δ/ι reduction and evaluation to weak head normal form). When a proof depends on a computed
-result — for instance an equation `f x = y` closed by `rfl` — the kernel establishes it by
-reducing `f x`. Verifying such a proof and performing the computation are therefore one and the
-same operation.
-
-This makes the kernel a well-defined, deterministic model of computation with its own
-performance characteristics: reduction is call-by-name, natural-number literals are backed by GMP
-with a fixed set of native `Nat` operations, and evaluation strategy, term representation, and
-sharing all bear directly on cost. The challenge asks a concrete, largely unstudied question:
+The Lean 4 kernel type-checks every proof the system accepts. Type-checking includes
+definitional-equality checking, which the kernel discharges by reduction. When a proof depends
+on a computed result, the kernel establishes it by reducing the computation — so verifying such
+a proof and performing the computation are one and the same operation. This makes the kernel a
+deterministic model of computation with its own performance characteristics, and raises a
+concrete, largely unstudied question:
 
 > **How efficiently can a computation be expressed so that the kernel *verifies* it, and which
 > algorithmic and encoding techniques scale within the kernel's reduction model?**
 
-The [Lean Kernel Arena](https://arena.lean-lang.org/) measures kernel *implementations*; this
-competition fixes the official kernel as the judge and has submissions compete on how few
-instructions it takes to check them. Speed alone is not the objective — every answer must carry a
-machine-verifiable Lean proof of correctness, so progress comes from stronger algorithms and
-kernel-level encodings rather than from bypassing the computation.
-
 ## The task
 
-Each problem gives you a **trusted spec** — a deliberately naive but correct definition in core
-Lean (e.g. the partition function `p(n)`) — and a specific instance. You must:
+Each problem provides a **trusted spec** — a deliberately naive but correct definition
+`spec : Nat → Output` in core Lean. You submit:
 
-1. **compute the answer**, and
-2. **prove it correct** against the spec.
+1. a **function** `impl : Nat → Output` — your fast algorithm, and
+2. a **proof** `impl_correct : ∀ n, impl n = spec n` — that it agrees with the spec on *every*
+   input.
 
-What is timed is **how many instructions the official Lean kernel spends re-checking your proof**
-— because to check it, the kernel is forced to carry out the computation. Lower is better. See
-[`evaluation.md`](evaluation.md) for exactly how judging and scoring work.
+The judge then evaluates `impl` on inputs of its own choosing (possibly hidden, at several sizes)
+and times **how many instructions the kernel spends reducing `impl n`**. Because correctness holds
+for all n, the judge can pick any input; because inputs may be hidden and large, hardcoding or
+table lookup is pointless — only a genuinely good general algorithm scales. Lower is better. See
+`evaluation.md` for how judging and scoring work.
 
 ## What you submit
 
-One file, **`Submission.lean`** (optionally with helper files under `Submission/`). Nothing else.
-You fill two holes in a locked workspace:
+One file, **`Submission.lean`** (optionally with helpers under `Submission/`). You fill two holes
+in a locked workspace:
 
 ```lean
 namespace Submission
 
-def answer : Nat := 37338                                   -- ① the computed value (a literal)
+def impl : Nat → Nat := sorry                       -- ① your fast algorithm (a total function)
 
-theorem answer_correct :                                    -- ② its proof of correctness
-    partitionSpec partitionInstance = answer := by
-  ...                                                       -- your fast algorithm, proved equal
-                                                            --   to the spec, checked by the kernel
+theorem impl_correct : ∀ n, impl n = fibSpec n :=   -- ② proof it equals the spec on every n
+  sorry
 
 end Submission
 ```
 
 The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, `config.json`) are fixed; the
-judge supplies its own copies.
+judge supplies its own copies. The simplest submission is `impl := spec` with
+`impl_correct := fun _ => rfl` — correct but slow, because the judge's kernel evaluation then runs
+the naive spec. Beating that baseline is the whole game.
 
 ## Rules
 
-- **R1 — Locked files.** You may edit only `Submission.lean` and files you add under
-  `Submission/`. The trusted files are fixed; the judge ignores any changes to them.
-- **R2 — The answer is a literal.** `Submission.answer` must elaborate to a raw numeral literal
-  (e.g. `37338`, or a negative `Int` where the answer type is `Int`), not a compound expression
-  like `partitionSpec partitionInstance` (which would hold by `rfl` with zero computation).
-- **R3 — Standard axioms only.** `answer_correct` may depend only on `propext`, `Quot.sound`,
-  `Classical.choice`. `native_decide` (per-computation axioms) and `sorry` (`sorryAx`) are
-  rejected.
-- **R4 — Only kernel checking is scored.** How you find the proof is unconstrained; what is
-  measured is the cost for the kernel to re-check it. There is no attempt to police whether the
-  proof was "computed in the kernel" vs generated externally — that is not machine-decidable.
-- **R5 — No Mathlib; core Lean only.** `Submission.lean` and `Submission/` may import the
-  problem's provided modules and the Lean core library, but not Mathlib or any external
-  dependency.
-- **R6 — Total termination.** Every definition your proof depends on must be total. `partial`,
-  `unsafe`, `@[extern]`, and `@[implemented_by]` are disallowed (the kernel does not reduce them
-  anyway).
+- **R1 — Locked files.** You may edit only `Submission.lean` and files under `Submission/`.
+- **R2 — Total, core-Lean function.** `impl` must be total and structurally recursive (no
+  `partial`, `unsafe`, `@[extern]`, `@[implemented_by]`), so the kernel can reduce it on any input.
+- **R3 — Standard axioms only.** `impl_correct` may depend only on `propext`, `Quot.sound`,
+  `Classical.choice`. `native_decide` and `sorry` are rejected.
+- **R4 — No Mathlib; core Lean only.**
+- **R5 — Prove correctness for all inputs.** `impl_correct` must have type `∀ n, impl n = spec n`,
+  so the judge can evaluate `impl` at inputs you do not see.
+- **R6 — Only kernel checking is scored.** How you find impl and its proof is unconstrained; what
+  is measured is the cost for the kernel to reduce `impl n`.
+
+> The earlier "answer must be a raw numeral literal" rule is retired — submissions are functions
+> now, evaluated by the judge at inputs of its choosing, so there is nothing to hardcode.
 
 ## Problems (Stage 1)
 
-| Problem | What you compute | Instance |
-|---|---|---|
-| `fib` *(tutorial)* | a Fibonacci number | F(100000) |
-| `partition` | the partition function p(n) | n = 40 |
-| `mertens` | the Mertens function M(n) | n = 250 |
-| `primecount` | the prime-counting function π(n) | n = 600 |
-| `permanent` | the permanent of a 0/1 matrix | 7×7 |
-| `saw` | count of self-avoiding walks on ℤ² | length 8 |
-| `ca-rule110` | a Rule 110 automaton's state | 32 cells × 128 steps |
+Every problem is parametric in `n : Nat`; the judge evaluates `impl` along that axis.
 
-Each spec is intentionally naive: reducing it directly in the kernel is slow or infeasible, so
-competitive submissions require both better algorithms and kernel-level encodings that reduce
-efficiently. The worked `fib` example includes a linear loop and fast doubling; the latter is
-checked roughly **12× faster**.
+| Problem | `impl n` computes | Naive spec cost |
+|---|---|---|
+| `fib` *(tutorial)* | the n-th Fibonacci number | exponential |
+| `partition` | the partition function p(n) | ~p(n)·n |
+| `mertens` | the Mertens function M(n) (Int) | quadratic |
+| `primecount` | the prime-counting function π(n) | quadratic |
+| `permanent` | the permanent of the n-th seeded 0/1 matrix | n! |
+| `saw` | count of self-avoiding walks of length n on ℤ² | exponential |
+| `ca-rule110` | a Rule 110 automaton's state after n steps | linear (list-based) |
+
+Each spec is intentionally naive, so reducing it directly in the kernel blows up as n grows;
+competitive submissions need a better algorithm *and* a kernel-friendly encoding. The worked `fib`
+example ships baseline + fast doubling (with a full `∀ n` proof); on a mid-size n the naive spec
+times out in the kernel while fast doubling is checked in well under a second.
 
 ## Status
 
-**Prototype / pre-launch.** The judging pipeline is complete and self-audited across three
-security reviews (7 problems, 15 example submissions, green-gate harness). Not yet finalized: the
-perf instruction-counting path and container isolation are implemented but not yet run on PMU
-hardware; multi-tier / hidden instances and the scoring aggregation (best-N + relative placement)
-are not built; prizes, the end date, and the submission platform are TBD. Rule text may still
-change before launch.
+**Prototype / pre-launch.** All 7 problems are functionalized and compile; the judging pipeline is
+under active development. Not yet finalized: perf instruction-counting on real hardware; the scoring
+aggregation (best-N + relative placement); the submission platform; prizes and end date. Rule text
+may still change before launch.
