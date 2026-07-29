@@ -14,6 +14,7 @@ Usage:
 import argparse
 import json
 import os
+import secrets
 import subprocess
 import sys
 from pathlib import Path
@@ -27,36 +28,63 @@ SUBS = ROOT / "examples" / "submissions"
 def run_case(case, reps):
     problem, name = case["problem"], case["submission"]
     sub_dir = SUBS / problem / name
-    tag = f"harness-{problem}-{name}"
-    verdict_file = ROOT / "results" / problem / f"{tag}.json"
-    # Delete any stale verdict first, so a crashed judge can't pass on last run's file.
-    if verdict_file.exists():
-        verdict_file.unlink()
+    canonical_tag = f"harness-{problem}-{name}"
+    # Judge into a unique file and publish it over the canonical harness verdict only after
+    # every assertion passes. An interrupted/crashed run therefore cannot destroy the last
+    # known-good result, and a stale canonical verdict can never make this run pass.
+    run_tag = f"{canonical_tag}-run-{os.getpid()}-{secrets.token_hex(4)}"
+    verdict_file = ROOT / "results" / problem / f"{run_tag}.json"
+    canonical_file = ROOT / "results" / problem / f"{canonical_tag}.json"
+
+    def fail(detail):
+        # A failed assertion must not leave a structurally valid run-tag verdict for the
+        # canonical scorer/leaderboard to mistake for another submission.
+        try:
+            verdict_file.unlink()
+        except FileNotFoundError:
+            pass
+        return False, detail
+
     cmd = [sys.executable, str(JUDGE), "run", "--problem", problem,
-           "--submission", str(sub_dir), "--tag", tag, "--reps", str(reps)]
+           "--submission", str(sub_dir), "--tag", run_tag, "--reps", str(reps)]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if not verdict_file.exists():
-        return False, f"no verdict file (exit {proc.returncode}); stderr: {proc.stderr.strip()[:200]}"
-    v = json.loads(verdict_file.read_text())
+        return fail(f"no verdict file (exit {proc.returncode}); stderr: {proc.stderr.strip()[:200]}")
+    try:
+        v = json.loads(verdict_file.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        return fail(f"invalid verdict {verdict_file.name}: {e}")
     status, reason = v.get("status"), (v.get("reason") or "")
     # Exit-code contract: 0 = judged (accepted/rejected), 2 = infra failure.
     if proc.returncode == 2 and case["expect"] != "error":
-        return False, f"infra error (exit 2): {reason[:140]}"
+        return fail(f"infra error (exit 2): {reason[:140]}")
     if proc.returncode not in (0, 2):
-        return False, f"unexpected judge exit {proc.returncode}"
+        return fail(f"unexpected judge exit {proc.returncode}")
     if status != case["expect"]:
-        return False, f"expected {case['expect']}, got {status} ({reason[:120]})"
+        return fail(f"expected {case['expect']}, got {status} ({reason[:120]})")
     if "reason_contains" in case and case["reason_contains"] not in reason:
-        return False, f"reason missing '{case['reason_contains']}': {reason[:120]}"
+        return fail(f"reason missing '{case['reason_contains']}': {reason[:120]}")
     if status == "accepted":
-        # A verdict alone doesn't prove the PERFORMANCE phase ran — assert it produced a
-        # scaling curve, and (when the case declares it) an actual score, so a fully broken
-        # perf phase can't slip through green.
+        # A verdict alone doesn't prove the scored pipeline ran. Require the separately timed
+        # correctness artifact plus one scaling row per planned input (including explicit
+        # timeout rows), so input collapse or an early `break` cannot pass the green gate.
+        correctness = v.get("correctness_timing")
+        if not isinstance(correctness, dict) or not correctness.get("result"):
+            return fail("accepted but no correctness_timing (scored proof replay did not run)")
         scaling = v.get("timing", {}).get("scaling")
         if not isinstance(scaling, list) or not scaling:
-            return False, "accepted but no timing/scaling (perf phase did not run)"
+            return fail("accepted but no timing/scaling (perf phase did not run)")
+        inputs = v.get("stages", {}).get("perf_inputs")
+        if not isinstance(inputs, list) or len(scaling) != len(inputs):
+            return fail(f"perf curve incomplete: {len(scaling)} rows for "
+                        f"{len(inputs) if isinstance(inputs, list) else 'invalid'} inputs")
         if case.get("scored") and not v.get("score"):
-            return False, "accepted but unscored (case expects a score)"
+            return fail("accepted but unscored (case expects a score)")
+    # The temporary judge tag must not leak into the durable result/leaderboard identity.
+    v["submission"] = canonical_tag
+    verdict_file.write_text(json.dumps(v, indent=2))
+    canonical_file.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(verdict_file, canonical_file)
     detail = status + (f", {v['score']}" if v.get("score") else "")
     return True, detail
 

@@ -84,6 +84,7 @@ _VALUE_META = r"""import Submission
 import Lean
 open Lean Meta
 set_option maxRecDepth 4000000
+set_option maxHeartbeats 0
 run_meta do
   let e0 ← whnf (mkApp (mkConst ``Submission.impl) (mkNatLit __N__))
   match e0 with
@@ -109,25 +110,18 @@ def eval_value(w, n, timeout):
         return None, to
     for line in log.splitlines():
         if line.startswith("VALUE="):
-            return line[6:].strip(), False
+            value = line[6:].strip()
+            return (value, False) if re.fullmatch(r"-?(0|[1-9][0-9]*)", value) else (None, False)
     return None, False
-
-
-_SLOW = ("(deterministic) timeout", "maximum number of heartbeats", "maximum recursion depth",
-         "maxRecDepth", "stack overflow", "deep recursion")
 
 
 def evaluate(problem, submission_dir, timeout=120):
     """Lightweight dev reproduction of the judge's perf phase. The authoritative verdict is
     judge/judge.py; this mirrors its semantics: correctness gate → per-input timing, where a
-    too-slow input truncates the curve (accepted) and a deterministic fault errors (no score)."""
+    real process timeout occupies one slot and a deterministic fault errors (no score)."""
     sub = os.path.basename(submission_dir)
     cfg = json.load(open(f"{BASE}/problems/{problem}/config.json"))
     whitelist = cfg.get("permitted_axioms", ["propext", "Quot.sound", "Classical.choice"])
-    inputs = _judge.perf_inputs(cfg, problem)
-    if not inputs:
-        return {"problem": problem, "submission": sub, "status": "error",
-                "reason": f"no perf policy for '{problem}'"}
     w = tempfile.mkdtemp(prefix=f"pe_{problem.replace('-', '_')}_")   # unique — no concurrent clobber
     try:
         subprocess.run(["cp", "-r", f"{BASE}/problems/{problem}/.", w])
@@ -138,6 +132,13 @@ def evaluate(problem, submission_dir, timeout=120):
 
         def verdict(status, **kw):
             return {"problem": problem, "submission": sub, "status": status, **kw}
+
+        try:
+            inputs = _judge.perf_inputs(cfg, problem)
+        except _judge.InfraError as e:
+            return verdict("error", reason=str(e))
+        if not inputs:
+            return verdict("error", reason=f"no perf policy for '{problem}'")
 
         rc, _, log, _ = _run(["lake", "build", "Solution"], w, 3600)
         if rc != 0:
@@ -152,24 +153,39 @@ def evaluate(problem, submission_dir, timeout=120):
             open(lf, "w").write(s.rstrip() + '\n\n[[lean_lib]]\nname = "Perf"\n')
 
         scaling = []
-        for n in inputs:
+        for slot, n in enumerate(inputs):
             v, to = eval_value(w, n, timeout)
             if v is None:
-                scaling.append({"n": n, "seconds": None,
+                scaling.append({"slot": slot, "n": n, "seconds": None,
                                 "result": "value-eval-timeout" if to else "value-eval-error"})
-                break
-            open(f"{w}/Perf.lean", "w").write(
-                f"import Submission\ntheorem perf_check : Submission.impl {n} = {v} := by decide +kernel\n")
+                if to:
+                    continue
+                scaling.extend(
+                    {"slot": later_slot, "n": later_n, "seconds": None, "result": "not-run"}
+                    for later_slot, later_n in enumerate(inputs[slot + 1:], start=slot + 1))
+                return verdict("error", reason=f"value oracle failed at n={n}", scaling=scaling)
+            source, _ = _judge._perf_theorem_source(n, v, f"{w}:{n}")
+            open(f"{w}/Perf.lean", "w").write(source)
             rc, dt, plog, to = _run(["lake", "env", "lean", "Perf.lean"], w, timeout)
-            if to or (rc != 0 and any(m in plog for m in _SLOW)):
-                scaling.append({"n": n, "seconds": round(dt, 2), "result": "timeout"})   # too slow
-                break
+            if to:
+                scaling.append({"slot": slot, "n": n, "seconds": round(dt, 2),
+                                "result": "timeout"})
+                continue
             if rc != 0:                       # deterministic failure = wrong value / fault
+                scaling.append({"slot": slot, "n": n, "seconds": round(dt, 2),
+                                "result": "build-error"})
+                scaling.extend(
+                    {"slot": later_slot, "n": later_n, "seconds": None, "result": "not-run"}
+                    for later_slot, later_n in enumerate(inputs[slot + 1:], start=slot + 1))
                 return verdict("error", reason=f"perf build failed at n={n} (fault, not too-slow)",
                                scaling=scaling)
-            scaling.append({"n": n, "seconds": round(dt, 2), "result": "ok"})
-        scored = any(r["result"] == "ok" for r in scaling)     # scored if ANY input completed
-        return verdict("accepted", scored=scored, metric="wall_time (dev)", scaling=scaling)
+            scaling.append({"slot": slot, "n": n, "seconds": round(dt, 2), "result": "ok"})
+        ok_rows = [row for row in scaling if row["result"] == "ok"]
+        scored = bool(ok_rows)
+        coverage = _judge._coverage_fields(inputs, scaling)
+        headline_n = max((row["n"] for row in ok_rows), default=None)
+        return verdict("accepted", scored=scored, metric="wall_time (dev)", scaling=scaling,
+                       headline_n=headline_n, **coverage)
     finally:
         subprocess.run(["rm", "-rf", w])
 

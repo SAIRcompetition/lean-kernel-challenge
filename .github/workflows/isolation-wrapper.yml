@@ -1,0 +1,18 @@
+name: Isolation wrapper
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  static-wrapper-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: bash -n scripts/run_isolated.sh
+      - name: Required Docker isolation envelope
+        run: python3 tests/test_run_isolated.py

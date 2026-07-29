@@ -37,11 +37,11 @@ Each problem provides a **trusted spec** — a deliberately naive but correct de
 2. a **proof** `impl_correct : ∀ n, impl n = spec n` — that it agrees with the spec on *every*
    input.
 
-The judge then evaluates `impl` on inputs of its own choosing (possibly hidden, at several sizes)
-and times **how many instructions the kernel spends reducing `impl n`**. Because correctness holds
-for all n, the judge can pick any input; because inputs may be hidden and large, hardcoding or
-table lookup is pointless — only a genuinely good general algorithm scales. Lower is better. See
-`evaluation.md` for how judging and scoring work.
+The judge then evaluates `impl` on a rotating hidden schedule and measures the kernel work needed
+to replay the verified correctness export and reduce `impl n` at each sampled input. Correctness
+for all `n` lets the judge choose any input; it does not make a proved table or special case
+logically impossible. Such implementations are legal, but they must survive the hidden schedule
+and all of their replay work is charged. See `evaluation.md` for the canonical ranking.
 
 ## What you submit
 
@@ -82,8 +82,9 @@ may rely on, and what is scored.
   the judge can evaluate `impl` at inputs you do not see.
 - **R4 — Standard axioms only.** The proof may depend only on `propext`, `Quot.sound`, and
   `Classical.choice`; `sorry` and `native_decide` are rejected.
-- **R5 — Only kernel checking is scored.** How you find `impl` and its proof is unconstrained; what
-  is measured is the cost for the kernel to reduce `impl n`.
+- **R5 — Kernel replay is scored.** How you find `impl` and its proof is unconstrained. The score
+  charges one replay of the comparator-verified correctness export plus the successful per-input
+  replays that force the kernel to reduce `impl n`.
 
 ## Problems (Stage 1)
 

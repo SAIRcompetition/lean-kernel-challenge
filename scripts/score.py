@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
-"""Function-paradigm scoring: turn each submission's scaling curve into an empirical
-complexity fit and an efficiency-vs-reference number.
+"""Build the canonical per-problem scoring tables from judge verdicts.
 
-Reads the judge verdict JSONs under results/<problem>/*.json (the files the leaderboard
-uses) and writes results/scoring.md — per-problem tables of:
+Official ranking is deliberately simple and monotone:
 
-  (1) slope α  — from a least-squares fit of log I vs log n; the empirical complexity
-                 exponent and the PRIMARY signal (scale-free, lower is better).
-  (2) β        — the fit's intercept = log-constant factor / kernel-encoding quality
-                 (secondary tiebreak among equal α).
-  (3) e = I/R  — kernel work per unit of naive-spec reference work, at the reach input,
-                 for problems whose reference work R(n) has a clean closed form (human-
-                 readable efficiency; not the primary ranking key).
+  1. more completed sampling slots wins;
+  2. for equal completed-slot counts, higher coverage wins;
+  3. for equal coverage, success at harder (higher-index) slots wins;
+  4. only identical success profiles are tied by total measured kernel work:
 
-Ranking within a problem: scaling reach (largest completed input) → α → β.
-Metric: median_instructions when present (Linux perf), else median_s (local dev).
-Stdlib only. See rules/evaluation.md for the methodology.
+         correctness replay median + sum(completed slot medians)
+
+The correctness replay is charged because it is part of the verified computation
+artifact.  Increasing the work at any point can therefore never improve a rank.
+The log-log fit (α, β) remains useful diagnostic data, but is report-only.
+
+Instruction-count and wall-time verdicts are placed in separate groups, as are distinct
+evaluation cohorts. A verdict is unscored unless its correctness replay and every successful
+curve slot carry the same declared metric; legacy verdicts without correctness_timing or a
+cohort id are not silently compared with current verdicts.
+
+Stdlib only.  See rules/evaluation.md for the binding scoring contract.
 """
 import json
 import math
@@ -24,22 +28,15 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESULTS = os.path.join(ROOT, "results")
 
-
-def _fact(n):
-    r = 1
-    for i in range(2, n + 1):
-        r *= i
-    return r
-
-
-# Naive-spec reference work R(n), only for problems where it has a clean closed form.
-# (primecount / mertens / partition depend on answer-level quantities, so they get no e —
-# their scoring leans on α + relative placement, per rules/evaluation.md.)
-REFERENCE_WORK = {
-    "fib":        lambda n: max(n, 1),           # Θ(n) course-of-values steps
-    "permanent":  lambda n: _fact(n) * max(n, 1),
-    "saw":        lambda n: 4 ** n,              # brute-force branching upper bound
-    "ca-rule110": lambda n: max(n, 1) * 32 * 32,
+METRICS = {
+    "perf_instructions": {
+        "field": "median_instructions",
+        "label": "kernel instructions",
+    },
+    "wall_time": {
+        "field": "median_s",
+        "label": "wall seconds (dev only)",
+    },
 }
 
 
@@ -55,7 +52,8 @@ def _load_verdicts():
             if not fn.endswith(".json"):
                 continue
             try:
-                r = json.load(open(os.path.join(pdir, fn)))
+                with open(os.path.join(pdir, fn)) as f:
+                    r = json.load(f)
             except (json.JSONDecodeError, OSError):
                 continue
             if not (isinstance(r, dict) and isinstance(r.get("problem"), str)
@@ -66,85 +64,244 @@ def _load_verdicts():
     return rows
 
 
-def _points(verdict):
-    """[(n, I)] over completed inputs, I>0, using whichever metric the verdict carries."""
-    pts = []
-    for row in verdict.get("timing", {}).get("scaling", []):
-        if row.get("result") != "ok":
-            continue
-        n = row.get("n")
-        val = row.get("median_instructions", row.get("median_s"))
-        if isinstance(n, int) and n > 0 and isinstance(val, (int, float)) and val > 0:
-            pts.append((n, float(val)))
-    return pts
+def _is_cost(value):
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(float(value)) and value > 0)
 
 
-def _fit(pts):
-    """Least-squares (α, β) for log I ≈ α·log n + β; (None, None) if < 2 usable points."""
-    if len(pts) < 2:
+def _fit(points):
+    """Report-only least-squares (α, β) for log cost ≈ α·log n + β."""
+    points = [(n, value) for n, value in points if n > 0]
+    if len(points) < 2:
         return None, None
-    xs = [math.log(n) for n, _ in pts]
-    ys = [math.log(v) for _, v in pts]
+    xs = [math.log(n) for n, _ in points]
+    ys = [math.log(value) for _, value in points]
     m = len(xs)
     sx, sy = sum(xs), sum(ys)
     sxx = sum(x * x for x in xs)
     sxy = sum(x * y for x, y in zip(xs, ys))
-    d = m * sxx - sx * sx
-    if d == 0:
+    denominator = m * sxx - sx * sx
+    if denominator == 0:
         return None, None
-    alpha = (m * sxy - sx * sy) / d
+    alpha = (m * sxy - sx * sy) / denominator
     beta = (sy - alpha * sx) / m
     return alpha, beta
 
 
-def _rows_for(problem, verdicts):
-    Rfn = REFERENCE_WORK.get(problem)
-    out = []
-    for v in verdicts:
-        pts = _points(v)
-        if not pts:
-            out.append({"sub": v["submission"], "reach": None,
-                        "alpha": None, "beta": None, "e": None})
+def _base_row(verdict, metric, reason):
+    return {
+        "sub": verdict.get("submission", "<?>"),
+        "metric": metric,
+        "cohort": None,
+        "round": None,
+        "scoreable": False,
+        "reason": reason,
+        "planned_slots": 0,
+        "completed_slots": 0,
+        "coverage": 0.0,
+        "slot_profile": (),
+        "reach": None,
+        "correctness_work": None,
+        "curve_work": None,
+        "total_work": None,
+        "alpha": None,
+        "beta": None,
+    }
+
+
+def _score_row(verdict, metric):
+    """Validate one verdict and derive its canonical ranking fields.
+
+    New-format verdicts have one scaling row for every planned slot. Successful
+    rows carry the metric-specific median and failures remain explicit. This makes
+    coverage auditable rather than inferring it from the largest sampled input.
+    """
+    row = _base_row(verdict, metric, None)
+    cohort = verdict.get("evaluation_cohort")
+    if not (isinstance(cohort, dict)
+            and isinstance(cohort.get("id"), str) and cohort["id"]
+            and isinstance(cohort.get("round"), str) and cohort["round"]):
+        row["reason"] = "missing/invalid evaluation_cohort"
+        return row
+    row["cohort"] = cohort["id"]
+    row["round"] = cohort["round"]
+    if metric not in METRICS or verdict.get("metric") != metric:
+        row["reason"] = "metric group mismatch"
+        return row
+
+    timing = verdict.get("timing")
+    if not isinstance(timing, dict) or timing.get("metric") != metric:
+        row["reason"] = "timing.metric does not match verdict metric"
+        return row
+
+    correctness = verdict.get("correctness_timing")
+    if not isinstance(correctness, dict):
+        row["reason"] = "legacy verdict: missing correctness_timing"
+        return row
+    if correctness.get("result") != "ok" or correctness.get("metric") != metric:
+        row["reason"] = "correctness replay did not complete in the declared metric"
+        return row
+
+    cost_field = METRICS[metric]["field"]
+    correctness_work = correctness.get(cost_field)
+    if not _is_cost(correctness_work):
+        row["reason"] = f"correctness_timing lacks a positive {cost_field}"
+        return row
+
+    planned = verdict.get("stages", {}).get("perf_inputs")
+    if not (isinstance(planned, list) and planned
+            and all(isinstance(n, int) and not isinstance(n, bool) and n >= 0 for n in planned)
+            and planned == sorted(set(planned))):
+        row["reason"] = "invalid or non-distinct perf_inputs"
+        return row
+    row["planned_slots"] = len(planned)
+
+    scaling = timing.get("scaling")
+    if not isinstance(scaling, list) or len(scaling) != len(planned):
+        row["reason"] = "scaling must contain one explicit row per planned slot"
+        return row
+
+    by_slot = {}
+    for sample in scaling:
+        if not isinstance(sample, dict):
+            row["reason"] = "invalid scaling row"
+            return row
+        slot = sample.get("slot")
+        if not isinstance(slot, int) or isinstance(slot, bool) or slot in by_slot:
+            row["reason"] = "scaling rows require unique integer slot identifiers"
+            return row
+        by_slot[slot] = sample
+    if set(by_slot) != set(range(len(planned))):
+        row["reason"] = "scaling slots do not match the planned schedule"
+        return row
+
+    points = []
+    slot_profile = []
+    for slot, planned_n in enumerate(planned):
+        sample = by_slot[slot]
+        if sample.get("n") != planned_n:
+            row["reason"] = f"slot {slot} input does not match perf_inputs"
+            return row
+        if sample.get("result") == "ok":
+            value = sample.get(cost_field)
+            if not _is_cost(value):
+                row["reason"] = f"successful slot {slot} lacks a positive {cost_field}"
+                return row
+            points.append((planned_n, value))
+            slot_profile.append(1)
+        else:
+            slot_profile.append(0)
+
+    completed = len(points)
+    row["completed_slots"] = completed
+    row["coverage"] = completed / len(planned)
+    row["slot_profile"] = tuple(slot_profile)
+    row["reach"] = max((n for n, _ in points), default=None)
+    row["correctness_work"] = correctness_work
+    row["curve_work"] = sum(value for _, value in points)
+    alpha, beta = _fit(points)
+    row["alpha"], row["beta"] = alpha, beta
+
+    if not points:
+        row["reason"] = "accepted but completed no performance slot"
+        return row
+
+    row["total_work"] = row["correctness_work"] + row["curve_work"]
+    row["scoreable"] = True
+    return row
+
+
+def _rank_key(row):
+    if not row["scoreable"]:
+        return (1, 0, 0, (), math.inf, row["sub"])
+    # Higher-index slots are nominally harder. Comparing the complete success bitmap before
+    # work also guarantees that total_work is only compared over the same set of n values.
+    harder_slots_first = tuple(-bit for bit in reversed(row["slot_profile"]))
+    return (0, -row["completed_slots"], -row["coverage"],
+            harder_slots_first, row["total_work"], row["sub"])
+
+
+def _rows_for(problem, verdicts, metric):
+    """Return one strictly single-metric ranking group."""
+    del problem  # kept in the API because callers naturally score per problem
+    rows = [_score_row(v, metric) for v in verdicts if v.get("metric") == metric]
+    rows.sort(key=_rank_key)
+    return rows
+
+
+def _groups(verdicts):
+    """Accepted verdicts grouped without crossing metric or evaluation cohorts."""
+    groups = {}
+    for verdict in verdicts:
+        metric = verdict.get("metric")
+        if verdict.get("status") != "accepted" or metric not in METRICS:
             continue
-        reach = max(n for n, _ in pts)
-        alpha, beta = _fit(pts)
-        top_I = dict(pts)[reach]
-        e = (top_I / Rfn(reach)) if Rfn else None
-        out.append({"sub": v["submission"], "reach": reach,
-                    "alpha": alpha, "beta": beta, "e": e})
-    # rank: further reach first, then lower α, then lower β
-    out.sort(key=lambda r: (-(r["reach"] if r["reach"] is not None else -1),
-                            r["alpha"] if r["alpha"] is not None else 9e9,
-                            r["beta"] if r["beta"] is not None else 9e9))
-    return out
+        cohort = verdict.get("evaluation_cohort")
+        cohort_id = cohort.get("id") if isinstance(cohort, dict) else "<missing>"
+        groups.setdefault((verdict["problem"], metric, cohort_id), []).append(verdict)
+    return groups
+
+
+def _format_work(value, metric):
+    if value is None:
+        return "—"
+    if metric == "perf_instructions":
+        return f"{value:.0f}"
+    return f"{value:.6g}"
 
 
 def main():
-    verdicts = [r for r in _load_verdicts() if r["status"] == "accepted"]
-    by_problem = {}
-    for r in verdicts:
-        by_problem.setdefault(r["problem"], []).append(r)
+    groups = _groups(_load_verdicts())
+    md = [
+        "# Lean Kernel Challenge — canonical scoring",
+        "",
+        "Official order: completed slots, then coverage, then harder-slot success profile, "
+        "then lower total measured kernel work (one correctness "
+        "replay median plus the completed-slot medians). "
+        "α and β are diagnostics only. Instruction, wall-time, and evaluation cohorts are "
+        "never mixed. "
+        "See `rules/evaluation.md`.",
+        "",
+    ]
 
-    md = ["# Lean Kernel Challenge — scoring (function paradigm)", "",
-          "Primary: slope **α** (empirical complexity exponent, lower is better). "
-          "Tiebreak: **β** (log-constant / encoding). **e = I/R** is efficiency vs the naive "
-          "spec's reference work where it has a closed form. See `rules/evaluation.md`.", ""]
-    for problem in sorted(by_problem):
-        md.append(f"## {problem}")
+    for problem, metric, cohort_id in sorted(groups):
+        label = METRICS[metric]["label"]
+        first = groups[(problem, metric, cohort_id)][0]
+        cohort = first.get("evaluation_cohort")
+        round_id = cohort.get("round") if isinstance(cohort, dict) else "missing"
+        md.append(f"## {problem} — {label} — cohort `{cohort_id}`")
         md.append("")
-        md.append("| rank | submission | reach (n) | α (slope) | β (intercept) | e = I/R @ reach |")
-        md.append("|---|---|---|---|---|---|")
-        for i, r in enumerate(_rows_for(problem, by_problem[problem]), 1):
-            a = f"{r['alpha']:.3f}" if r["alpha"] is not None else "—"
-            b = f"{r['beta']:.2f}" if r["beta"] is not None else "—"
-            e = f"{r['e']:.3e}" if r["e"] is not None else "—"
-            reach = r["reach"] if r["reach"] is not None else "unscored"
-            md.append(f"| {i} | {r['sub']} | {reach} | {a} | {b} | {e} |")
+        md.append(f"Round: `{round_id}`")
+        md.append("")
+        # Keep the shared hidden schedule out of the publishable table. Raw verdicts are
+        # operator-private until the cohort closes (rules/evaluation.md).
+        md.append("| rank | submission | coverage | correctness work | "
+                  "curve work | total work | α (report only) | β (report only) | status |")
+        md.append("|---|---|---|---|---|---|---|---|---|")
+        scored_rank = 0
+        for row in _rows_for(problem, groups[(problem, metric, cohort_id)], metric):
+            if row["scoreable"]:
+                scored_rank += 1
+                rank = str(scored_rank)
+                status = "scored"
+            else:
+                rank = "—"
+                status = row["reason"] or "unscored"
+            alpha = f"{row['alpha']:.3f}" if row["alpha"] is not None else "—"
+            beta = f"{row['beta']:.2f}" if row["beta"] is not None else "—"
+            coverage = f"{row['completed_slots']}/{row['planned_slots']}"
+            md.append(
+                f"| {rank} | {row['sub']} | {coverage} | "
+                f"{_format_work(row['correctness_work'], metric)} | "
+                f"{_format_work(row['curve_work'], metric)} | "
+                f"{_format_work(row['total_work'], metric)} | {alpha} | {beta} | {status} |"
+            )
         md.append("")
 
     os.makedirs(RESULTS, exist_ok=True)
     out = os.path.join(RESULTS, "scoring.md")
-    open(out, "w").write("\n".join(md))
+    with open(out, "w") as f:
+        f.write("\n".join(md))
     print(f"wrote {out}")
 
 

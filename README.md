@@ -45,15 +45,15 @@ Each problem gives you a **trusted spec** — a deliberately naive but correct d
 2. a **proof** `impl_correct : ∀ n, impl n = spec n` — that it agrees with the spec on
    *every* input.
 
-What is timed is **not how fast your code runs**. It is **how many instructions the
-official Lean kernel spends reducing `impl n`** at inputs the judge chooses — because to
-check the computation, the kernel is forced to carry it out. Lower is better.
+What is timed is **not how fast your compiled code runs**. It is how much work the official
+Lean kernel spends replaying the verified correctness export and reducing `impl n` at the
+judge's sampling slots. Lower is better after slot coverage is compared.
 
-Because correctness is proved for all `n`, the judge picks the inputs — possibly hidden,
-at several sizes. Hardcoding or table lookup is therefore pointless: only a genuinely
-good general algorithm scales. The simplest submission is `impl := spec` with
-`impl_correct := fun _ => rfl` — correct but slow, since the kernel then reduces the naive
-spec. Beating that baseline is the whole game.
+Correctness for all `n` lets the judge rotate hidden inputs, but it does not make literal
+tables logically impossible: a contestant can derive constants through another verified
+algorithm. The scoring contract therefore charges the correctness replay as well as each
+successful input replay. The simplest submission is `impl := spec` with
+`impl_correct := fun _ => rfl` — correct but slow because the kernel reduces the naïve spec.
 
 ## What you submit
 
@@ -82,13 +82,13 @@ A submission has two parts — a function `impl` and a proof `impl_correct` — 
 follow that shape (full text in [`rules/overview.md`](rules/overview.md)):
 
 - **R1** Edit only `Submission.lean` and files under `Submission/`.
-- **R2** `impl` is a total, structurally-recursive function in core Lean only (no
-  `partial`/`unsafe`/`@[extern]`/`@[implemented_by]`, no Mathlib), so the kernel can
-  reduce it on any input.
+- **R2** `impl` is a total core-Lean function that the kernel can reduce on every input
+  (structural recursion is recommended; well-founded recursion is also permitted; no Mathlib).
 - **R3** `impl_correct` proves `∀ n, impl n = spec n` — correctness for *all* inputs.
 - **R4** The proof may depend only on the standard axioms `propext`, `Quot.sound`,
   `Classical.choice`; `sorry` and `native_decide` are rejected.
-- **R5** Only kernel checking is scored; how you find `impl` and its proof is unconstrained.
+- **R5** Kernel replay is scored: one correctness-export median plus the successful
+  per-input medians; how you find `impl` and its proof is unconstrained.
 
 ## Problems (Stage 1)
 
@@ -114,23 +114,39 @@ baseline (`impl := spec`) and fast doubling with a full `∀ n` proof.
 ```
 Submission.lean
   → validate (slugs, symlinks, size caps)
-  → correctness : build the locked Solution (references impl_correct : ∀ n, impl n = spec n)
+  → correctness : build the locked Solution, then time the verified correctness export
   → performance : for each judge-chosen input n, time the kernel reducing `impl n`
-  → scaling data + verdict
+  → correctness timing + complete slot record + verdict
 ```
 
-Correctness is proved once for all n, so the performance phase evaluates `impl` at inputs
-of the judge's choosing — possibly hidden, and at several sizes to reveal a scaling curve.
+For official evaluation, `PERF_SEED` is a secret rotation token. The judge hashes it with
+the problem id and slot index, so every submission in one public evaluation cohort receives
+the same hidden schedule. Operators rotate the token and cohort id for a new round or
+deliberate rescore; an unset seed is deterministic local development only. The production
+wrapper injects the seed once over stdin, never into the submission's elaboration environment.
+Raw verdicts stay private until that evaluation cohort closes; later submissions are evaluated
+under a newly rotated cohort.
 
 ## Scoring
 
-The score of an accepted submission is the **kernel instruction count** to reduce `impl n`
-on the Linux evaluation host (`perf -e instructions`, median of N reps). The fixed host and
-pinned toolchain make it reproducible, and instruction counts avoid the wall-clock noise of
-shared machines (the same methodology the Lean community uses in the Arena and Mathlib
-Speedcenter) — though they are not literally hardware-independent. Submissions are **ranked
-by scaling reach first** (the largest judge input completed within the timeout), then by
-instruction count at that input; slow-but-correct submissions are accepted but unscored.
+Within each problem, submissions are ranked by:
+
+1. more completed sampling slots;
+2. then higher `completed / planned` coverage if schedule sizes differ;
+3. then success at harder (higher-index) slots;
+4. then, for an identical success profile, lower total measured kernel work: the
+   correctness-replay median plus the sum of
+   successful slot medians.
+
+The official metric is **kernel instructions** on the Linux evaluation host
+(`perf -e instructions`, median of N reps). Wall time is a separate local-development
+leaderboard and is never compared with instruction counts. Fitted α and β values and the
+log-log curves are report-only diagnostics; they never affect rank, so padding a cheap end
+of the curve can only add work. Legacy verdicts without a same-metric
+`correctness_timing` record are accepted evidence but unscored by the current contract.
+Verdicts are also separated by evaluation cohort, which commits to the exact schedule,
+toolchain, timing policy, and executor. Run `python3 scripts/score.py` to generate the
+canonical tables.
 
 Each problem has its own leaderboard. Your overall standing aggregates your best problems
 with a relative-placement component; the exact formula is published with the scoring
@@ -142,12 +158,39 @@ appendix and may be finalized mid-competition once the field is known.
 scripts/setup.sh                                  # build the pinned tools (comparator, lean4export, timer-kernel)
 python3 scripts/run_harness.py                    # green gate: judge every example, check verdicts
 python3 judge/judge.py run --problem fib --submission examples/submissions/fib/doubling
-python3 judge/judge.py leaderboard
+python3 scripts/score.py                          # canonical metric-separated scoring tables
 ```
 
 The local judge reproduces the evaluation pipeline, so you can check a submission before
 sending it. (Note: the local sandbox is a pass-through shim — never run untrusted
-submissions on your own machine; real sandboxing lives in the Docker image.)
+submissions on your own machine; real sandboxing is enforced by the wrapper-launched
+Docker container.)
+
+### Isolated evaluation of untrusted submissions
+
+Build the evaluation image once, then run every untrusted submission through the
+host-side wrapper:
+
+```bash
+docker build -t lean-kernel-judge .
+scripts/run_isolated.sh \
+  --problem fib \
+  --submission "$PWD/examples/submissions/fib/doubling" \
+  --results "$PWD/results" \
+  --perf-seed 'official-secret-seed' \
+  --cohort stage1-round1 \
+  --perfmon
+```
+
+`scripts/run_isolated.sh` is the supported production entry point. It always runs one
+submission per container with networking disabled, bounded memory/CPU/process counts,
+`no-new-privileges`, and the non-root `judge` user. The submission is mounted read-only
+and verdicts are written through a persistent results mount. The seed is consumed from a
+one-shot stdin pipe before any untrusted Lean process starts; `--cohort` is the public round
+identifier used to prevent cross-round scores from being mixed. `--perfmon` is optional on
+hosts whose `perf_event_paranoid` setting already permits instruction counting. On a native
+Linux Docker host, the results directory must be writable by the image's judge UID 10001;
+the wrapper checks this before it starts elaborating the submission.
 
 ## Repository layout
 
@@ -159,9 +202,9 @@ lean-kernel-challenge/
 ├─ judge/           judge.py (the judge) · timer-kernel/ (kernel replay + axiom audit)
 ├─ pipeline/        config.json (budgets, sandbox mode, toolchain pins)
 ├─ tests/           harness_manifest.json (expected verdicts — the green gate)
-├─ scripts/         setup.sh · run_harness.py · perf_eval.py · score.py · shims/
+├─ scripts/         setup.sh · run_harness.py · run_isolated.sh · perf_eval.py · score.py · shims/
 ├─ Dockerfile       Linux evaluation image (pinned toolchain, perf, landrun sandbox)
-└─ results/         verdict JSONs + leaderboard.md (generated)
+└─ results/         verdict JSONs + scoring.md / leaderboard.md (generated)
 ```
 
 ## Toolchain
@@ -175,11 +218,14 @@ these pins; the third-party checkouts are not committed.
 **Prototype / pre-launch.** All 7 problems are functionalized and compile; the correctness
 gate (comparator + axiom audit) and the green-gate harness are in place (7 baselines +
 3 proven optimized submissions — `fib/doubling`, `ca-rule110/bitpacked`, `primecount/sqrt` —
-accepted; three fib cheat classes — `sorry`, illegal axiom, Mathlib — rejected). The main judge (`judge/judge.py`) now runs the new-paradigm performance phase
-end-to-end — timing the kernel reducing `impl n` at judge-chosen inputs into a scaling
-curve (local perf or the remote KTP/1 executor); `scripts/perf_eval.py` is a lighter
-standalone reproduction. Inputs are config-driven and hidden-jitterable (`PERF_SEED`), and
-`scripts/score.py` reports the log–log slope + efficiency. Not yet finalized: a PMU-hardware
+accepted; three fib cheat classes — `sorry`, illegal axiom, Mathlib — rejected). The main
+judge (`judge/judge.py`) times both the comparator-verified correctness export and every
+planned input slot (local replay or the remote KTP/1 executor). The performance phase imports
+the byte-pinned `.olean` graph produced by comparator instead of re-elaborating contestant
+source. `scripts/perf_eval.py` is a lighter standalone reproduction. Inputs are config-driven
+and shared within a cohort through a rotating official `PERF_SEED`; the seed is never exposed
+to elaboration. `scripts/score.py` applies the coverage-then-total-work contract within each
+cohort, with α/β as report-only diagnostics. Not yet finalized: a PMU-hardware
 run; the cross-problem scoring aggregation (best-N + relative placement); the four remaining
 optimized example submissions; prizes, timeline, and the submission platform.
 Rule text may still change before launch (see `rules/overview.md`). Track 1 (certificate

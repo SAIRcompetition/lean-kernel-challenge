@@ -11,15 +11,28 @@
     "count": 10,
     "spacing": "geometric",
     "jitter": 0.15,
-    "note": "Per-problem overrides live in problems/<id>/config.json 'perf' {min,max,count?,spacing?,jitter?}. The judge samples 'count' geometrically-spaced inputs in [min,max], clamped to distinct integers. When PERF_SEED is set (the hidden official inputs), each point is jittered by up to ±'jitter'; with no seed the points are deterministic (local dev). Contestants know the policy (scale), not the exact hidden n."
+    "note": "Per-problem overrides live in problems/<id>/config.json 'perf' {min,max,count?,spacing?,jitter?}. The judge samples distinct geometric slots in [min,max]. Official PERF_SEED is a mandatory secret rotation token injected once over stdin; the judge hashes it with problem id and slot index, giving every submission in one cohort the same hidden schedule. Raw verdicts remain private until that batch closes. Operators rotate both token and public cohort id for a new round/rescore. No seed is deterministic local development only."
   },
   "timing": {
     "metric": "wall_time",
-    "note": "Local dev uses wall_time. The Linux evaluation host sets metric to 'perf_instructions' (perf stat -e instructions); the median instruction count at each input is the score, reproducible on the fixed host and toolchain (not literally hardware-independent). Submissions are ranked by scaling reach first (largest completed input), then by instruction count at that input."
+    "note": "Local dev uses wall_time. The Linux evaluation host uses perf_instructions. Metrics are ranked in separate groups. Current verdicts time the correctness export and every planned input slot; legacy verdicts without correctness_timing are unscored."
+  },
+  "scoring": {
+    "contract": "completed_slots_desc, coverage_desc, harder_slot_profile_desc, total_work_asc",
+    "total_work": "correctness_replay_median + sum(successful_slot_medians)",
+    "metric_groups": [
+      "perf_instructions",
+      "wall_time"
+    ],
+    "report_only": [
+      "alpha",
+      "beta"
+    ],
+    "note": "All terms in total_work must use the verdict's one declared metric. Failed slots contribute no median but reduce completed_slots and coverage. Alpha and beta never affect rank; adding work anywhere cannot improve placement. Rankings never cross evaluation_cohort ids."
   },
   "sandbox": {
     "mode": "none",
-    "note": "'none' = local dev via the landrun pass-through shim (NO sandboxing). 'container' asserts a real landrun is present and is set by the Docker image. Resource/isolation limits (memory, cpus, pids, network, non-root, kill-all-on-exit) are ENFORCED BY THE CONTAINER RUNTIME, not the judge process — see the docker run flags in the Dockerfile header.",
+    "note": "'none' = local dev via the landrun pass-through shim (NO sandboxing). 'container' asserts a real landrun is present and is set by the Docker image. Resource/isolation limits (memory, cpus, pids, network, non-root, kill-all-on-exit) are ENFORCED BY scripts/run_isolated.sh and the container runtime, not by the judge process.",
     "memory_mb": 4096,
     "cpus": 2
   },

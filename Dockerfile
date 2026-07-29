@@ -5,17 +5,11 @@
 # instruction counting, and landrun for sandboxing untrusted submissions.
 #
 # Build:  docker build -t lean-kernel-judge .
-# Judge one untrusted submission — the container IS the sandbox boundary. Run each job
-# with resource + isolation limits (the judge process does not enforce these itself):
-#   docker run --rm \
-#     --network none --memory 4g --cpus 2 --pids-limit 512 \
-#     --cap-add PERFMON --security-opt no-new-privileges \
-#     --user judge \
-#     -v "$PWD/examples:/work/examples:ro" lean-kernel-judge \
-#     python3 judge/judge.py run --problem fib --submission examples/submissions/fib/doubling
-# --network none stops exfiltration; --memory/--cpus/--pids-limit bound the job and let
-# the runtime kill EVERY process in it (a setsid escape cannot outlive the container);
-# --cap-add PERFMON exposes PMU counters for perf; run one job per container.
+# Judge one untrusted submission ONLY through scripts/run_isolated.sh.  The host-side
+# wrapper supplies the mandatory network/resource/user restrictions, mounts exactly one
+# submission read-only, mounts results read/write, and injects the official PERF_SEED once
+# over stdin (never into the untrusted elaborator environment) with a public cohort id.
+# `--perfmon` on that wrapper adds CAP_PERFMON on hosts that require it for PMU counting.
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -55,17 +49,15 @@ ENV COMPARATOR_BIN=/work/tools/comparator/.lake/build/bin/comparator \
 # Green-gate on build so a broken image fails fast (needs PMU access at build time).
 # RUN TIMING_METRIC=wall_time python3 scripts/run_harness.py --quick
 
-# Non-root user for running untrusted submissions. NOTE: `chown -R judge:judge /work` gives
-# the judge UID ownership of the whole tree, so a same-UID submission descendant COULD in
-# principle modify workspace/tool/export files. Correctness does NOT rely on that not
-# happening: the judge binds the timed impl to the comparator-verified one by digesting the
-# Submission bytes before/after comparator and before/after each perf build, and pins the exact
-# perf-export bytes across audit+timing (see judge.py). Recommended container hardening (not yet
-# applied here — untested in this repo's CI): keep tools + problem templates root-owned read-only
-# and make only results/ judge-writable, so the FS is immutable to the submission as well.
-RUN useradd -m -u 10001 judge && chown -R judge:judge /work
+# Non-root user for running untrusted submissions.  Verification tools, problem
+# templates, and the repository remain root-owned; only the generated-results tree is
+# writable by the judge UID.  The official wrapper shadows this directory with its
+# persistent read/write results bind mount.
+RUN useradd -m -u 10001 judge \
+    && mkdir -p /work/lean-kernel-challenge/results \
+    && chown -R judge:judge /work/lean-kernel-challenge/results
 USER judge
 
-# CMD (not ENTRYPOINT) so `docker run IMAGE python3 judge/judge.py ...` works as shown
-# in the header, while a bare `docker run IMAGE` still drops into a shell.
+# The supported host entry point is scripts/run_isolated.sh.  CMD remains a shell
+# solely for image diagnostics; it is not an evaluation command.
 CMD ["/bin/bash"]

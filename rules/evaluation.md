@@ -5,94 +5,100 @@ How submissions are judged and scored. For the task, rules, and problems see `ov
 ## Judging pipeline
 
 A submission provides `impl : Nat → Output` and `impl_correct : ∀ n, impl n = spec n`.
-Judging has two independent parts:
+Judging verifies both artifacts and measures both parts of the accepted computation:
 
 ```
 Submission.lean
   → validate (slugs, symlinks, size caps)
-  → correctness gate : build the locked Solution, which references impl_correct — this checks,
-                       once, that impl is a total function equal to the trusted spec on ALL n
-                       (axioms restricted to R4; no Mathlib; no sorry/native_decide)
+  → correctness gate : build the locked Solution, which references impl_correct — this checks
+                       that impl is a total function equal to the trusted spec on ALL n
+                       (axioms restricted to R4; no Mathlib; no sorry/native_decide), then replay
+                       and time that comparator-verified correctness export
   → performance      : for each judge-chosen input n, export `theorem : impl n = v := by
                        decide +kernel` and time the official kernel replaying THAT — checking it
                        forces the kernel to fully reduce `impl n`. v is obtained by a kernel-side
                        reduction of `impl n` (Meta `whnf`), never compiled `#eval`, so a submission
                        fast in the kernel is always evaluable even when its codegen is slow; a
                        wrong v merely fails the build and is caught, never mis-scored
-  → scaling data + verdict
+  → correctness timing + scaling data + verdict
 ```
 
-The correctness proof is verified once and covers every input, so the performance phase can use
-any n — including inputs never shown to contestants, and several sizes to reveal scaling. The
-judge (`judge/judge.py`) runs this full pipeline; timing the reduction of `impl n` — not the ∀n
-proof — is what makes a better *algorithm*, rather than a shorter proof, win.
+The correctness proof covers every input, so the performance phase can use any `n`, including
+inputs never shown to contestants. The judge (`judge/judge.py`) runs this full pipeline and imports
+the exact byte-pinned `.olean` graph that produced the comparator-verified export; it does not
+re-elaborate contestant source for timing. Both the median cost of replaying the correctness
+export and the per-input `impl n` medians contribute to the score.
 
 ## Verdicts
 
-- **accepted** — correctness gate passed; carries per-input timings.
+- **accepted** — correctness gate passed; carries correctness and per-input timings.
 - **rejected** — a rule violation or a failed proof (the reason says which).
 - **error** — infrastructure failure (exit code 2); never a scored outcome.
 
 ## Scoring
 
-Because a submission is a *function*, we score its whole **cost curve**, not a single point. The
-base measurement is the **kernel instruction count** `I(n)` to reduce `impl n` (Linux
-`perf -e instructions`, median of N reps; the fixed host + pinned toolchain make it reproducible —
-instruction counts avoid the wall-clock noise of shared machines, though they are not literally
-hardware-independent). Wall-clock is used only for local development.
+The official measurement unit is the **kernel instruction count** (Linux
+`perf -e instructions`, median of N repetitions). The fixed host and pinned toolchain make it
+reproducible, although it is not literally hardware-independent. Wall-clock medians are a local
+development metric only. Instruction-count and wall-time verdicts are always placed in separate
+leaderboard groups; values in different units are never compared.
 
-**Sampling.** The judge times `impl n` at a monotone-increasing set of inputs `n₁ < … < n_K`
-and records `(nᵢ, I(nᵢ))` — the scaling curve. The inputs are a **configured policy, never
-hardcoded**: each problem's `config.json` declares `perf {min, max}` (with global
-`perf_defaults {count, spacing, jitter}` in `pipeline/config.json`), and the judge samples
-`count` **geometrically-spaced** points in `[min, max]` (even log-space coverage → a stable
-slope), clamped to distinct integers. For the official run, `PERF_SEED` is set and each point is
-**jittered by ±jitter** from a seed-derived hash, so the *exact* n is hidden even though the scale
-(the public policy) is known. Without a seed the points are deterministic (local dev).
+**Sampling schedule.** Each problem's `config.json` declares `perf {min, max}` and
+`pipeline/config.json` supplies the default slot count, geometric spacing, and jitter. The result
+is an ordered schedule of nominal difficulty slots. A verdict records every planned slot
+explicitly, including timeout/failure outcomes; later independent slots may still complete.
+Coverage therefore means the count of successful slots rather than the largest
+sampled integer.
 
-**Why a hardcoded answer table cannot win.** The jitter is only a secondary layer; the real
-protection is **R3 + reach-first ranking**. To hardcode `impl n = v` at some input, the `∀ n` proof
-(R3) must still establish `v = spec n` — which forces the kernel to reduce the *naive spec* at that
-`n`. Where the naive spec is infeasible to reduce (exactly the large end of `[min, max]`, chosen so
-a naive baseline truncates before `max`), that proof cannot be built, so a table cannot cover those
-inputs at all. It can only cover small inputs where the naive spec is cheap — and there a real
-algorithm is just as cheap, while it also *reaches* the large inputs the table cannot. Since ranking
-is reach-first, the general algorithm wins. Hardcoding is therefore self-defeating: proving an
-answer costs the very computation the competition is about.
+For an official run, the operator **must not reuse one public or permanent seed**. `PERF_SEED` is
+a secret rotation token, changed for a new official round or deliberate re-evaluation. For each
+slot, the judge hashes that token with the problem id and slot index. Every submission in the same
+public cohort therefore receives the same hidden schedule—raw kernel work is never compared at
+different randomly selected `n`. The production wrapper injects the secret once over stdin before
+untrusted elaboration and the judge removes it from every child environment. An unset seed is
+permitted only for deterministic local development and is not an official score.
 
-**① Primary signal — empirical scaling exponent.** Fit `log I` against `log n` (least squares
-over the completed points) to get a slope **α**. This is the empirical complexity exponent and is
-the headline signal: it is scale-free and answers the competition's actual question — *is this a
-genuinely better general algorithm?* Lower α wins (e.g. a log-time algorithm gives α ≈ 0 and a
-flat curve; linear gives α ≈ 1). At least 3–4 well-separated inputs are needed for a stable fit.
+Because a cohort shares one schedule, its raw verdicts and exact inputs are operator-private until
+that cohort is closed. Submissions are evaluated as a batch after the submission cutoff; later
+entries or deliberate re-evaluations use a new seed and cohort and rescore the comparison set.
+Publishing an active cohort's inputs would turn evaluation into an oracle for targeted tables.
 
-**② Secondary signal — efficiency vs the reference algorithm.** For problems whose naive-spec
-work `R(n)` has a clean closed form, we also report the normalized efficiency
-`e(n) = I(n) / R(n)` — dimensionless "kernel instructions per unit of reference work". Because the
-kernel cost reflects *encoding* as well as *algorithm* (term sharing, GMP `Nat` ops, representation),
-`e` rewards a kernel-friendly encoding on top of a better algorithm, and is comparable across
-problems. It is reported at the largest completed input (and as a trend). Reference work per problem:
+**Hardcoding and proof cost.** R3 guarantees extensional correctness; it does *not* imply that a
+literal answer must be proved by directly reducing the naïve spec. A submission may derive a
+literal through another verified algorithm and its correctness theorem. The scoring contract
+therefore does not rely on the old, false claim that answer tables are impossible. Instead:
 
-| problem | reference work `R(n)` (naive spec) | clean closed form? |
-|---|---|---|
-| `fib` | Θ(n) course-of-values steps (bignum-weighted) | yes |
-| `permanent` | Θ(n!·n) | yes |
-| `saw` | Θ(4ⁿ) walk-tree nodes | yes |
-| `ca-rule110` | Θ(n·w²), w = 32 | yes |
-| `primecount` | Θ(Σ_{p≤n} p) trial-division ops | approx |
-| `mertens` | polynomial (μ by trial division, ~Σ_{k≤n} k²) | approx |
-| `partition` | Θ(p(n)·n) | depends on p(n) |
+- exact sampled integers are hidden and rotate between evaluation cohorts;
+- the comparator-verified `∀ n` correctness export is replayed and charged once; and
+- every completed input replay is charged in the curve aggregate.
 
-For the "approx / depends" problems the exact count is itself answer-level to compute, so scoring
-there leans on α and relative placement rather than `e`.
+A table or special case remains legal if it is globally proved, but building its constants into
+the proof is not free. More importantly, increasing work at any proof or curve point cannot improve
+the aggregate, unlike a ranking based on a fitted slope.
 
-**③ Plot.** Every accepted submission gets a log–log curve of `I` vs `n`, overlaid across
-submissions per problem, so the scaling separation is visible at a glance.
+**Canonical ranking within one problem and one metric.**
 
-**Ranking within a problem.** Primarily by scaling reach (largest completed input, further is
-better — the inputs are monotone in difficulty, so this is the completed prefix), then by α, then
-by `e` (or raw `I`) at the largest common input. A correct submission too slow to complete even the
-smallest input is *accepted but unscored*.
+1. More completed schedule slots wins.
+2. If completed-slot counts tie but planned schedule sizes differ, higher coverage
+   `completed / planned` wins.
+3. If coverage ties, compare the complete success bitmap from the hardest slot downward.
+4. Only identical success profiles use lower total measured kernel work:
+
+   `W = median(correctness replay) + Σ median(completed input replay)`.
+
+The profile step ensures raw work is compared only over the same sampled `n`. The sum uses one
+consistent metric throughout the verdict. A legacy verdict without
+`correctness_timing`, an incomplete slot record, or a metric mismatch is accepted evidence of
+correctness but **unscored** under this contract; it is never silently mixed into the current
+ranking. Verdicts are also partitioned by a public evaluation-cohort id committing to the exact
+input schedule, timing repetitions/budget, toolchain, metric, and executor identity. A correct
+submission that completes no input slot is also accepted but unscored.
+
+**Report-only diagnostics.** The scorer fits `log cost ≈ α log n + β` over completed points and
+reports the fitted values alongside the curve data. Both α and β help explain behavior, but
+neither affects rank. In
+particular, deliberately padding low inputs may produce an attractive negative α, yet it can only
+increase `W` and cannot improve placement.
 
 **Cross-problem standing.** Aggregate each contestant's **relative placement** per problem
 ("red queen"), best-N problems — this avoids tying the overall score to any one reference-algorithm
