@@ -1,0 +1,76 @@
+{
+  "description": "Green-gate manifest (function paradigm).",
+  "cases": [
+    {
+      "problem": "fib",
+      "submission": "baseline",
+      "expect": "accepted"
+    },
+    {
+      "problem": "partition",
+      "submission": "baseline",
+      "expect": "accepted"
+    },
+    {
+      "problem": "mertens",
+      "submission": "baseline",
+      "expect": "accepted"
+    },
+    {
+      "problem": "primecount",
+      "submission": "baseline",
+      "expect": "accepted"
+    },
+    {
+      "problem": "saw",
+      "submission": "baseline",
+      "expect": "accepted"
+    },
+    {
+      "problem": "permanent",
+      "submission": "baseline",
+      "expect": "accepted"
+    },
+    {
+      "problem": "ca-rule110",
+      "submission": "baseline",
+      "expect": "accepted"
+    },
+    {
+      "problem": "fib",
+      "submission": "doubling",
+      "expect": "accepted",
+      "scored": true
+    },
+    {
+      "problem": "ca-rule110",
+      "submission": "bitpacked",
+      "expect": "accepted",
+      "scored": true
+    },
+    {
+      "problem": "primecount",
+      "submission": "sqrt",
+      "expect": "accepted",
+      "scored": true
+    },
+    {
+      "problem": "fib",
+      "submission": "cheat-mathlib",
+      "expect": "rejected",
+      "reason_contains": "comparator"
+    },
+    {
+      "problem": "fib",
+      "submission": "cheat-sorry",
+      "expect": "rejected",
+      "reason_contains": "axiom"
+    },
+    {
+      "problem": "fib",
+      "submission": "cheat-axiom",
+      "expect": "rejected",
+      "reason_contains": "axiom"
+    }
+  ]
+}

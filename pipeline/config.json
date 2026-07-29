@@ -1,0 +1,32 @@
+{
+  "judge": {
+    "comparator_timeout_seconds": 3600,
+    "audit_timeout_seconds": 300,
+    "timing_timeout_seconds": 1800,
+    "timing_reps": 3,
+    "max_submission_bytes": 8388608,
+    "max_submission_files": 256
+  },
+  "perf_defaults": {
+    "count": 10,
+    "spacing": "geometric",
+    "jitter": 0.15,
+    "note": "Per-problem overrides live in problems/<id>/config.json 'perf' {min,max,count?,spacing?,jitter?}. The judge samples 'count' geometrically-spaced inputs in [min,max], clamped to distinct integers. When PERF_SEED is set (the hidden official inputs), each point is jittered by up to ±'jitter'; with no seed the points are deterministic (local dev). Contestants know the policy (scale), not the exact hidden n."
+  },
+  "timing": {
+    "metric": "wall_time",
+    "note": "Local dev uses wall_time. The Linux evaluation host sets metric to 'perf_instructions' (perf stat -e instructions); the median instruction count at each input is the score, reproducible on the fixed host and toolchain (not literally hardware-independent). Submissions are ranked by scaling reach first (largest completed input), then by instruction count at that input."
+  },
+  "sandbox": {
+    "mode": "none",
+    "note": "'none' = local dev via the landrun pass-through shim (NO sandboxing). 'container' asserts a real landrun is present and is set by the Docker image. Resource/isolation limits (memory, cpus, pids, network, non-root, kill-all-on-exit) are ENFORCED BY THE CONTAINER RUNTIME, not the judge process — see the docker run flags in the Dockerfile header.",
+    "memory_mb": 4096,
+    "cpus": 2
+  },
+  "toolchain": {
+    "lean": "leanprover/lean4:v4.32.0-rc1",
+    "comparator_rev": "71b52ec29e06d4b7d882726553b1ceb99a2499e0",
+    "lean4export_rev": "3de59f10bc4b4a0f2de698597aeb1246caa0df0a",
+    "lean4checker_rev": "b7398199245524275543dec6113229c9bb4902e5"
+  }
+}
