@@ -15,11 +15,16 @@
   },
   "timing": {
     "metric": "wall_time",
-    "note": "Local dev uses wall_time. The Linux evaluation host uses perf_instructions. Metrics are ranked in separate groups. Current verdicts time the correctness export and every planned input slot; legacy verdicts without correctness_timing are unscored."
+    "remote_protocol": "KTP/2",
+    "measurement_contract": "kernel-replay-v2",
+    "correctness_boundary": "full-closure-replay-v1",
+    "performance_boundary": "target-declaration-replay-v1",
+    "target_proof_encoding": "direct-of-decide-eq-true-rfl-v1",
+    "note": "Local dev uses wall_time. The Linux evaluation host uses perf_instructions. Metrics are ranked separately. Correctness charges one full verified-closure replay; each successful slot charges only its generated target-declaration replay. Process startup, export parsing, and per-input dependency preload are excluded; exact output-literal checking remains included. Other protocol or boundary versions are legacy/unscored."
   },
   "scoring": {
     "contract": "completed_slots_desc, coverage_desc, harder_slot_profile_desc, total_work_asc",
-    "total_work": "correctness_replay_median + sum(successful_slot_medians)",
+    "total_work": "full_correctness_closure_replay_median + sum(successful_target_declaration_replay_medians)",
     "metric_groups": [
       "perf_instructions",
       "wall_time"
@@ -28,7 +33,7 @@
       "alpha",
       "beta"
     ],
-    "note": "All terms in total_work must use the verdict's one declared metric. Failed slots contribute no median but reduce completed_slots and coverage. Alpha and beta never affect rank; adding work anywhere cannot improve placement. Rankings never cross evaluation_cohort ids."
+    "note": "All terms in total_work must use the verdict's one metric, remote protocol, measurement contract, boundary versions, and target-proof encoding. Failed slots contribute no median but reduce completed_slots and coverage. Alpha and beta never affect rank; adding work anywhere cannot improve placement. Rankings never cross evaluation_cohort ids or measurement versions."
   },
   "sandbox": {
     "mode": "none",

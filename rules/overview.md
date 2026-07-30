@@ -37,11 +37,13 @@ Each problem provides a **trusted spec** — a deliberately naive but correct de
 2. a **proof** `impl_correct : ∀ n, impl n = spec n` — that it agrees with the spec on *every*
    input.
 
-The judge then evaluates `impl` on a rotating hidden schedule and measures the kernel work needed
-to replay the verified correctness export and reduce `impl n` at each sampled input. Correctness
-for all `n` lets the judge choose any input; it does not make a proved table or special case
-logically impossible. Such implementations are legal, but they must survive the hidden schedule
-and all of their replay work is charged. See `evaluation.md` for the canonical ranking.
+The judge then evaluates `impl` on a rotating hidden schedule. It charges one complete replay of
+the verified correctness closure, then at each sampled input charges only replay of the generated
+target declaration that reduces `impl n`. Process startup, export parsing, and per-input dependency
+preloading are outside the counter. Correctness for all `n` lets the judge choose any input; it
+does not make a proved table or special case logically impossible. Such implementations are legal,
+but they must survive the hidden schedule and their scored replay work is charged. See
+`evaluation.md` for the canonical measurement contract and ranking.
 
 ## What you submit
 
@@ -83,8 +85,10 @@ may rely on, and what is scored.
 - **R4 — Standard axioms only.** The proof may depend only on `propext`, `Quot.sound`, and
   `Classical.choice`; `sorry` and `native_decide` are rejected.
 - **R5 — Kernel replay is scored.** How you find `impl` and its proof is unconstrained. The score
-  charges one replay of the comparator-verified correctness export plus the successful per-input
-  replays that force the kernel to reduce `impl n`.
+  charges one full replay of the comparator-verified correctness closure plus the successful
+  per-input target-declaration replays that force the kernel to reduce `impl n`. Parsing,
+  dependency preloading, and outer-process startup are not scored; checking the exact output
+  literal is.
 
 ## Problems (Stage 1)
 
@@ -109,7 +113,8 @@ times out in the kernel while fast doubling is checked in well under a second.
 
 **Prototype / pre-launch.** All 7 problems are functionalized and compile; the judge runs the full
 pipeline end-to-end — correctness gate plus a new-paradigm performance phase that times the kernel
-reducing `impl n` at judge-chosen inputs into a scaling curve (local perf or the remote KTP/1
-executor). Not yet finalized: perf instruction-counting on PMU hardware; the scoring aggregation
+reducing `impl n` at judge-chosen inputs into a scaling curve (local timing or the remote KTP/2
+executor, measurement contract `kernel-replay-v2`). Not yet finalized: perf instruction-counting
+on PMU hardware; the scoring aggregation
 (best-N + relative placement); the submission platform; prizes and end date. Rule text may still
 change before launch.

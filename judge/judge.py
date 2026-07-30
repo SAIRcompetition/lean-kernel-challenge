@@ -13,11 +13,11 @@ Pipeline per submission (each contestant job runs in a unique temp workspace):
   4. Scored replay: time the comparator-verified correctness export, then for each
      judge-chosen input n reduce `impl n` to a literal v via a kernel-side oracle, confirm the
      Submission is byte-unchanged from step 2, build+export a uniquely named
-     `impl n = v := by decide +kernel`, re-audit THAT export's axioms, and time the official
-     kernel replaying it (which forces reduction of `impl n`), N reps. A too-slow input occupies
+     `impl n = v` theorem whose direct proof forces kernel reduction, re-audit THAT export,
+     and time the official kernel replaying it, N reps. A too-slow input occupies
      its explicit slot and later slots are still attempted; a deterministic oracle/build/kernel
      fault errors with no score. metric=wall_time (dev) or perf_instructions (Linux host).
-     With TIMING_EXECUTOR_URLS set the replays run on a remote KTP/1 executor with real PMU
+     With TIMING_EXECUTOR_URLS set the replays run on a remote KTP/2 executor with real PMU
      hardware; each per-input export is uploaded with its SHA-256. An unreachable executor is
      NOT a verdict: the run exits 3 with a "retry" verdict so the caller can requeue losslessly.
 
@@ -46,6 +46,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -66,7 +67,7 @@ MAX_SUBMISSION_FILES = _J["max_submission_files"]
 TIMING_METRIC = os.environ.get("TIMING_METRIC", _CFG.get("timing", {}).get("metric", "wall_time"))
 SANDBOX_MODE = os.environ.get("SANDBOX_MODE", _CFG.get("sandbox", {}).get("mode", "none"))
 OFFICIAL_EVAL = os.environ.get("OFFICIAL_EVAL", "") == "1"
-# Remote timing executor (KTP/1, lean-timer-executor). Comma-separated URLs in
+# Remote timing executor (KTP/2, lean-timer-executor). Comma-separated URLs in
 # active-standby order; used only when metric=perf_instructions. The secret is
 # the executor's bearer token and never appears in verdicts or logs.
 TIMING_EXECUTOR_URLS = [u.strip().rstrip("/") for u in
@@ -89,6 +90,19 @@ REPRO = ROOT.parent / "repro"
 COMPARATOR = Path(os.environ.get("COMPARATOR_BIN", REPRO / "comparator/.lake/build/bin/comparator"))
 LEAN4EXPORT_BIN = Path(os.environ.get("LEAN4EXPORT_BIN", REPRO / "lean4export/.lake/build/bin"))
 TIMER = Path(os.environ.get("TIMER_BIN", ROOT / "judge/timer-kernel/.lake/build/bin/kernel"))
+# Versioned measurement protocol shared by this judge, timer-kernel, and KTP/2 executors.
+# Changing any boundary semantics must change at least one of these strings so the cohort hash
+# prevents old and new samples from being ranked together.
+MEASUREMENT_CONTRACT = "kernel-replay-v2"
+FULL_REPLAY_BOUNDARY = "full-closure-replay-v1"
+TARGET_REPLAY_BOUNDARY = "target-declaration-replay-v1"
+TARGET_PROOF_ENCODING = "direct-of-decide-eq-true-rfl-v1"
+CHECKER_ID = f"official-kernel-replay v4.32.0-rc1 ({MEASUREMENT_CONTRACT})"
+_TIMER_TIMING_PREFIX = "KERNEL_TIMING="
+# There is no READY/ACK channel in v2. The process watchdog therefore bounds untimed
+# parse/dependency preparation plus the measured replay. Record that limitation explicitly
+# whenever it fires; a normal nonzero exit remains a deterministic failure, never a timeout.
+PROCESS_TIMEOUT_SCOPE = "whole-timer-process-including-untimed-preparation"
 # Bundled pass-through shims for `landrun`/`timeout` so the package is self-contained on
 # dev machines. Used ONLY when a real `landrun` isn't on PATH (Docker/Linux ships the
 # real Landlock sandbox, which must win). See tool_env().
@@ -330,7 +344,7 @@ def _kill_group(pgid):
 
 def _raise_stack():
     """Raise the child's stack rlimit before exec so deep kernel/Meta reduction (reducing
-    `impl n` for large n, or elaborating `decide +kernel`) doesn't overflow the default
+    `impl n` for large n, or elaborating the generated kernel proof) doesn't overflow the default
     ~8 MB stack. macOS refuses `soft == hard` for RLIMIT_STACK, so try a descending set of
     targets and keep the largest that sticks (Linux's infinite hard limit takes 512 MB on
     the first try; a raise that doesn't stick just leaves the default in place)."""
@@ -491,16 +505,108 @@ def assemble(job_dir: Path, problem, submission_dir):
     return work
 
 
-def _time_replay(export_file, work, env, timeout):
-    """One timed kernel replay of the export. Returns (rc, out, sample_dict)."""
+def _measurement_boundary(target):
+    if target is None:
+        return FULL_REPLAY_BOUNDARY
+    if not isinstance(target, str) or not target or any(ch.isspace() for ch in target):
+        raise InfraError(f"invalid timer target {target!r}")
+    return TARGET_REPLAY_BOUNDARY
+
+
+def _measurement_contract_record():
+    """Machine-readable contract committed into verdicts and evaluation cohorts."""
+    return {
+        "id": MEASUREMENT_CONTRACT,
+        "correctness_boundary": FULL_REPLAY_BOUNDARY,
+        "performance_boundary": TARGET_REPLAY_BOUNDARY,
+        "target_proof_encoding": TARGET_PROOF_ENCODING,
+        "wall_clock_source": "timer-internal-monotonic-ns",
+        "perf_counter_control": "perf-delay-minus-one+timer-prctl",
+        "local_protocol": "local-v2",
+        "remote_protocol": "KTP/2",
+        "timeout_scope": PROCESS_TIMEOUT_SCOPE,
+    }
+
+
+def _timeout_measurement(target, source):
+    return {
+        "measurement_contract": MEASUREMENT_CONTRACT,
+        "measurement_boundary": _measurement_boundary(target),
+        "measurement_target": target,
+        "timeout_scope": PROCESS_TIMEOUT_SCOPE,
+        "timeout_source": source,
+    }
+
+
+def _parse_timer_measurement(out, target):
+    """Parse the one fail-closed timer-kernel v2 measurement record."""
+    records = [
+        line[len(_TIMER_TIMING_PREFIX):]
+        for line in out.splitlines()
+        if line.startswith(_TIMER_TIMING_PREFIX)
+    ]
+    if len(records) != 1:
+        raise InfraError(
+            f"timer emitted {len(records)} measurement records (expected exactly one)")
+    try:
+        data = json.loads(records[0])
+    except json.JSONDecodeError as e:
+        raise InfraError(f"timer emitted malformed measurement JSON: {e.msg}")
+    expected_keys = {
+        "measurement_contract", "boundary", "target", "wall_ns", "phase",
+    }
+    if not isinstance(data, dict) or set(data) != expected_keys:
+        raise InfraError("timer measurement record has an incompatible schema")
+    if data["measurement_contract"] != MEASUREMENT_CONTRACT:
+        raise InfraError(
+            f"timer measurement contract mismatch ({data['measurement_contract']!r})")
+    expected_boundary = _measurement_boundary(target)
+    if data["boundary"] != expected_boundary:
+        raise InfraError(
+            f"timer measurement boundary mismatch ({data['boundary']!r})")
+    if data["target"] != target:
+        raise InfraError(f"timer measurement target mismatch ({data['target']!r})")
+    if data["phase"] != "complete":
+        raise InfraError(f"timer measurement did not complete ({data['phase']!r})")
+    if type(data["wall_ns"]) is not int or data["wall_ns"] <= 0:
+        raise InfraError("timer measurement wall_ns must be a positive integer")
+    return data
+
+
+def _timer_command(export_file, target):
+    cmd = [str(TIMER)]
+    if target is not None:
+        _measurement_boundary(target)  # validate before it reaches argv
+        cmd += ["--target", target]
+    return cmd + [str(export_file)]
+
+
+def _time_replay(export_file, work, env, timeout, target=None):
+    """One full-closure or explicit-target replay.
+
+    The trusted timer emits the replay-only monotonic wall duration. On Linux, `perf -D -1`
+    starts counters disabled and timer-kernel enables them only around the selected replay.
+    The outer watchdog still includes untimed preparation; timeout metadata says so explicitly.
+    Returns (rc, out, sample_dict).
+    """
+    timer_cmd = _timer_command(export_file, target)
     if TIMING_METRIC == "perf_instructions":
         perf = shutil.which("perf", path=env.get("PATH", ""))
         if not perf:
             raise InfraError("metric=perf_instructions but `perf` not found — requires the Linux eval host")
         perf_out = export_file.parent / "perf.txt"
-        cmd = [perf, "stat", "-o", str(perf_out), "-x", ",",
-               "-e", "instructions,task-clock", "--", str(TIMER), str(export_file)]
+        try:
+            perf_out.unlink(missing_ok=True)
+        except OSError as e:
+            raise InfraError(f"cannot clear stale perf output: {e}")
+        cmd = [perf, "stat", "-D", "-1", "-o", str(perf_out), "-x", ",",
+               "-e", "instructions,task-clock", "--", *timer_cmd]
         rc, out = run(cmd, work, env, timeout)
+        if rc == "timeout":
+            return rc, out, _timeout_measurement(target, "local-process-watchdog")
+        if rc != 0:
+            return rc, out, {}
+        measured = _parse_timer_measurement(out, target)
         insns = task_clock = None
         try:
             for line in perf_out.read_text().splitlines():
@@ -512,19 +618,44 @@ def _time_replay(export_file, work, env, timeout):
                         task_clock = float(f[0])  # msec
         except OSError:
             pass
-        if rc == 0 and insns is None:
+        if insns is None:
             raise InfraError("perf produced no instruction count (PMU unavailable in this container?)")
-        return rc, out, {"instructions": insns, "task_clock_ms": task_clock}
+        return rc, out, {
+            "instructions": insns,
+            "task_clock_ms": task_clock,
+            "wall_ns": measured["wall_ns"],
+            "wall_s": measured["wall_ns"] / 1_000_000_000,
+            "measurement_contract": MEASUREMENT_CONTRACT,
+            "measurement_boundary": measured["boundary"],
+            "measurement_target": target,
+        }
     else:
-        t0 = time.monotonic()
-        rc, out = run([str(TIMER), str(export_file)], work, env, timeout)
-        return rc, out, {"wall_s": round(time.monotonic() - t0, 3)}
+        rc, out = run(timer_cmd, work, env, timeout)
+        if rc == "timeout":
+            return rc, out, _timeout_measurement(target, "local-process-watchdog")
+        if rc != 0:
+            return rc, out, {}
+        measured = _parse_timer_measurement(out, target)
+        return rc, out, {
+            "wall_ns": measured["wall_ns"],
+            "wall_s": measured["wall_ns"] / 1_000_000_000,
+            "measurement_contract": MEASUREMENT_CONTRACT,
+            "measurement_boundary": measured["boundary"],
+            "measurement_target": target,
+        }
 
 
-def _remote_response_error(data, reps):
-    """Return None for a usable KTP/1 response, otherwise a concise schema error."""
+def _remote_response_error(data, reps, target=None):
+    """Return None for a usable KTP/2 response, otherwise a concise schema error."""
     if not isinstance(data, dict):
         return "response is not a JSON object"
+    expected_boundary = _measurement_boundary(target)
+    if data.get("measurement_contract") != MEASUREMENT_CONTRACT:
+        return "missing/mismatched measurement contract"
+    if data.get("boundary") != expected_boundary:
+        return "missing/mismatched measurement boundary"
+    if "target" not in data or data["target"] != target:
+        return "missing/mismatched measurement target"
     status = data.get("status")
     if status not in ("ok", "timeout", "failed"):
         return f"unrecognized status {status!r}"
@@ -545,6 +676,9 @@ def _remote_response_error(data, reps):
         instructions = sample.get("instructions")
         if type(instructions) is not int or instructions <= 0:
             return f"sample {idx} instructions must be a positive integer"
+        wall_ns = sample.get("wall_ns")
+        if wall_ns is not None and (type(wall_ns) is not int or wall_ns <= 0):
+            return f"sample {idx} wall_ns must be a positive integer"
         task_clock = sample.get("task_clock_ms")
         if (task_clock is not None
                 and (isinstance(task_clock, bool)
@@ -555,8 +689,8 @@ def _remote_response_error(data, reps):
     return None
 
 
-def _time_remote(export_file, reps):
-    """Run all timing reps on a remote KTP/1 executor (lean-timer-executor).
+def _time_remote(export_file, reps, target=None):
+    """Run all timing reps on a remote KTP/2 executor (lean-timer-executor).
 
     Returns the executor's decoded 200 response: {"status": "ok", "samples":
     [{"instructions": …, "task_clock_ms": …}, …]} or a terminal
@@ -577,17 +711,28 @@ def _time_remote(export_file, reps):
         if sleep_s:
             time.sleep(sleep_s)
         for base in urls:
-            url = f"{base}/ktp/v1/time?reps={reps}&timeout_secs={TIMING_TIMEOUT}"
+            boundary = _measurement_boundary(target)
+            query = urllib.parse.urlencode({
+                "reps": reps,
+                "timeout_secs": TIMING_TIMEOUT,
+                "measurement_contract": MEASUREMENT_CONTRACT,
+                "boundary": boundary,
+                "target": target or "",
+            })
+            url = f"{base}/ktp/v2/time?{query}"
             req = urllib.request.Request(url, data=export_bytes, method="POST", headers={
                 "Authorization": f"Bearer {TIMING_EXECUTOR_SECRET}",
                 "Content-Type": "application/octet-stream",
                 "X-Export-SHA256": digest,
+                "X-Measurement-Contract": MEASUREMENT_CONTRACT,
+                "X-Measurement-Boundary": boundary,
+                "X-Measurement-Target": target or "",
             })
             try:
                 with urllib.request.urlopen(req, timeout=request_timeout) as resp:
                     body = resp.read()
                 data = json.loads(body)
-                schema_error = _remote_response_error(data, reps)
+                schema_error = _remote_response_error(data, reps, target)
                 if schema_error is not None:
                     last_err = f"{base}: invalid executor response ({schema_error})"
                     continue
@@ -626,7 +771,7 @@ def _time_remote(export_file, reps):
 # cheap (the naive fib spec compiles to an exponential tree but reduces via `brecOn` in
 # linear kernel time) — so a submission fast in the kernel could be un-evaluable by #eval.
 # whnf reduces the same way the timed replay will, handling Nat and Int results. A wrong v
-# cannot mis-score: `decide +kernel` in _perf_export would then fail to build.
+# cannot mis-score: the kernel-reduced proof in _perf_export would then fail to build.
 _VALUE_META = r"""import Submission
 import Lean
 open Lean Meta
@@ -682,20 +827,26 @@ def _perf_theorem_source(n, v, nonce):
         "set_option maxRecDepth 4000000\n"
         "set_option maxHeartbeats 0\n"
         f"namespace {namespace}\n"
-        f"theorem check : Submission.impl {n} = {v} := by decide +kernel\n"
+        f"theorem check : Submission.impl {n} = {v} :=\n"
+        f"  of_decide_eq_true "
+        f"(rfl : decide (Submission.impl {n} = {v}) = true)\n"
         f"end {namespace}\n"
     )
     return source, theorem
 
 
 def _perf_export(work, env, n, v, out_path, timeout, artifact_lib, lean_bin):
-    """Build a uniquely namespaced `impl n = v := by decide +kernel` and export that theorem.
+    """Build and export a uniquely namespaced, directly reducible `impl n = v` theorem.
 
-    The kernel replay of this export re-checks `decide (impl n = v) = true` by reduction,
+    The direct `of_decide_eq_true rfl` term deliberately avoids tactic proof extraction:
+    the exported target declaration itself contains the computation instead of merely
+    referring to an untimed private `_proof_...` theorem. Its kernel replay re-checks
+    `decide (impl n = v) = true` by reduction,
     which forces the kernel to reduce `impl n` at this specific n — so timing the replay
-    times the COMPUTATION at n, not the ∀n correctness proof. Returns (kind, error): 'ok';
+    times the COMPUTATION at n, not the ∀n correctness proof. Returns
+    (kind, error, fully_qualified_theorem): 'ok';
     'timeout' when this slot's build/export is too slow; or 'error' for a
-    non-timeout build/export failure — which includes a wrong reference `v` (`decide +kernel`
+    non-timeout build/export failure — which includes a wrong reference `v` (the direct proof
     then fails to prove `impl n = v` *deterministically*, so it is errored, not scored). The
     caller records only wall-clock timeouts as unsuccessful slots and continues with later
     slots; a wrong value fails deterministically far inside the timing budget, so it never
@@ -708,30 +859,31 @@ def _perf_export(work, env, n, v, out_path, timeout, artifact_lib, lean_bin):
             perf_olean.chmod(0o644)
             perf_olean.unlink()
         except OSError as e:
-            return "error", f"cannot replace generated Perf.olean at n={n}: {e}"
+            return "error", f"cannot replace generated Perf.olean at n={n}: {e}", theorem
     # Compile only the judge-owned theorem. `import Submission` resolves to the byte-pinned
     # comparator artifact; no contestant source is re-elaborated in the performance phase.
     rc, out = run(
         [str(lean_bin), "-o", str(perf_olean), "Perf.lean"],
         work, env, timeout)
     if rc == "timeout":
-        return "timeout", None      # kernel reduction of a CORRECT value genuinely exceeded this slot
+        # This build timeout is distinct from the later timer process watchdog.
+        return "timeout", None, theorem
     if rc != 0:
         # The oracle already produced a value, so the build should succeed. Any DETERMINISTIC
         # failure is a fault, never a timeout: a wrong value makes `decide` false (and its deep
         # Decidable comparison of a huge literal blows maxRecDepth), while a correct value reduces
         # in the kernel without hitting maxRecDepth. So a wrong oracle value can never be scored —
         # it surfaces here as an error, even at large n (closing the maxRecDepth-masking hole).
-        return "error", f"perf build failed at n={n}: {last_line(out)}"
+        return "error", f"perf build failed at n={n}: {last_line(out)}", theorem
     rc, out = run([str(LEAN4EXPORT_BIN / "lean4export"), "Perf", "--", theorem],
                   work, env, timeout, stdout_path=out_path)
     if rc == "timeout":
-        return "timeout", None
+        return "timeout", None, theorem
     if rc != 0:
-        return "error", f"perf export failed at n={n}: {last_line(out)}"
+        return "error", f"perf export failed at n={n}: {last_line(out)}", theorem
     if not out_path.exists() or out_path.stat().st_size == 0:
-        return "error", f"perf export produced no output at n={n}"
-    return "ok", None
+        return "error", f"perf export produced no output at n={n}", theorem
+    return "ok", None, theorem
 
 
 def _submission_digest(work):
@@ -857,7 +1009,13 @@ def _summarize_samples(samples, metric=None):
         median = statistics.median(insns)
         # Instruction counts are integral. Round .5 upward instead of Python's banker's round.
         return {"median_instructions": int(math.floor(median + 0.5))}
-    return {"median_s": round(statistics.median([s["wall_s"] for s in samples]), 3)}
+    # Preserve the timer's nanosecond resolution. Target-only checks can complete well below
+    # one millisecond, so the old three-decimal rounding could turn valid samples into score 0.
+    median_ns = statistics.median([s["wall_ns"] for s in samples])
+    return {
+        "median_wall_ns": median_ns,
+        "median_s": median_ns / 1_000_000_000,
+    }
 
 
 def _coverage_fields(inputs, scaling):
@@ -937,7 +1095,9 @@ def _evaluation_cohort(problem, cfg, inputs, reps, result):
         "reps": reps,
         "timing_timeout_seconds": TIMING_TIMEOUT,
         "toolchain": _CFG.get("toolchain"),
-        "checker": "official-kernel-replay v4.32.0-rc1",
+        "checker": CHECKER_ID,
+        "timing_protocol": result.get("timing_protocol"),
+        "measurement_contract": _measurement_contract_record(),
         "executor": executor,
     }
     encoded = json.dumps(policy, sort_keys=True, separators=(",", ":")).encode()
@@ -951,8 +1111,15 @@ def _evaluation_cohort(problem, cfg, inputs, reps, result):
 
 def judge(job_dir: Path, problem, submission_dir, reps, tag):
     sub_name = tag or Path(submission_dir).name
+    timing_protocol = (
+        "KTP/2"
+        if TIMING_METRIC == "perf_instructions" and TIMING_EXECUTOR_URLS
+        else "local-v2"
+    )
     result = {"problem": problem, "submission": sub_name,
-              "status": None, "reason": None, "metric": TIMING_METRIC, "stages": {}}
+              "status": None, "reason": None, "metric": TIMING_METRIC, "stages": {},
+              "timing_protocol": timing_protocol,
+              "measurement_contract": _measurement_contract_record()}
 
     def finish():
         outdir = RESULTS / problem
@@ -1055,25 +1222,37 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         result["status"], result["reason"] = "rejected", f"axiom audit: {last_line(out)}"
         return finish()
 
-    def time_export(export_path):
-        """Replay one export `reps` times through the authoritative local/remote timer."""
+    def time_export(export_path, target=None):
+        """Replay one export through the authoritative full or target-only boundary."""
         if TIMING_METRIC == "perf_instructions" and TIMING_EXECUTOR_URLS:
-            remote = _time_remote(export_path, reps)      # may raise TimingRetry
+            remote = _time_remote(export_path, reps, target)      # may raise TimingRetry
             result["stages"].setdefault("timing_executor", {
                 "executor": remote["executor"], "version": remote["version"]})
             if remote["status"] == "timeout":
-                return "timeout", None
+                timeout_meta = _timeout_measurement(target, "remote-process-watchdog")
+                if isinstance(remote.get("timeout_phase"), str):
+                    timeout_meta["executor_timeout_phase"] = remote["timeout_phase"]
+                return "timeout", timeout_meta
             if remote["status"] == "failed":
                 return "failed", last_line(remote.get("output_tail", ""))
-            samples = [{"instructions": s["instructions"],
-                        "task_clock_ms": s.get("task_clock_ms")} for s in remote["samples"]]
+            samples = []
+            for remote_sample in remote["samples"]:
+                sample = {
+                    "instructions": remote_sample["instructions"],
+                    "task_clock_ms": remote_sample.get("task_clock_ms"),
+                }
+                if "wall_ns" in remote_sample:
+                    sample["wall_ns"] = remote_sample["wall_ns"]
+                    sample["wall_s"] = remote_sample["wall_ns"] / 1_000_000_000
+                samples.append(sample)
             return "ok", samples
 
         samples = []
         for i in range(reps):
-            trc, tout, sample = _time_replay(export_path, work, env, TIMING_TIMEOUT)
+            trc, tout, sample = _time_replay(
+                export_path, work, env, TIMING_TIMEOUT, target=target)
             if trc == "timeout":
-                return "timeout", None
+                return "timeout", sample
             if trc != 0:
                 return "failed", f"rep {i}: {last_line(tout)}"
             samples.append(sample)
@@ -1085,7 +1264,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
 
     # Score the proof work too. This prevents a specialization table from appearing free merely
     # because its expensive closed-value proofs live in the already-verified correctness export.
-    correctness_status, correctness_payload = time_export(export_file)
+    correctness_status, correctness_payload = time_export(export_file, target=None)
     if not _export_matches(export_file, correctness_export_bytes):
         result["status"], result["reason"] = "error", "correctness export changed during timing"
         return finish()
@@ -1095,10 +1274,15 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         return finish()
     correctness_timing = {
         "metric": TIMING_METRIC, "reps": reps, "result": correctness_status,
-        "checker": "official-kernel-replay v4.32.0-rc1",
+        "checker": CHECKER_ID,
+        "measurement_contract": MEASUREMENT_CONTRACT,
+        "measurement_boundary": FULL_REPLAY_BOUNDARY,
+        "measurement_target": None,
     }
     if correctness_status == "ok":
         correctness_timing.update(_summarize_samples(correctness_payload))
+    elif correctness_status == "timeout" and isinstance(correctness_payload, dict):
+        correctness_timing.update(correctness_payload)
     elif correctness_status == "failed":
         result["correctness_timing"] = correctness_timing
         result["status"], result["reason"] = (
@@ -1108,9 +1292,9 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
 
     # ---- Performance: time the kernel reducing `impl n` at judge-chosen inputs ----
     # Correctness (the ∀n proof) was verified by comparator above. Here we time the
-    # COMPUTATION, not the proof: for each input n we export `impl n = v` (decide+kernel)
-    # and time the kernel replaying THAT export — which forces reduction of `impl n` at
-    # this n. That is what makes a better ALGORITHM win, and yields a scaling curve.
+    # COMPUTATION, not the ∀n proof: for each input n we export `impl n = v` with a direct
+    # `of_decide_eq_true rfl` proof, then time the kernel replaying THAT declaration. This
+    # forces reduction of `impl n` at this n and yields the algorithm's scaling curve.
     # Reuse the exact comparator build graph. Re-elaborating identical source is not an identity
     # proof: run_meta/run_elab can depend on environment or filesystem state. Only judge-owned
     # EvalVal/Perf modules are compiled below, importing the pinned Submission.olean.
@@ -1144,7 +1328,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
             return {"n": n, "result": "identity-error"}, \
                 f"submission changed after correctness verification (at n={n})"
         perf_export = job_dir / f"perf_{n}.export.ndjson"
-        pkind, err = _perf_export(
+        pkind, err, perf_target = _perf_export(
             work, verified_env, n, v, perf_export, TIMING_TIMEOUT, artifact_lib, lean_bin)
         if not _artifacts_match(artifact_lib, verified_artifacts):
             return {"n": n, "result": "identity-error"}, \
@@ -1174,7 +1358,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         if arc != 0:
             return {"n": n, "result": "axiom-audit-error"}, \
                 f"perf export axiom audit failed at n={n}: {last_line(aout)}"
-        status, payload = time_export(perf_export)
+        status, payload = time_export(perf_export, target=perf_target)
         if not _export_matches(perf_export, perf_bytes):
             return {"n": n, "result": "identity-error"}, \
                 f"perf export changed during timing (at n={n})"
@@ -1185,13 +1369,28 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
             return {"n": n, "result": "timing-error"}, \
                 f"official kernel rejected perf export at n={n}: {payload}"
         if status == "timeout":
-            return {"n": n, "result": "timeout"}, None
-        return {"n": n, "result": "ok", **_summarize_samples(payload)}, None
+            return {
+                "n": n,
+                "result": "timeout",
+                "measurement_boundary": TARGET_REPLAY_BOUNDARY,
+                "measurement_target": perf_target,
+                **(payload if isinstance(payload, dict) else {}),
+            }, None
+        return {
+            "n": n,
+            "result": "ok",
+            "measurement_contract": MEASUREMENT_CONTRACT,
+            "measurement_boundary": TARGET_REPLAY_BOUNDARY,
+            "measurement_target": perf_target,
+            **_summarize_samples(payload),
+        }, None
 
     scaling, perf_error = _collect_perf_slots(inputs, probe_point)
 
     timing = {"metric": TIMING_METRIC, "reps": reps, "scaling": scaling,
-              "checker": "official-kernel-replay v4.32.0-rc1",
+              "checker": CHECKER_ID,
+              "measurement_contract": MEASUREMENT_CONTRACT,
+              "measurement_boundary": TARGET_REPLAY_BOUNDARY,
               **_coverage_fields(inputs, scaling)}
     canonical_work = _canonical_work(correctness_timing, scaling)
     if canonical_work is not None:
@@ -1291,8 +1490,8 @@ def leaderboard():
                 continue
             # Only rank official judge verdicts, identified by STRUCTURE (a legitimate submission
             # may be named e.g. "x.perf", so a filename-suffix filter would wrongly drop it).
-            # scripts/perf_eval.py output lacks "stages" and is skipped; requiring every field also
-            # prevents a KeyError on a malformed file.
+            # Requiring every field prevents a KeyError on malformed or legacy diagnostic files.
+            # Current perf_eval output delegates to this judge and is therefore canonical.
             if not (isinstance(r, dict)
                     and isinstance(r.get("problem"), str) and isinstance(r.get("submission"), str)
                     and isinstance(r.get("status"), str) and isinstance(r.get("stages"), dict)):

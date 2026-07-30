@@ -45,14 +45,16 @@ Each problem gives you a **trusted spec** — a deliberately naive but correct d
 2. a **proof** `impl_correct : ∀ n, impl n = spec n` — that it agrees with the spec on
    *every* input.
 
-What is timed is **not how fast your compiled code runs**. It is how much work the official
-Lean kernel spends replaying the verified correctness export and reducing `impl n` at the
-judge's sampling slots. Lower is better after slot coverage is compared.
+What is timed is **not how fast your compiled code runs**. The official Lean kernel charges one
+complete replay of the verified correctness closure and, at each sampling slot, only replay of
+the generated target declaration that reduces `impl n`. Process startup, export parsing, and
+per-input dependency preloading are outside the counter. Lower is better after slot coverage is
+compared.
 
 Correctness for all `n` lets the judge rotate hidden inputs, but it does not make literal
 tables logically impossible: a contestant can derive constants through another verified
-algorithm. The scoring contract therefore charges the correctness replay as well as each
-successful input replay. The simplest submission is `impl := spec` with
+algorithm. The scoring contract therefore charges the full correctness-closure replay as well as
+each successful target-declaration replay. The simplest submission is `impl := spec` with
 `impl_correct := fun _ => rfl` — correct but slow because the kernel reduces the naïve spec.
 
 ## What you submit
@@ -87,8 +89,9 @@ follow that shape (full text in [`rules/overview.md`](rules/overview.md)):
 - **R3** `impl_correct` proves `∀ n, impl n = spec n` — correctness for *all* inputs.
 - **R4** The proof may depend only on the standard axioms `propext`, `Quot.sound`,
   `Classical.choice`; `sorry` and `native_decide` are rejected.
-- **R5** Kernel replay is scored: one correctness-export median plus the successful
-  per-input medians; how you find `impl` and its proof is unconstrained.
+- **R5** Kernel replay is scored: one full correctness-closure median plus the successful
+  per-input target-declaration medians. Parsing, dependency preload, and process startup are
+  excluded; exact output-literal checking remains included.
 
 ## Problems (Stage 1)
 
@@ -114,10 +117,17 @@ baseline (`impl := spec`) and fast doubling with a full `∀ n` proof.
 ```
 Submission.lean
   → validate (slugs, symlinks, size caps)
-  → correctness : build the locked Solution, then time the verified correctness export
-  → performance : for each judge-chosen input n, time the kernel reducing `impl n`
+  → correctness : parse outside the counter, then time the full verified-closure replay once
+  → performance : for each n, parse/preload outside, then time only the target-declaration replay
   → correctness timing + complete slot record + verdict
 ```
+
+This is measurement contract `kernel-replay-v2`, with boundaries
+`full-closure-replay-v1` and `target-declaration-replay-v1`. Scoped counters remove fixed
+harness cost without subtracting noisy process totals. Target replay still reduces `impl n` and
+compares the exact result, so checking a large `Nat`/`Int` literal remains input-dependent scored
+work. The verdict also pins the direct target-proof encoding
+`direct-of-decide-eq-true-rfl-v1`, preventing extracted-proof wrapper timings from mixing in.
 
 For official evaluation, `PERF_SEED` is a secret rotation token. The judge hashes it with
 the problem id and slot index, so every submission in one public evaluation cohort receives
@@ -134,19 +144,20 @@ Within each problem, submissions are ranked by:
 1. more completed sampling slots;
 2. then higher `completed / planned` coverage if schedule sizes differ;
 3. then success at harder (higher-index) slots;
-4. then, for an identical success profile, lower total measured kernel work: the
-   correctness-replay median plus the sum of
-   successful slot medians.
+4. then, for an identical success profile, lower total measured kernel work: the full
+   correctness-closure replay median plus the sum of successful target-declaration medians.
 
 The official metric is **kernel instructions** on the Linux evaluation host
 (`perf -e instructions`, median of N reps). Wall time is a separate local-development
 leaderboard and is never compared with instruction counts. Fitted α and β values and the
 log-log curves are report-only diagnostics; they never affect rank, so padding a cheap end
-of the curve can only add work. Legacy verdicts without a same-metric
-`correctness_timing` record are accepted evidence but unscored by the current contract.
-Verdicts are also separated by evaluation cohort, which commits to the exact schedule,
-toolchain, timing policy, and executor. Run `python3 scripts/score.py` to generate the
-canonical tables.
+of the curve can only add work. Legacy verdicts without a same-metric `correctness_timing`
+record are accepted evidence but unscored by the current contract. Remote scoped timing uses
+**KTP/2**. Verdicts commit to the protocol, `kernel-replay-v2`, both boundary versions, and the
+target-proof encoding; KTP/1 whole-process results never mix with them. Any change to those
+measurement fields creates a new cohort and requires a full rescore. Cohorts also commit to the
+exact schedule, toolchain, timing policy, and executor. Run `python3 scripts/score.py` to generate
+the canonical tables.
 
 Each problem has its own leaderboard. Your overall standing aggregates your best problems
 with a relative-placement component; the exact formula is published with the scoring
@@ -219,10 +230,13 @@ these pins; the third-party checkouts are not committed.
 gate (comparator + axiom audit) and the green-gate harness are in place (7 baselines +
 3 proven optimized submissions — `fib/doubling`, `ca-rule110/bitpacked`, `primecount/sqrt` —
 accepted; three fib cheat classes — `sorry`, illegal axiom, Mathlib — rejected). The main
-judge (`judge/judge.py`) times both the comparator-verified correctness export and every
-planned input slot (local replay or the remote KTP/1 executor). The performance phase imports
+judge (`judge/judge.py`) times both the comparator-verified correctness closure and every
+planned input slot (local replay or the remote KTP/2 executor) under measurement contract
+`kernel-replay-v2`. The performance phase imports
 the byte-pinned `.olean` graph produced by comparator instead of re-elaborating contestant
-source. `scripts/perf_eval.py` is a lighter standalone reproduction. Inputs are config-driven
+source. `scripts/perf_eval.py` is a local-wall-time, one-repetition wrapper around that same
+canonical judge path, so it cannot drift back to whole-process timing or expose an official
+seed/cohort. Inputs are config-driven
 and shared within a cohort through a rotating official `PERF_SEED`; the seed is never exposed
 to elaboration. `scripts/score.py` applies the coverage-then-total-work contract within each
 cohort, with α/β as report-only diagnostics. Not yet finalized: a PMU-hardware

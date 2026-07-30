@@ -11,31 +11,49 @@ SPEC.loader.exec_module(score)
 
 
 def verdict(name, costs, *, metric="perf_instructions", correctness=10,
-            inputs=(10, 20, 40), problem="fib"):
+            inputs=(10, 20, 40), problem="fib", protocol=score.LOCAL_PROTOCOL,
+            executor="local"):
     field = score.METRICS[metric]["field"]
     scaling = []
     for slot, (n, cost) in enumerate(zip(inputs, costs)):
+        measurement = {
+            "measurement_contract": score.MEASUREMENT_CONTRACT,
+            "measurement_boundary": score.PERFORMANCE_BOUNDARY,
+            "measurement_target": f"Judge.Generated_{slot}.check",
+        }
         if cost is None:
-            scaling.append({"slot": slot, "n": n, "result": "timeout"})
+            scaling.append({
+                "slot": slot, "n": n, "result": "timeout", **measurement,
+            })
         else:
-            scaling.append({"slot": slot, "n": n, "result": "ok", field: cost})
+            scaling.append({
+                "slot": slot, "n": n, "result": "ok", field: cost, **measurement,
+            })
     return {
         "problem": problem,
         "submission": name,
         "status": "accepted",
         "metric": metric,
+        "timing_protocol": protocol,
+        "measurement_contract": dict(score.CURRENT_MEASUREMENT_RECORD),
         "evaluation_cohort": {
             "id": f"cohort-{metric}",
             "round": "test-round",
+            "executor": {"executor": executor, "version": "test-v1"},
         },
         "stages": {"perf_inputs": list(inputs)},
         "correctness_timing": {
             "result": "ok",
             "metric": metric,
+            "measurement_contract": score.MEASUREMENT_CONTRACT,
+            "measurement_boundary": score.CORRECTNESS_BOUNDARY,
+            "measurement_target": None,
             field: correctness,
         },
         "timing": {
             "metric": metric,
+            "measurement_contract": score.MEASUREMENT_CONTRACT,
+            "measurement_boundary": score.PERFORMANCE_BOUNDARY,
             "scaling": scaling,
         },
     }
@@ -133,7 +151,11 @@ class ScoringTests(unittest.TestCase):
     def test_evaluation_cohorts_are_never_mixed(self):
         first = verdict("first", [100, 200, 300])
         second = verdict("second", [100, 200, 300])
-        second["evaluation_cohort"] = {"id": "other-cohort", "round": "other-round"}
+        second["evaluation_cohort"] = {
+            "id": "other-cohort",
+            "round": "other-round",
+            "executor": {"executor": "local", "version": "test-v1"},
+        }
 
         groups = score._groups([first, second])
 
@@ -149,6 +171,103 @@ class ScoringTests(unittest.TestCase):
 
         self.assertFalse(row["scoreable"])
         self.assertIn("evaluation_cohort", row["reason"])
+
+    def test_legacy_or_mismatched_measurement_versions_are_unscored(self):
+        mutations = {
+            "missing top-level contract": (
+                lambda v: v.pop("measurement_contract"),
+                "measurement contract",
+            ),
+            "extra top-level contract field": (
+                lambda v: v["measurement_contract"].__setitem__("legacy", True),
+                "measurement contract",
+            ),
+            "wrong target proof encoding": (
+                lambda v: v["measurement_contract"].__setitem__(
+                    "target_proof_encoding", "extracted-wrapper-v0"),
+                "measurement contract",
+            ),
+            "missing protocol": (
+                lambda v: v.pop("timing_protocol"),
+                "timing protocol",
+            ),
+            "KTP/1 protocol": (
+                lambda v: v.__setitem__("timing_protocol", "KTP/1"),
+                "timing protocol",
+            ),
+            "wrong correctness contract": (
+                lambda v: v["correctness_timing"].__setitem__(
+                    "measurement_contract", "kernel-replay-v1"),
+                "correctness measurement contract",
+            ),
+            "wrong correctness boundary": (
+                lambda v: v["correctness_timing"].__setitem__(
+                    "measurement_boundary", "whole-process-v1"),
+                "correctness measurement boundary",
+            ),
+            "non-null correctness target": (
+                lambda v: v["correctness_timing"].__setitem__(
+                    "measurement_target", "some.theorem"),
+                "target must be null",
+            ),
+            "wrong performance boundary": (
+                lambda v: v["timing"].__setitem__(
+                    "measurement_boundary", "whole-process-v1"),
+                "performance measurement boundary",
+            ),
+            "wrong performance contract": (
+                lambda v: v["timing"].__setitem__(
+                    "measurement_contract", "kernel-replay-v1"),
+                "performance measurement contract",
+            ),
+            "missing successful-slot target": (
+                lambda v: v["timing"]["scaling"][0].pop(
+                    "measurement_target"),
+                "lacks a measurement target",
+            ),
+            "wrong successful-slot boundary": (
+                lambda v: v["timing"]["scaling"][0].__setitem__(
+                    "measurement_boundary", "whole-process-v1"),
+                "measured slot 0",
+            ),
+        }
+        for label, (mutate, reason) in mutations.items():
+            with self.subTest(label=label):
+                legacy = verdict("legacy", [100, 200, 300])
+                mutate(legacy)
+                row = score._score_row(legacy, "perf_instructions")
+                self.assertFalse(row["scoreable"])
+                self.assertIn(reason, row["reason"])
+
+    def test_protocol_must_match_local_or_remote_executor(self):
+        local_wrong = verdict(
+            "local-as-remote", [100, 200, 300], protocol=score.REMOTE_PROTOCOL)
+        remote_wrong = verdict(
+            "remote-as-local", [100, 200, 300],
+            protocol=score.LOCAL_PROTOCOL, executor="exec-a")
+        remote_current = verdict(
+            "remote-current", [100, 200, 300],
+            protocol=score.REMOTE_PROTOCOL, executor="exec-a")
+
+        self.assertFalse(
+            score._score_row(local_wrong, "perf_instructions")["scoreable"])
+        self.assertFalse(
+            score._score_row(remote_wrong, "perf_instructions")["scoreable"])
+        self.assertTrue(
+            score._score_row(remote_current, "perf_instructions")["scoreable"])
+
+    def test_same_cohort_id_does_not_make_legacy_verdict_scoreable(self):
+        current = verdict("current", [100, 200, 300])
+        legacy = verdict("legacy", [1, 1, 1])
+        legacy["evaluation_cohort"]["id"] = current["evaluation_cohort"]["id"]
+        del legacy["measurement_contract"]
+
+        rows = score._rows_for(
+            "fib", [legacy, current], "perf_instructions")
+        by_name = {row["sub"]: row for row in rows}
+
+        self.assertTrue(by_name["current"]["scoreable"])
+        self.assertFalse(by_name["legacy"]["scoreable"])
 
     def test_schedule_requires_explicit_matching_slots(self):
         malformed = verdict("malformed", [100, 200, 300])

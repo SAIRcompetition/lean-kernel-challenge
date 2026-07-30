@@ -6,7 +6,9 @@ import Lean
 Lean Competition timing/audit kernel wrapper.
 
 Modes:
-  kernel <file>                             — replay all declarations through the official kernel (the timed event)
+  kernel <file>                             — parse, then time replaying the complete closure
+  kernel --target <name> <file>             — prepare the dependency environment, then time
+                                               replaying only the named theorem declaration
   kernel --parse-only <file>                — only parse the export
   kernel --check-axioms <a,b,c> <file>      — audit that every axiom in the export is whitelisted
 
@@ -18,14 +20,89 @@ export that gets timed, as an independent second line of defense: it rejects
 slipped past comparator or the export diverged from what comparator built.
 -/
 
-def runKernel (solution : Export.ExportedEnv) : IO Unit := do
-  let mut env ← Lean.mkEmptyEnvironment
-  let mut constMap := solution.constMap
+namespace TimerKernel
+
+@[extern "lean_kernel_timer_perf_enable"]
+opaque perfEnable : IO Unit
+
+@[extern "lean_kernel_timer_perf_disable"]
+opaque perfDisable : IO Unit
+
+def normalizedConstMap (solution : Export.ExportedEnv) :
+    Std.HashMap Lean.Name Lean.ConstantInfo :=
   -- Lean's kernel interprets just the addition of `Quot as adding all of these so adding them
   -- multiple times leads to errors.
-  constMap := constMap.erase `Quot.mk |>.erase `Quot.lift |>.erase `Quot.ind
-  discard <| env.replay' constMap
-  IO.println s!"Accepted {constMap.size} declarations."
+  solution.constMap.erase `Quot.mk |>.erase `Quot.lift |>.erase `Quot.ind
+
+def emitMeasurement (boundary : String) (target : Option Lean.Name) (wallNs : Nat) : IO Unit := do
+  let positiveWallNs := max 1 wallNs
+  let payload := Lean.Json.mkObj [
+    ("measurement_contract", .str "kernel-replay-v2"),
+    ("boundary", .str boundary),
+    ("target", target.map (fun name => Lean.Json.str name.toString) |>.getD .null),
+    ("wall_ns", .num (positiveWallNs : Lean.JsonNumber)),
+    ("phase", .str "complete")
+  ]
+  IO.println s!"KERNEL_TIMING={payload.compress}"
+
+def measureReplay (boundary : String) (target : Option Lean.Name) (replay : IO α)
+    (validate : α → IO Unit := fun _ => pure ()) : IO α := do
+  perfEnable
+  let started ← IO.monoNanosNow
+  let (result, stopped) ←
+    try
+      let result ← replay
+      let stopped ← IO.monoNanosNow
+      pure (result, stopped)
+    finally
+      -- A kernel exception must not leave the externally-created PMU event enabled.
+      perfDisable
+  -- Validate the replay result outside the measured interval, but before publishing a
+  -- successful measurement record.
+  validate result
+  emitMeasurement boundary target (stopped - started)
+  return result
+
+def runKernel (solution : Export.ExportedEnv) : IO Unit := do
+  let env ← Lean.mkEmptyEnvironment
+  let constMap := normalizedConstMap solution
+  discard <| measureReplay "full-closure-replay-v1" none (env.replay' constMap)
+
+def runTarget (solution : Export.ExportedEnv) (targetText : String) : IO Unit := do
+  if targetText.isEmpty then
+    throw <| .userError "target declaration name must not be empty"
+  let target := targetText.toName
+  unless target.toString == targetText do
+    throw <| .userError s!"target declaration name is not canonical: {targetText}"
+  let constMap := normalizedConstMap solution
+  let some targetInfo := constMap[target]?
+    | throw <| .userError s!"target theorem is absent from export: {target}"
+  if targetInfo.isUnsafe || targetInfo.isPartial then
+    throw <| .userError s!"target theorem is unsafe or partial: {target}"
+  match targetInfo with
+  | .thmInfo _ => pure ()
+  | _ => throw <| .userError s!"target declaration is not a theorem: {target}"
+  unless solution.constOrder.back? == some target do
+    throw <| .userError s!"target theorem is not the final exported declaration: {target}"
+  for (name, _) in constMap do
+    if name != target && target.isPrefixOf name then
+      throw <| .userError s!"target theorem has an extracted proof helper: {name}"
+
+  -- Replay every dependency through the official kernel before opening the counter. Since
+  -- lean4export emits a theorem's transitive closure, removing the root leaves precisely the
+  -- environment in which that one declaration can be checked.
+  let preEnv ← (← Lean.mkEmptyEnvironment).replay' (constMap.erase target)
+  if (preEnv.toKernelEnv.find? target).isSome then
+    throw <| .userError s!"target theorem unexpectedly exists in the prepared environment: {target}"
+  let targetMap : Std.HashMap Lean.Name Lean.ConstantInfo :=
+    ({} : Std.HashMap Lean.Name Lean.ConstantInfo).insert target targetInfo
+  let _ ← measureReplay
+    "target-declaration-replay-v1"
+    (some target)
+    (preEnv.replay' targetMap)
+    (fun env => do
+      unless (env.toKernelEnv.find? target).isSome do
+        throw <| .userError s!"target theorem was not installed by kernel replay: {target}")
 
 /-- Audit that every axiom declared in the export is on the whitelist.
 Mirrors comparator's `checkAxioms`, but runs on the exact timed export. -/
@@ -45,18 +122,25 @@ def parseFile (inputPath : String) : IO Export.ExportedEnv := do
   let handle ← IO.FS.Handle.mk inputPath .read
   Export.parseStream (.ofHandle handle)
 
+end TimerKernel
+
 def main (args : List String) : IO Unit := do
   match args with
   | ["--parse-only", inputPath] =>
-    discard <| parseFile inputPath
+    discard <| TimerKernel.parseFile inputPath
     IO.println "Parse successful."
   | ["--check-axioms", whitelist, inputPath] =>
-    let env ← parseFile inputPath
+    let env ← TimerKernel.parseFile inputPath
     let names := (whitelist.splitOn ",").filterMap (fun s =>
       let s := s.trimAscii.toString
       if s.isEmpty then none else some s.toName)
-    checkAxioms env names
+    TimerKernel.checkAxioms env names
+  | ["--target", target, inputPath] =>
+    let env ← TimerKernel.parseFile inputPath
+    TimerKernel.runTarget env target
   | [inputPath] =>
-    let env ← parseFile inputPath
-    runKernel env
-  | _ => throw <| .userError "Usage: kernel [--parse-only | --check-axioms <a,b,c>] <file>"
+    let env ← TimerKernel.parseFile inputPath
+    TimerKernel.runKernel env
+  | _ => throw (.userError
+      ("Usage: kernel [--target <name> | --parse-only | " ++
+       "--check-axioms <a,b,c>] <file>"))

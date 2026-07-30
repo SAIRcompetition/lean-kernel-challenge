@@ -108,6 +108,8 @@ class OracleAndGeneratedTheoremTests(unittest.TestCase):
         self.assertIn("set_option maxHeartbeats 0", source)
         self.assertIn("set_option maxRecDepth 4000000", source)
         self.assertIn(f"theorem check : Submission.impl 7 = 13", source)
+        self.assertIn("of_decide_eq_true", source)
+        self.assertNotIn("by decide +kernel", source)
         self.assertTrue(theorem.startswith("LeanKernelChallengeJudge.Generated_"))
         self.assertNotIn("theorem perf_check", source)
         _, other = judge._perf_theorem_source(7, "13", "nonce-b")
@@ -121,6 +123,120 @@ class OracleAndGeneratedTheoremTests(unittest.TestCase):
                 kind, detail = judge._eval_impl_value(work, {}, 10, 1)
         self.assertEqual(kind, "error")
         self.assertIn("heartbeats", detail)
+
+    def test_perf_export_returns_the_exact_fully_qualified_target(self):
+        with tempfile.TemporaryDirectory() as td:
+            work = Path(td)
+            artifact_lib = work / "lib"
+            artifact_lib.mkdir()
+            out_path = work / "point.export"
+
+            def fake_run(cmd, cwd, env, timeout, stdout_path=None):
+                if stdout_path is not None:
+                    Path(stdout_path).write_bytes(b"export")
+                return 0, ""
+
+            with mock.patch.object(judge, "run", side_effect=fake_run) as run_mock:
+                kind, detail, target = judge._perf_export(
+                    work, {}, 7, "13", out_path, 9, artifact_lib, Path("lean"))
+
+        self.assertEqual((kind, detail), ("ok", None))
+        self.assertTrue(target.startswith("LeanKernelChallengeJudge.Generated_"))
+        export_cmd = run_mock.call_args_list[-1].args[0]
+        self.assertEqual(export_cmd[-1], target)
+
+
+def _timer_output(target=None, wall_ns=123456):
+    payload = {
+        "measurement_contract": judge.MEASUREMENT_CONTRACT,
+        "boundary": judge._measurement_boundary(target),
+        "target": target,
+        "wall_ns": wall_ns,
+        "phase": "complete",
+    }
+    return "Accepted.\nKERNEL_TIMING=" + json.dumps(payload, separators=(",", ":")) + "\n"
+
+
+class LocalTimingProtocolTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.work = Path(self.tmp.name)
+        self.export = self.work / "proof.export"
+        self.export.write_bytes(b"proof")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_wall_metric_uses_timer_internal_nanoseconds_and_target_argv(self):
+        target = "LeanKernelChallengeJudge.Generated_abc.check"
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "run", return_value=(0, _timer_output(target))) as run_mock:
+            rc, _, sample = judge._time_replay(
+                self.export, self.work, {}, 9, target=target)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(sample["wall_ns"], 123456)
+        self.assertEqual(sample["wall_s"], 0.000123456)
+        cmd = run_mock.call_args.args[0]
+        self.assertEqual(
+            cmd, [str(judge.TIMER), "--target", target, str(self.export)])
+
+    def test_perf_starts_disabled_and_counts_explicit_target_only(self):
+        target = "LeanKernelChallengeJudge.Generated_perf.check"
+
+        def fake_run(cmd, cwd, env, timeout):
+            self.assertEqual(cwd, self.work)
+            (self.work / "perf.txt").write_text(
+                "321,,instructions,\n1.25,,task-clock,\n")
+            return 0, _timer_output(target, wall_ns=777)
+
+        with mock.patch.object(judge, "TIMING_METRIC", "perf_instructions"), \
+             mock.patch.object(judge.shutil, "which", return_value="/usr/bin/perf"), \
+             mock.patch.object(judge, "run", side_effect=fake_run) as run_mock:
+            rc, _, sample = judge._time_replay(
+                self.export, self.work, {"PATH": "/bin"}, 9, target=target)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(sample["instructions"], 321)
+        self.assertEqual(sample["wall_ns"], 777)
+        cmd = run_mock.call_args.args[0]
+        self.assertEqual(cmd[:4], ["/usr/bin/perf", "stat", "-D", "-1"])
+        self.assertEqual(
+            cmd[-5:],
+            ["--", str(judge.TIMER), "--target", target, str(self.export)])
+
+    def test_timer_output_is_unique_versioned_and_target_bound(self):
+        target = "Judge.Generated.check"
+        with self.assertRaisesRegex(judge.InfraError, "0 measurement records"):
+            judge._parse_timer_measurement("Accepted\n", target)
+        duplicate = _timer_output(target) + _timer_output(target)
+        with self.assertRaisesRegex(judge.InfraError, "2 measurement records"):
+            judge._parse_timer_measurement(duplicate, target)
+        with self.assertRaisesRegex(judge.InfraError, "target mismatch"):
+            judge._parse_timer_measurement(_timer_output("Other.check"), target)
+        old = json.loads(_timer_output(target).split("KERNEL_TIMING=", 1)[1])
+        old["measurement_contract"] = "kernel-replay-v1"
+        with self.assertRaisesRegex(judge.InfraError, "contract mismatch"):
+            judge._parse_timer_measurement(
+                "KERNEL_TIMING=" + json.dumps(old), target)
+
+    def test_submillisecond_wall_median_never_rounds_to_zero(self):
+        summary = judge._summarize_samples(
+            [{"wall_ns": 400}, {"wall_ns": 600}, {"wall_ns": 500}],
+            metric="wall_time")
+        self.assertEqual(summary["median_wall_ns"], 500)
+        self.assertEqual(summary["median_s"], 0.0000005)
+        self.assertGreater(summary["median_s"], 0)
+
+    def test_outer_timeout_records_preparation_scope(self):
+        target = "Judge.Generated.check"
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "run", return_value=("timeout", "late")):
+            rc, _, sample = judge._time_replay(
+                self.export, self.work, {}, 9, target=target)
+        self.assertEqual(rc, "timeout")
+        self.assertEqual(sample["timeout_scope"], judge.PROCESS_TIMEOUT_SCOPE)
+        self.assertEqual(sample["measurement_target"], target)
 
 
 class _Response:
@@ -137,13 +253,17 @@ class _Response:
         return json.dumps(self.payload).encode()
 
 
-def _ok_response(executor="exec-a", version="v1", instructions=100, reps=1):
+def _ok_response(executor="exec-a", version="v1", instructions=100, reps=1,
+                 target=None):
     return {
         "status": "ok",
         "executor": executor,
         "version": version,
+        "measurement_contract": judge.MEASUREMENT_CONTRACT,
+        "boundary": judge._measurement_boundary(target),
+        "target": target,
         "samples": [
-            {"instructions": instructions, "task_clock_ms": 1.25}
+            {"instructions": instructions, "task_clock_ms": 1.25, "wall_ns": 1250}
             for _ in range(reps)
         ],
     }
@@ -209,6 +329,53 @@ class RemoteTimingTests(unittest.TestCase):
                 judge._time_remote(self.export, 1)
 
         self.assertEqual(judge._PINNED_EXECUTOR_IDENTITY[0], ("exec-a", "v1"))
+
+    def test_target_and_v2_contract_are_bound_into_remote_request(self):
+        target = "LeanKernelChallengeJudge.Generated_remote.check"
+        captured = []
+
+        def urlopen(req, timeout):
+            captured.append((req, timeout))
+            return _Response(_ok_response(target=target))
+
+        with mock.patch.object(judge, "TIMING_EXECUTOR_URLS", ["https://exec"]), \
+             mock.patch.object(judge, "_EXECUTOR_ATTEMPT_SLEEPS", [0]), \
+             mock.patch.object(judge.urllib.request, "urlopen", side_effect=urlopen):
+            result = judge._time_remote(self.export, 1, target=target)
+
+        self.assertEqual(result["target"], target)
+        req, _ = captured[0]
+        parsed = judge.urllib.parse.urlparse(req.full_url)
+        query = judge.urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+        self.assertEqual(parsed.path, "/ktp/v2/time")
+        self.assertEqual(query["measurement_contract"], [judge.MEASUREMENT_CONTRACT])
+        self.assertEqual(query["boundary"], [judge.TARGET_REPLAY_BOUNDARY])
+        self.assertEqual(query["target"], [target])
+        headers = {key.lower(): value for key, value in req.header_items()}
+        self.assertEqual(
+            headers["x-measurement-contract"], judge.MEASUREMENT_CONTRACT)
+        self.assertEqual(
+            headers["x-measurement-boundary"], judge.TARGET_REPLAY_BOUNDARY)
+        self.assertEqual(headers["x-measurement-target"], target)
+
+    def test_old_or_wrong_target_response_fails_closed_as_retry(self):
+        target = "LeanKernelChallengeJudge.Generated_expected.check"
+        old = {
+            "status": "ok", "executor": "old", "version": "v1",
+            "samples": [{"instructions": 100}],
+        }
+        self.assertIn(
+            "measurement contract",
+            judge._remote_response_error(old, 1, target=target))
+
+        wrong = _ok_response(target="LeanKernelChallengeJudge.Generated_other.check")
+        with mock.patch.object(judge, "TIMING_EXECUTOR_URLS", ["https://only"]), \
+             mock.patch.object(judge, "_EXECUTOR_ATTEMPT_SLEEPS", [0]), \
+             mock.patch.object(
+                 judge.urllib.request, "urlopen", return_value=_Response(wrong)):
+            with self.assertRaises(judge.TimingRetry):
+                judge._time_remote(self.export, 1, target=target)
+        self.assertIsNone(judge._PINNED_EXECUTOR[0])
 
 
 class SlotAccountingTests(unittest.TestCase):
@@ -322,10 +489,42 @@ class EnvironmentBoundaryTests(unittest.TestCase):
             first = judge._evaluation_cohort("demo", cfg, [1, 10], 3, result)
             same = judge._evaluation_cohort("demo", cfg, [1, 10], 3, result)
             changed = judge._evaluation_cohort("demo", cfg, [1, 9], 3, result)
+            with mock.patch.object(
+                    judge, "TARGET_REPLAY_BOUNDARY",
+                    "target-declaration-replay-v2"):
+                changed_contract = judge._evaluation_cohort(
+                    "demo", cfg, [1, 10], 3, result)
 
         self.assertEqual(first["id"], same["id"])
         self.assertNotEqual(first["id"], changed["id"])
+        self.assertNotEqual(first["id"], changed_contract["id"])
         self.assertEqual(first["round"], "round-x")
+
+    def test_measurement_contract_record_names_both_boundaries_and_protocols(self):
+        contract = judge._measurement_contract_record()
+        timing_policy = judge._CFG["timing"]
+        self.assertEqual(contract["id"], judge.MEASUREMENT_CONTRACT)
+        self.assertEqual(
+            contract["correctness_boundary"], judge.FULL_REPLAY_BOUNDARY)
+        self.assertEqual(
+            contract["performance_boundary"], judge.TARGET_REPLAY_BOUNDARY)
+        self.assertEqual(
+            contract["target_proof_encoding"], judge.TARGET_PROOF_ENCODING)
+        self.assertEqual(contract["local_protocol"], "local-v2")
+        self.assertEqual(contract["remote_protocol"], "KTP/2")
+        self.assertEqual(timing_policy["measurement_contract"], contract["id"])
+        self.assertEqual(
+            timing_policy["correctness_boundary"], contract["correctness_boundary"])
+        self.assertEqual(
+            timing_policy["performance_boundary"], contract["performance_boundary"])
+        self.assertEqual(
+            timing_policy["target_proof_encoding"], contract["target_proof_encoding"])
+        self.assertEqual(timing_policy["remote_protocol"], contract["remote_protocol"])
+        timer_source = (ROOT / "judge" / "timer-kernel" / "Main.lean").read_text()
+        self.assertIn(f'"{judge.MEASUREMENT_CONTRACT}"', timer_source)
+        self.assertIn(f'"{judge.FULL_REPLAY_BOUNDARY}"', timer_source)
+        self.assertIn(f'"{judge.TARGET_REPLAY_BOUNDARY}"', timer_source)
+        self.assertIn("target theorem has an extracted proof helper", timer_source)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ Usage:
   python3 scripts/run_harness.py --only fib # cases whose problem matches a substring
 """
 import argparse
+import importlib.util
 import json
 import os
 import secrets
@@ -23,6 +24,10 @@ ROOT = Path(__file__).resolve().parent.parent
 JUDGE = ROOT / "judge" / "judge.py"
 MANIFEST = ROOT / "tests" / "harness_manifest.json"
 SUBS = ROOT / "examples" / "submissions"
+SCORE_SPEC = importlib.util.spec_from_file_location(
+    "challenge_score", ROOT / "scripts" / "score.py")
+SCORER = importlib.util.module_from_spec(SCORE_SPEC)
+SCORE_SPEC.loader.exec_module(SCORER)
 
 
 def run_case(case, reps):
@@ -68,6 +73,9 @@ def run_case(case, reps):
         # A verdict alone doesn't prove the scored pipeline ran. Require the separately timed
         # correctness artifact plus one scaling row per planned input (including explicit
         # timeout rows), so input collapse or an early `break` cannot pass the green gate.
+        contract_error = SCORER._measurement_contract_error(v)
+        if contract_error is not None:
+            return fail(f"accepted with legacy/incompatible measurement: {contract_error}")
         correctness = v.get("correctness_timing")
         if not isinstance(correctness, dict) or not correctness.get("result"):
             return fail("accepted but no correctness_timing (scored proof replay did not run)")
@@ -78,8 +86,15 @@ def run_case(case, reps):
         if not isinstance(inputs, list) or len(scaling) != len(inputs):
             return fail(f"perf curve incomplete: {len(scaling)} rows for "
                         f"{len(inputs) if isinstance(inputs, list) else 'invalid'} inputs")
-        if case.get("scored") and not v.get("score"):
-            return fail("accepted but unscored (case expects a score)")
+        if case.get("scored"):
+            if not v.get("score"):
+                return fail("accepted but unscored (case expects a score)")
+            score_view = SCORER._score_row(v, v.get("metric"))
+            if not score_view["scoreable"]:
+                return fail(
+                    "judge emitted a score rejected by canonical scorer: "
+                    + str(score_view["reason"])
+                )
     # The temporary judge tag must not leak into the durable result/leaderboard identity.
     v["submission"] = canonical_tag
     verdict_file.write_text(json.dumps(v, indent=2))

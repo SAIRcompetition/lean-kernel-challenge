@@ -8,16 +8,17 @@ Official ranking is deliberately simple and monotone:
   3. for equal coverage, success at harder (higher-index) slots wins;
   4. only identical success profiles are tied by total measured kernel work:
 
-         correctness replay median + sum(completed slot medians)
+         full correctness-closure replay median
+         + sum(completed target-declaration replay medians)
 
 The correctness replay is charged because it is part of the verified computation
 artifact.  Increasing the work at any point can therefore never improve a rank.
 The log-log fit (α, β) remains useful diagnostic data, but is report-only.
 
 Instruction-count and wall-time verdicts are placed in separate groups, as are distinct
-evaluation cohorts. A verdict is unscored unless its correctness replay and every successful
-curve slot carry the same declared metric; legacy verdicts without correctness_timing or a
-cohort id are not silently compared with current verdicts.
+evaluation cohorts. A verdict is unscored unless it explicitly carries the current protocol,
+measurement contract, both replay boundaries, and one consistent metric. Legacy whole-process
+verdicts are never silently compared with scoped-replay verdicts, even if they reuse a cohort id.
 
 Stdlib only.  See rules/evaluation.md for the binding scoring contract.
 """
@@ -27,6 +28,26 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESULTS = os.path.join(ROOT, "results")
+with open(os.path.join(ROOT, "pipeline", "config.json")) as _config_file:
+    _TIMING_POLICY = json.load(_config_file)["timing"]
+
+REMOTE_PROTOCOL = _TIMING_POLICY["remote_protocol"]
+LOCAL_PROTOCOL = "local-v2"
+MEASUREMENT_CONTRACT = _TIMING_POLICY["measurement_contract"]
+CORRECTNESS_BOUNDARY = _TIMING_POLICY["correctness_boundary"]
+PERFORMANCE_BOUNDARY = _TIMING_POLICY["performance_boundary"]
+TARGET_PROOF_ENCODING = _TIMING_POLICY["target_proof_encoding"]
+CURRENT_MEASUREMENT_RECORD = {
+    "id": MEASUREMENT_CONTRACT,
+    "correctness_boundary": CORRECTNESS_BOUNDARY,
+    "performance_boundary": PERFORMANCE_BOUNDARY,
+    "target_proof_encoding": TARGET_PROOF_ENCODING,
+    "wall_clock_source": "timer-internal-monotonic-ns",
+    "perf_counter_control": "perf-delay-minus-one+timer-prctl",
+    "local_protocol": LOCAL_PROTOCOL,
+    "remote_protocol": REMOTE_PROTOCOL,
+    "timeout_scope": "whole-timer-process-including-untimed-preparation",
+}
 
 METRICS = {
     "perf_instructions": {
@@ -88,12 +109,64 @@ def _fit(points):
     return alpha, beta
 
 
+def _measurement_contract_error(verdict):
+    """Return why a verdict is not a current scoped-replay measurement, or None.
+
+    This is intentionally exact and fail-closed. Merely sharing an evaluation-cohort id with
+    current results cannot make a legacy whole-process verdict scoreable.
+    """
+    cohort = verdict.get("evaluation_cohort")
+    if not (isinstance(cohort, dict)
+            and isinstance(cohort.get("id"), str) and cohort["id"]
+            and isinstance(cohort.get("round"), str) and cohort["round"]):
+        return "missing/invalid evaluation_cohort"
+    executor = cohort.get("executor") if isinstance(cohort, dict) else None
+    if not (isinstance(executor, dict)
+            and isinstance(executor.get("executor"), str)
+            and executor["executor"]):
+        return "missing/invalid evaluation cohort executor"
+
+    expected_protocol = (
+        LOCAL_PROTOCOL if executor["executor"] == "local" else REMOTE_PROTOCOL
+    )
+    protocol = verdict.get("timing_protocol")
+    if protocol != expected_protocol:
+        return (
+            f"missing/mismatched timing protocol "
+            f"(expected {expected_protocol}, got {protocol!r})"
+        )
+
+    if verdict.get("measurement_contract") != CURRENT_MEASUREMENT_RECORD:
+        return f"missing/mismatched measurement contract {MEASUREMENT_CONTRACT}"
+
+    correctness = verdict.get("correctness_timing")
+    if not isinstance(correctness, dict):
+        return "legacy verdict: missing correctness_timing"
+    if correctness.get("measurement_contract") != MEASUREMENT_CONTRACT:
+        return "missing/mismatched correctness measurement contract"
+    if correctness.get("measurement_boundary") != CORRECTNESS_BOUNDARY:
+        return "missing/mismatched correctness measurement boundary"
+    if "measurement_target" not in correctness or correctness["measurement_target"] is not None:
+        return "correctness measurement target must be null"
+
+    timing = verdict.get("timing")
+    if not isinstance(timing, dict):
+        return "missing timing record"
+    if timing.get("measurement_contract") != MEASUREMENT_CONTRACT:
+        return "missing/mismatched performance measurement contract"
+    if timing.get("measurement_boundary") != PERFORMANCE_BOUNDARY:
+        return "missing/mismatched performance measurement boundary"
+    return None
+
+
 def _base_row(verdict, metric, reason):
     return {
         "sub": verdict.get("submission", "<?>"),
         "metric": metric,
         "cohort": None,
         "round": None,
+        "timing_protocol": verdict.get("timing_protocol"),
+        "measurement_contract": None,
         "scoreable": False,
         "reason": reason,
         "planned_slots": 0,
@@ -125,6 +198,11 @@ def _score_row(verdict, metric):
         return row
     row["cohort"] = cohort["id"]
     row["round"] = cohort["round"]
+    contract_error = _measurement_contract_error(verdict)
+    if contract_error is not None:
+        row["reason"] = contract_error
+        return row
+    row["measurement_contract"] = MEASUREMENT_CONTRACT
     if metric not in METRICS or verdict.get("metric") != metric:
         row["reason"] = "metric group mismatch"
         return row
@@ -134,10 +212,7 @@ def _score_row(verdict, metric):
         row["reason"] = "timing.metric does not match verdict metric"
         return row
 
-    correctness = verdict.get("correctness_timing")
-    if not isinstance(correctness, dict):
-        row["reason"] = "legacy verdict: missing correctness_timing"
-        return row
+    correctness = verdict["correctness_timing"]
     if correctness.get("result") != "ok" or correctness.get("metric") != metric:
         row["reason"] = "correctness replay did not complete in the declared metric"
         return row
@@ -182,7 +257,22 @@ def _score_row(verdict, metric):
         if sample.get("n") != planned_n:
             row["reason"] = f"slot {slot} input does not match perf_inputs"
             return row
-        if sample.get("result") == "ok":
+        sample_result = sample.get("result")
+        if sample_result in ("ok", "timeout"):
+            if sample.get("measurement_contract") != MEASUREMENT_CONTRACT:
+                row["reason"] = (
+                    f"measured slot {slot} has a mismatched measurement contract")
+                return row
+            if sample.get("measurement_boundary") != PERFORMANCE_BOUNDARY:
+                row["reason"] = (
+                    f"measured slot {slot} has a mismatched measurement boundary")
+                return row
+            if not (isinstance(sample.get("measurement_target"), str)
+                    and sample["measurement_target"]):
+                row["reason"] = (
+                    f"measured slot {slot} lacks a measurement target")
+                return row
+        if sample_result == "ok":
             value = sample.get(cost_field)
             if not _is_cost(value):
                 row["reason"] = f"successful slot {slot} lacks a positive {cost_field}"
@@ -256,10 +346,11 @@ def main():
         "# Lean Kernel Challenge — canonical scoring",
         "",
         "Official order: completed slots, then coverage, then harder-slot success profile, "
-        "then lower total measured kernel work (one correctness "
-        "replay median plus the completed-slot medians). "
-        "α and β are diagnostics only. Instruction, wall-time, and evaluation cohorts are "
-        "never mixed. "
+        "then lower total measured kernel work (one full correctness-closure replay median "
+        "plus the completed target-declaration medians). "
+        f"Only {REMOTE_PROTOCOL}/{LOCAL_PROTOCOL} verdicts under {MEASUREMENT_CONTRACT} "
+        "and its exact replay boundaries are scoreable. α and β are diagnostics only. "
+        "Instruction, wall-time, and evaluation cohorts are never mixed. "
         "See `rules/evaluation.md`.",
         "",
     ]
