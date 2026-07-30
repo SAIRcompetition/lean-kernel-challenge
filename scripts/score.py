@@ -327,7 +327,11 @@ def _groups(verdicts):
         if verdict.get("status") != "accepted" or metric not in METRICS:
             continue
         cohort = verdict.get("evaluation_cohort")
-        cohort_id = cohort.get("id") if isinstance(cohort, dict) else "<missing>"
+        cohort_id = cohort.get("id") if isinstance(cohort, dict) else None
+        # Coerce to a single type: a dict missing/null "id" would otherwise yield None, which
+        # cannot be sorted alongside the "<missing>" string produced for non-dict cohorts.
+        if not isinstance(cohort_id, str):
+            cohort_id = "<missing>"
         groups.setdefault((verdict["problem"], metric, cohort_id), []).append(verdict)
     return groups
 

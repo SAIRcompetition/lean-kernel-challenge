@@ -95,6 +95,15 @@ def run_case(case, reps):
                     "judge emitted a score rejected by canonical scorer: "
                     + str(score_view["reason"])
                 )
+            # len(scaling) == len(inputs) above only checks that every planned slot has a ROW
+            # (timeout rows count too); a scored case could still collapse to one success (only
+            # the smallest input, everything larger timing out) and pass. Require more than one
+            # SUCCESSFUL slot once ≥3 are planned (per-case "min_slots" may raise the bar).
+            ok = sum(1 for row in scaling if row.get("result") == "ok")
+            need = min(len(inputs), case.get("min_slots", 2 if len(inputs) >= 3 else 1))
+            if ok < need:
+                return fail(f"only {ok}/{len(inputs)} slots completed; a scored case expects "
+                            f">= {need} successful slots")
     # The temporary judge tag must not leak into the durable result/leaderboard identity.
     v["submission"] = canonical_tag
     verdict_file.write_text(json.dumps(v, indent=2))

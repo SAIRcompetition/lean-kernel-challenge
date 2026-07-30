@@ -1503,22 +1503,26 @@ def leaderboard():
         lines.append("")
         prows = [r for r in rows if r["problem"] == problem]
         accepted = [r for r in prows if r["status"] == "accepted"]
+
+        # Coerce to a single sortable type: `.get(k, default)` only fills a MISSING key, so an
+        # explicit "metric": null / cohort id null would leak None into a set that is later
+        # sorted() alongside strings, raising TypeError. Force every key to a str.
+        def _metric_key(r):
+            m = r.get("metric")
+            return m if isinstance(m, str) else "wall_time"
+
+        def _cohort_key(r):
+            c = r.get("evaluation_cohort")
+            cid = c.get("id") if isinstance(c, dict) else None
+            return cid if isinstance(cid, str) else "<missing>"
+
         # Rank within each metric separately — never mix seconds and instruction counts.
-        metrics = sorted({r.get("metric", "wall_time") for r in accepted})
+        metrics = sorted({_metric_key(r) for r in accepted})
         for metric in metrics:
-            metric_rows = [r for r in accepted if r.get("metric", "wall_time") == metric]
-            cohort_ids = sorted({
-                (r.get("evaluation_cohort") or {}).get("id", "<missing>")
-                if isinstance(r.get("evaluation_cohort"), dict) else "<missing>"
-                for r in metric_rows
-            })
+            metric_rows = [r for r in accepted if _metric_key(r) == metric]
+            cohort_ids = sorted({_cohort_key(r) for r in metric_rows})
             for cohort_id in cohort_ids:
-                grp = [
-                    r for r in metric_rows
-                    if ((r.get("evaluation_cohort") or {}).get("id", "<missing>")
-                        if isinstance(r.get("evaluation_cohort"), dict) else "<missing>")
-                    == cohort_id
-                ]
+                grp = [r for r in metric_rows if _cohort_key(r) == cohort_id]
                 scorer = _canonical_scorer()
                 ranked = []
                 unscored = []
