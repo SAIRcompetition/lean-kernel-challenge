@@ -40,6 +40,7 @@ import re
 import resource
 import shutil
 import signal
+import stat
 import statistics
 import subprocess
 import sys
@@ -404,6 +405,17 @@ def last_line(out):
     return lines[-1] if lines else "(no output)"
 
 
+def _died_by_signal(rc):
+    """True if a trusted tool was killed by a signal rather than exiting on its own verdict.
+
+    A SIGSEGV in the comparator or an OOM SIGKILL is an INFRASTRUCTURE fault; blaming it on the
+    contestant ("your proof is invalid") would put a false rejection on the leaderboard. Python
+    reports a raw negative code, while `lake env` launders it into the shell's 128+N convention."""
+    if not isinstance(rc, int):
+        return False
+    return rc < 0 or 128 < rc <= 192
+
+
 def _resolve_lean_runtime(work, env):
     """Resolve the pinned Lean binary/sysroot before any contestant elaboration runs."""
     rc, out = run(["lake", "env", "lean", "--print-prefix"], work, env, AUDIT_TIMEOUT)
@@ -479,6 +491,46 @@ def thaw(path):
     _chmod_tree(path, 0o755, 0o644)
 
 
+def _preflight_payload(sd: Path):
+    """Validate the contestant's SOURCE payload before a single byte is copied.
+
+    Two reasons this runs on the source rather than (only) the assembled tree:
+      * a special file (FIFO/socket/device) makes `shutil.copytree` raise a bare `shutil.Error`
+        that escapes as an infra `error` + exit 2, so the caller requeues a submission that can
+        never succeed. It is the contestant's payload → SubmissionError → `rejected`.
+      * the size/count caps otherwise apply only AFTER the whole tree is on disk, so the copy cost
+        is proportional to whatever was supplied instead of to the configured cap.
+    """
+    total = count = 0
+    stack = [sd / "Submission.lean"]
+    sub = sd / "Submission"
+    if sub.exists() or sub.is_symlink():
+        stack.append(sub)
+    while stack:
+        p = stack.pop()
+        try:
+            if p.is_symlink():                    # audited later on the assembled tree
+                continue
+            if not p.exists():
+                continue
+            st = p.stat()
+            if p.is_dir():
+                stack.extend(p.iterdir())
+                continue
+            if not stat.S_ISREG(st.st_mode):
+                raise SubmissionError(
+                    f"submission: only regular files are allowed ({p.name} is a special file)")
+            count += 1
+            total += st.st_size
+            if count > MAX_SUBMISSION_FILES:
+                raise SubmissionError(f"submission: too many files (> {MAX_SUBMISSION_FILES})")
+            if total > MAX_SUBMISSION_BYTES:
+                raise SubmissionError(
+                    f"submission: payload too large (> {MAX_SUBMISSION_BYTES} bytes)")
+        except OSError as e:
+            raise SubmissionError(f"submission: unreadable payload entry ({e})")
+
+
 def assemble(job_dir: Path, problem, submission_dir):
     prob_dir = PROBLEMS / problem
     if not (prob_dir / "config.json").exists():
@@ -487,16 +539,26 @@ def assemble(job_dir: Path, problem, submission_dir):
     if (sd / "Submission.lean").is_symlink() or not (sd / "Submission.lean").is_file():
         raise SubmissionError(f"submission '{submission_dir}' has no regular Submission.lean")
 
+    # Pre-flight the SOURCE payload before writing anything: reject special files (FIFO/socket/
+    # device — a bare shutil.Error would otherwise escape as an infra `error`, i.e. exit 2, and the
+    # caller would requeue a submission that can never succeed) and stop at the caps instead of
+    # copying an arbitrarily large tree first and only then rejecting it.
+    _preflight_payload(sd)
+
     work = job_dir / "workspace"
     # Copy the locked template (preserve any symlink AS a symlink; there are none, but
     # never silently follow one).
     shutil.copytree(prob_dir, work, symlinks=True,
                     ignore=shutil.ignore_patterns(".lake", "lake-manifest.json"))
     # Overlay contestant files, preserving symlinks as symlinks (do NOT follow them).
-    shutil.copy(sd / "Submission.lean", work / "Submission.lean", follow_symlinks=False)
-    if (sd / "Submission").exists():
-        shutil.rmtree(work / "Submission", ignore_errors=True)
-        shutil.copytree(sd / "Submission", work / "Submission", symlinks=True)
+    try:
+        shutil.copy(sd / "Submission.lean", work / "Submission.lean", follow_symlinks=False)
+        if (sd / "Submission").exists():
+            shutil.rmtree(work / "Submission", ignore_errors=True)
+            shutil.copytree(sd / "Submission", work / "Submission", symlinks=True)
+    except (shutil.Error, OSError) as e:
+        # Contestant's payload is at fault → rejected (exit 0), never an infra retry loop.
+        raise SubmissionError(f"submission: unreadable or special file in payload ({e})")
     # Re-audit the ASSEMBLED contestant files (closes validate→copy TOCTOU).
     roots = [work / "Submission.lean"]
     if (work / "Submission").exists():
@@ -1179,6 +1241,10 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if rc == "timeout":
         result["status"], result["reason"] = "rejected", f"comparator timed out (> {COMPARATOR_TIMEOUT}s)"
         return finish()
+    if _died_by_signal(rc):
+        result["status"], result["reason"] = "error", \
+            f"comparator killed by signal (exit {rc}) — infrastructure fault, not a proof failure"
+        return finish()
     if rc != 0:
         result["status"], result["reason"] = "rejected", f"comparator: {last_line(out)}"
         return finish()
@@ -1217,6 +1283,10 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         return finish()
     if rc == "timeout":
         result["status"], result["reason"] = "error", "axiom re-audit timed out"
+        return finish()
+    if _died_by_signal(rc):
+        result["status"], result["reason"] = "error", \
+            f"axiom auditor killed by signal (exit {rc}) — infrastructure fault, not a rule violation"
         return finish()
     if rc != 0:
         result["status"], result["reason"] = "rejected", f"axiom audit: {last_line(out)}"
@@ -1588,6 +1658,19 @@ def main():
 
     problem, tag, sub_name = args.problem, args.tag, (args.tag or Path(args.submission).name)
     job_dir = None
+
+    # An external kill (CI timeout, k8s eviction, operator SIGTERM) must not break the "always a
+    # verdict" contract nor leak the job workspace: turn the signal into an exception so the
+    # existing handler writes a `retry` verdict and `finally` thaws + removes the job dir.
+    def _on_signal(signum, _frame):
+        raise TimingRetry(f"judge terminated by signal {signum} before completing")
+
+    for _sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        try:
+            signal.signal(_sig, _on_signal)
+        except (ValueError, OSError):
+            pass
+
     try:
         _consume_perf_seed_stdin()
         if not valid_slug(problem):
