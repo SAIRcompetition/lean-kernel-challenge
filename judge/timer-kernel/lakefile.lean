@@ -16,7 +16,8 @@ require Lean4Checker from git
 target timerControlO pkg : FilePath := do
   let objectFile := pkg.buildDir / "c" / "timer_control.o"
   let sourceJob ← inputTextFile <| pkg.dir / "timer_control.c"
-  buildLeanO objectFile sourceJob
+  let lean ← getLeanInstall
+  buildO objectFile sourceJob #["-I", lean.includeDir.toString]
 
 extern_lib leanKernelTimerControl pkg := do
   let objectFile ← timerControlO.fetch
