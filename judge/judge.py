@@ -327,21 +327,38 @@ def _write_infra_verdict(problem, sub_name, reason, status="error"):
 def _network_is_reachable():
     """Probe whether outbound networking works, as evidence the container envelope was applied.
 
-    Under `--network none` a connect() fails immediately with ENETUNREACH/EHOSTUNREACH, so this is
-    a fast, dependency-free check that the sandbox is REAL rather than merely configured. Any
-    successful connection (or a timeout, which implies a routable-but-filtered network) counts as
-    reachable and must fail the job."""
+    FAIL CLOSED: only an explicit "no route" errno counts as evidence of isolation. Treating any
+    OSError as isolated would accept ECONNREFUSED — which proves the opposite, since a refusal
+    means the packet reached a host. Both IPv4 and IPv6 are probed: a v6-only egress would
+    otherwise pass a v4-only check. A connect timeout also counts as reachable (routable but
+    filtered), as does any error we cannot positively attribute to an unreachable network."""
+    import errno
     import socket
-    for addr in (("192.0.2.1", 80), ("8.8.8.8", 53)):        # TEST-NET-1, then a public resolver
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    unreachable = {errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ENETDOWN, errno.EAFNOSUPPORT}
+    targets = [
+        (socket.AF_INET, ("192.0.2.1", 80)),         # TEST-NET-1 (RFC 5737)
+        (socket.AF_INET, ("8.8.8.8", 53)),           # public resolver
+        (socket.AF_INET6, ("2001:db8::1", 80)),      # documentation prefix (RFC 3849)
+        (socket.AF_INET6, ("2001:4860:4860::8888", 53)),
+    ]
+    for family, addr in targets:
+        try:
+            s = socket.socket(family, socket.SOCK_STREAM)
+        except OSError as e:
+            if e.errno in unreachable:
+                continue                              # family unavailable → consistent with isolation
+            return True
         s.settimeout(1.0)
         try:
             s.connect(addr)
-            return True                                       # connected → not isolated
+            return True                               # connected → not isolated
         except (socket.timeout, TimeoutError):
-            return True                                       # routable but filtered → not isolated
-        except OSError:
-            continue                                          # unreachable → consistent with isolation
+            return True                               # routable but filtered → not isolated
+        except OSError as e:
+            if e.errno in unreachable:
+                continue                              # genuinely no route → consistent with isolation
+            return True                               # e.g. ECONNREFUSED: something answered
         finally:
             s.close()
     return False
@@ -1152,7 +1169,9 @@ def _collect_perf_slots(inputs, probe, deadline=None):
             for later_slot, later_n in enumerate(inputs[slot:], start=slot):
                 scaling.append({"slot": later_slot, "n": later_n, "result": "budget-exhausted"})
             return scaling, None
-        row, error = probe(n)
+        # Pass the deadline down: capping only BETWEEN slots lets one slot chain several
+        # per-step timeouts and overshoot the whole-phase budget.
+        row, error = probe(n, deadline) if deadline is not None else probe(n)
         if row is not None:
             row = {"slot": slot, **row}
             scaling.append(row)
@@ -1356,7 +1375,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         result["status"], result["reason"] = "rejected", f"axiom audit: {last_line(out)}"
         return finish()
 
-    def time_export(export_path, target=None):
+    def time_export(export_path, target=None, budget_s=None):
         """Replay one export through the authoritative full or target-only boundary."""
         if TIMING_METRIC == "perf_instructions" and TIMING_EXECUTOR_URLS:
             remote = _time_remote(export_path, reps, target)      # may raise TimingRetry
@@ -1384,7 +1403,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         samples = []
         for i in range(reps):
             trc, tout, sample = _time_replay(
-                export_path, work, env, TIMING_TIMEOUT, target=target)
+                export_path, work, env, budget_s or TIMING_TIMEOUT, target=target)
             if trc == "timeout":
                 return "timeout", sample
             if trc != 0:
@@ -1443,11 +1462,19 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     # A timeout occupies only its own configured slot. We still probe every later slot because a
     # valid implementation's reduction cost need not be monotone in n. Deterministic failures
     # remain fatal and can never be misread as a slow-but-valid point.
-    def probe_point(n):
+    def probe_point(n, deadline=None):
+        # Every sub-step is capped by the REMAINING global budget, not just its own timeout:
+        # a single slot chains value-eval + build + export + audit + timing, so per-step limits
+        # alone let one slot overshoot the whole-phase budget by thousands of seconds.
+        def budget(step_timeout):
+            if deadline is None:
+                return step_timeout
+            return max(1, min(step_timeout, int(deadline - time.monotonic())))
+
         if not _artifacts_match(artifact_lib, verified_artifacts):
             return {"n": n, "result": "identity-error"}, \
                 f"comparator-verified build artifacts changed before n={n}"
-        vkind, v = _eval_impl_value(work, verified_env, n, TIMING_TIMEOUT, lean_bin)
+        vkind, v = _eval_impl_value(work, verified_env, n, budget(TIMING_TIMEOUT), lean_bin)
         if not _artifacts_match(artifact_lib, verified_artifacts):
             return {"n": n, "result": "identity-error"}, \
                 f"comparator-verified build artifacts changed during value evaluation at n={n}"
@@ -1463,7 +1490,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                 f"submission changed after correctness verification (at n={n})"
         perf_export = job_dir / f"perf_{n}.export.ndjson"
         pkind, err, perf_target = _perf_export(
-            work, verified_env, n, v, perf_export, TIMING_TIMEOUT, artifact_lib, lean_bin)
+            work, verified_env, n, v, perf_export, budget(TIMING_TIMEOUT), artifact_lib, lean_bin)
         if not _artifacts_match(artifact_lib, verified_artifacts):
             return {"n": n, "result": "identity-error"}, \
                 f"comparator-verified build artifacts changed during perf build at n={n}"
@@ -1480,7 +1507,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         # timing process provably run identical bytes — not different ones swapped in between.
         perf_bytes = _pin_export_bytes(perf_export)
         arc, aout = run([str(TIMER), "--check-axioms", ",".join(axioms), str(perf_export)],
-                        work, env, AUDIT_TIMEOUT)
+                        work, env, budget(AUDIT_TIMEOUT))
         if not _export_matches(perf_export, perf_bytes):
             return {"n": n, "result": "identity-error"}, \
                 f"perf export changed during axiom audit (at n={n})"
@@ -1492,7 +1519,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         if arc != 0:
             return {"n": n, "result": "axiom-audit-error"}, \
                 f"perf export axiom audit failed at n={n}: {last_line(aout)}"
-        status, payload = time_export(perf_export, target=perf_target)
+        status, payload = time_export(perf_export, target=perf_target,
+                                      budget_s=budget(TIMING_TIMEOUT))
         if not _export_matches(perf_export, perf_bytes):
             return {"n": n, "result": "identity-error"}, \
                 f"perf export changed during timing (at n={n})"
@@ -1727,7 +1755,15 @@ def main():
     # An external kill (CI timeout, k8s eviction, operator SIGTERM) must not break the "always a
     # verdict" contract nor leak the job workspace: turn the signal into an exception so the
     # existing handler writes a `retry` verdict and `finally` thaws + removes the job dir.
+    # `cleaning[0]` is set once we reach the finally block. A signal arriving during cleanup must
+    # NOT raise: the exception would escape every `except` (they are already unwinding), producing
+    # exit 1 + a traceback, no verdict, and a leaked workspace. During cleanup we only record the
+    # signal; the single verdict for this run has already been written by then.
+    cleaning = [False]
+
     def _on_signal(signum, _frame):
+        if cleaning[0]:
+            return
         raise TimingRetry(f"judge terminated by signal {signum} before completing")
 
     for _sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -1775,9 +1811,16 @@ def main():
         print(f"💥 unexpected infra error: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(2)
     finally:
+        # From here on a signal must not raise (see _on_signal): cleanup has to complete so the
+        # workspace is never leaked, and the verdict for this run is already written.
+        cleaning[0] = True
         if job_dir is not None and job_dir.exists() and not args.keep_workspace:
-            thaw(job_dir)                     # workspace was frozen read-only
-            shutil.rmtree(job_dir, ignore_errors=True)
+            try:
+                thaw(job_dir)                 # workspace was frozen read-only
+                shutil.rmtree(job_dir, ignore_errors=True)
+            except Exception:
+                # Never let cleanup trouble replace the verdict/exit code already decided above.
+                pass
 
 
 if __name__ == "__main__":

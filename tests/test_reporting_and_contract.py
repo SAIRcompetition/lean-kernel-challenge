@@ -174,5 +174,75 @@ class PerfPhaseBudget(unittest.TestCase):
         self.assertEqual([r["result"] for r in scaling], ["ok", "ok"])
 
 
+
+class BudgetThreadedIntoSubSteps(unittest.TestCase):
+    """The whole-phase deadline must bound EVERY sub-step, not just the gaps between slots."""
+
+    def test_probe_receives_deadline(self):
+        seen = {}
+
+        def probe(n, deadline=None):
+            seen["deadline"] = deadline
+            return {"n": n, "result": "ok"}, None
+
+        target = 12345.0
+        JUDGE._collect_perf_slots([1], probe, deadline=target)
+        self.assertEqual(seen["deadline"], target,
+                         "the deadline must reach probe() so sub-steps can be capped")
+
+    def test_probe_without_deadline_is_called_unchanged(self):
+        calls = []
+        JUDGE._collect_perf_slots([1], lambda n: (calls.append(n), ({"n": n, "result": "ok"}, None))[1])
+        self.assertEqual(calls, [1])
+
+
+class NetworkProbeFailsClosed(unittest.TestCase):
+    """Only an explicit no-route errno is evidence of isolation; anything else is reachable."""
+
+    def _probe_with(self, exc_or_ok):
+        import socket as real_socket
+
+        class FakeSock:
+            def __init__(self, *a, **k):
+                pass
+
+            def settimeout(self, _):
+                pass
+
+            def connect(self, _addr):
+                if exc_or_ok is None:
+                    return
+                raise exc_or_ok
+
+            def close(self):
+                pass
+
+        orig = real_socket.socket
+        real_socket.socket = FakeSock
+        try:
+            return JUDGE._network_is_reachable()
+        finally:
+            real_socket.socket = orig
+
+    def test_connection_refused_counts_as_reachable(self):
+        import errno
+        # Something answered -> the network is NOT isolated.
+        self.assertTrue(self._probe_with(OSError(errno.ECONNREFUSED, "refused")))
+
+    def test_timeout_counts_as_reachable(self):
+        self.assertTrue(self._probe_with(TimeoutError()))
+
+    def test_successful_connect_counts_as_reachable(self):
+        self.assertTrue(self._probe_with(None))
+
+    def test_no_route_counts_as_isolated(self):
+        import errno
+        self.assertFalse(self._probe_with(OSError(errno.ENETUNREACH, "unreachable")))
+
+    def test_permission_denied_is_not_evidence_of_isolation(self):
+        import errno
+        self.assertTrue(self._probe_with(OSError(errno.EACCES, "denied")))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

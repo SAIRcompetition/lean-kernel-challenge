@@ -36,17 +36,32 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build evaluation image
         run: docker build -t lean-kernel-judge .
-      - name: Network must be unreachable
+      - name: Network must be unreachable (IPv4 and IPv6, fail-closed)
         run: |
-          # Any successful outbound connection means --network none was not applied.
+          # Reuse the judge's own probe so CI and the judge cannot drift, and so this test
+          # inherits its fail-closed semantics: only an explicit no-route errno counts as
+          # isolation; ECONNREFUSED (something answered) or a timeout counts as reachable.
           docker run --rm --network none --user judge lean-kernel-judge \
             python3 -c "
-          import socket, sys
-          s = socket.socket(); s.settimeout(3)
-          try:
-              s.connect(('8.8.8.8', 53)); print('FAIL: network reachable'); sys.exit(1)
-          except OSError:
-              print('ok: network unreachable')
+          import sys
+          sys.path.insert(0, 'judge')
+          import judge
+          if judge._network_is_reachable():
+              print('FAIL: network reachable under --network none'); sys.exit(1)
+          print('ok: network unreachable (v4+v6)')
+          "
+
+      - name: Control — the same probe reports reachable WITHOUT --network none
+        run: |
+          # If the probe always returned False the test above would pass vacuously.
+          docker run --rm --user judge lean-kernel-judge \
+            python3 -c "
+          import sys
+          sys.path.insert(0, 'judge')
+          import judge
+          if not judge._network_is_reachable():
+              print('FAIL: probe reports isolated on a networked container'); sys.exit(1)
+          print('ok: probe detects a working network')
           "
       - name: PID limit must be enforced (fork bomb is contained)
         run: |
@@ -64,11 +79,33 @@ jobs:
           "
       - name: Judge refuses an official run without the wrapper attestation
         run: |
-          # SANDBOX_MODE=container is baked into the image; without ISOLATION_ATTESTATION an
-          # official run must be refused rather than silently judged unisolated.
-          if docker run --rm --network none --user judge -e OFFICIAL_EVAL=1 lean-kernel-judge \
-               python3 judge/judge.py run --problem fib \
-               --submission examples/submissions/fib/baseline --tag ci-attest --reps 1; then
+          # Supply EVERY other official precondition (seed on stdin, cohort) so the run can only
+          # fail on the missing attestation — otherwise this test passes for the wrong reason and
+          # would keep passing even if the attestation check were deleted.
+          set +e
+          out=$(printf 'ci-secret-seed\n' | docker run --rm --interactive --network none \
+                  --user judge -e OFFICIAL_EVAL=1 -e PERF_SEED_STDIN=1 \
+                  -e EVALUATION_COHORT=ci-cohort lean-kernel-judge \
+                  python3 judge/judge.py run --problem fib \
+                  --submission examples/submissions/fib/baseline --tag ci-attest --reps 1 2>&1)
+          status=$?
+          set -e
+          echo "$out"
+          if [ "$status" -eq 0 ]; then
             echo "FAIL: official run accepted without attestation"; exit 1
           fi
-          echo "ok: refused without attestation"
+          # Assert the SPECIFIC reason, not merely that it failed.
+          echo "$out" | grep -q "ISOLATION_ATTESTATION" || {
+            echo "FAIL: refused for an unrelated reason, not the missing attestation"; exit 1; }
+          echo "ok: refused specifically for the missing attestation"
+
+      - name: Sanity — the same run succeeds once the wrapper attestation is present
+        run: |
+          # Guards against the attestation check being trivially unsatisfiable (which would make
+          # the negative test above pass vacuously).
+          printf 'ci-secret-seed\n' | docker run --rm --interactive --network none \
+            --user judge -e OFFICIAL_EVAL=1 -e PERF_SEED_STDIN=1 \
+            -e EVALUATION_COHORT=ci-cohort -e ISOLATION_ATTESTATION=run_isolated.sh \
+            lean-kernel-judge python3 judge/judge.py run --problem fib \
+            --submission examples/submissions/fib/baseline --tag ci-attest-ok --reps 1
+          echo "ok: accepted with attestation"
