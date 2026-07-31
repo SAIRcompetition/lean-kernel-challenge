@@ -118,7 +118,14 @@ def main():
     ap.add_argument("--quick", action="store_true", help="use 1 timing rep for accepted cases")
     ap.add_argument("--only", help="run only cases whose problem contains this substring")
     ap.add_argument("--count", type=int, help="override PERF_COUNT (sample points per problem)")
+    ap.add_argument("--timeout", type=int,
+                    help="override the per-step timing budget in seconds (dev gate speed). Use this "
+                         "instead of editing pipeline/config.json, which risks committing a tiny "
+                         "debug budget into the official configuration.")
     args = ap.parse_args()
+
+    if args.timeout is not None:
+        os.environ["TIMING_TIMEOUT_SECONDS"] = str(args.timeout)
 
     # The gate checks verdicts + that the perf phase produced a score; it does not need the full
     # official 10-point curve. Default --quick to a few points for speed (official run: no override).

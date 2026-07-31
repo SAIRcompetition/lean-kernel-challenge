@@ -60,7 +60,18 @@ _CFG = json.loads((ROOT / "pipeline" / "config.json").read_text())
 _J = _CFG["judge"]
 COMPARATOR_TIMEOUT = _J["comparator_timeout_seconds"]
 AUDIT_TIMEOUT = _J["audit_timeout_seconds"]
-TIMING_TIMEOUT = _J["timing_timeout_seconds"]
+def _int_env(name, default):
+    """Positive-integer env override, ignoring junk (dev knobs must never break a real run)."""
+    try:
+        v = int(os.environ.get(name, ""))
+        return v if v > 0 else default
+    except (TypeError, ValueError):
+        return default
+
+
+# Dev override so the green gate can shrink the budget WITHOUT editing pipeline/config.json —
+# hand-editing it risks committing a tiny debug budget into the official configuration.
+TIMING_TIMEOUT = _int_env("TIMING_TIMEOUT_SECONDS", _J["timing_timeout_seconds"])
 # Whole-performance-phase ceiling. Per-step timeouts do not bound a submission's total: with every
 # slot probed and each failure able to burn the full timing budget, one job could hold a judge for
 # hours. On exhaustion the remaining slots are marked and a normal verdict is still emitted.
