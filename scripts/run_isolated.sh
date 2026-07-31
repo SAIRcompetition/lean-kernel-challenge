@@ -51,7 +51,8 @@ need_value() {
 }
 
 valid_slug() {
-  [[ "$1" =~ ^[A-Za-z0-9_.-]+$ && "$1" != "." && "$1" != ".." ]]
+  # Leading dash excluded so a slug can never be mistaken for an option in argv.
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ && "$1" != "." && "$1" != ".." ]]
 }
 
 canonical_dir() {
@@ -187,6 +188,25 @@ fi
   die "invalid positive --cpus value: $CPUS"
 [[ "$PIDS_LIMIT" =~ ^[1-9][0-9]*$ ]] ||
   die "invalid positive --pids-limit value: $PIDS_LIMIT"
+# Ceilings, not just positivity: these are also settable via JUDGE_* env, so a typo (or a copied
+# command line) could otherwise hand a submission an effectively unbounded envelope.
+(( PIDS_LIMIT <= 4096 )) || die "--pids-limit above the 4096 ceiling: $PIDS_LIMIT"
+awk -v c="$CPUS" 'BEGIN { exit !(c+0 <= 64) }' ||
+  die "--cpus above the 64 ceiling: $CPUS"
+awk -v m="$MEMORY" 'BEGIN {
+  u = toupper(substr(m, length(m)));            # last char: unit or digit
+  if (u ~ /[0-9]/) { bytes = m + 0 }            # bare bytes
+  else {
+    n = m + 0;                                  # awk stops at the first non-numeric char
+    if (u == "B") { p = toupper(substr(m, length(m) - 1, 1)); if (p ~ /[0-9]/) u = "B"; else u = p }
+    if (u == "B") bytes = n;
+    else if (u == "K") bytes = n * 1024;
+    else if (u == "M") bytes = n * 1024 * 1024;
+    else if (u == "G") bytes = n * 1024 * 1024 * 1024;
+    else bytes = n * 1024 * 1024 * 1024 * 1024; # T/P — above the ceiling regardless
+  }
+  exit !(bytes <= 64 * 1024 * 1024 * 1024)      # 64 GiB ceiling
+}' || die "--memory above the 64g ceiling: $MEMORY"
 if [[ -n "$REPS" ]]; then
   [[ "$REPS" =~ ^[1-9][0-9]*$ ]] || die "invalid positive --reps value: $REPS"
 fi
@@ -208,9 +228,17 @@ DOCKER_ARGS=(
   --cpus "$CPUS"
   --pids-limit "$PIDS_LIMIT"
   --security-opt no-new-privileges:true
+  # Drop every Linux capability; --cap-add PERFMON below re-adds only the one perf needs.
+  # (A --read-only root is deliberately NOT used: lake must write .lake build output and the
+  # judge creates its workspace under results/work, so immutability of the tools/templates is
+  # enforced by ownership + the read-only submission mount instead.)
+  --cap-drop ALL
   --user judge
   --env OFFICIAL_EVAL
   --env EVALUATION_COHORT
+  # Evidence that the full isolation envelope above was applied. The judge refuses an official
+  # run without it, so a bare `docker run IMAGE judge.py ...` cannot masquerade as one.
+  --env ISOLATION_ATTESTATION=run_isolated.sh
   --env TIMING_METRIC=perf_instructions
   --env SANDBOX_MODE=container
   --mount "type=bind,src=$SUBMISSION,dst=/submission,readonly"
@@ -250,6 +278,10 @@ VERDICT="$RESULTS_DIR/$PROBLEM/$VERDICT_NAME.json"
 if [[ -f "$VERDICT" ]]; then
   echo "verdict preserved at: $VERDICT"
 else
-  echo "WARNING: container exited $STATUS without writing the expected verdict: $VERDICT" >&2
+  # No verdict means nothing was judged, so never report success: a caller written as
+  # `if run_isolated.sh; then mark_judged; fi` would otherwise record "nothing happened" as a
+  # completed judgement (e.g. DOCKER_BIN pointing at something that is not Docker and exits 0).
+  echo "ERROR: container exited $STATUS without writing the expected verdict: $VERDICT" >&2
+  [[ "$STATUS" -ne 0 ]] || STATUS=1
 fi
 exit "$STATUS"

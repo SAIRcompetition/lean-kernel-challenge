@@ -3,6 +3,7 @@ name: Isolation wrapper
 on:
   pull_request:
   push:
+  workflow_dispatch:      # for the real-container job below
 
 permissions:
   contents: read
@@ -16,3 +17,58 @@ jobs:
         run: bash -n scripts/run_isolated.sh
       - name: Required Docker isolation envelope
         run: python3 tests/test_run_isolated.py
+      - name: Judge logic, scoring, and reporting/contract suites
+        run: |
+          python3 tests/test_judge_logic.py
+          python3 tests/test_scoring.py
+          python3 tests/test_reporting_and_contract.py
+
+  # The static job above validates the wrapper's argv construction with a fake Docker; it cannot
+  # tell whether a submission is ACTUALLY sandboxed (a daemon silently ignoring --pids-limit, a
+  # runner defaulting to --privileged, or a broken image would all pass). This job builds the real
+  # image and asserts the envelope empirically. It is workflow_dispatch-only because the image
+  # build is slow; run it before launch and after any Dockerfile/wrapper change.
+  real-container-isolation:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build evaluation image
+        run: docker build -t lean-kernel-judge .
+      - name: Network must be unreachable
+        run: |
+          # Any successful outbound connection means --network none was not applied.
+          docker run --rm --network none --user judge lean-kernel-judge \
+            python3 -c "
+          import socket, sys
+          s = socket.socket(); s.settimeout(3)
+          try:
+              s.connect(('8.8.8.8', 53)); print('FAIL: network reachable'); sys.exit(1)
+          except OSError:
+              print('ok: network unreachable')
+          "
+      - name: PID limit must be enforced (fork bomb is contained)
+        run: |
+          docker run --rm --network none --pids-limit 64 --user judge lean-kernel-judge \
+            python3 -c "
+          import os, sys
+          children = 0
+          try:
+              for _ in range(500):
+                  if os.fork() == 0: os._exit(0)
+                  children += 1
+          except OSError:
+              print(f'ok: fork refused after {children} children'); sys.exit(0)
+          print(f'FAIL: forked {children} children with --pids-limit 64'); sys.exit(1)
+          "
+      - name: Judge refuses an official run without the wrapper attestation
+        run: |
+          # SANDBOX_MODE=container is baked into the image; without ISOLATION_ATTESTATION an
+          # official run must be refused rather than silently judged unisolated.
+          if docker run --rm --network none --user judge -e OFFICIAL_EVAL=1 lean-kernel-judge \
+               python3 judge/judge.py run --problem fib \
+               --submission examples/submissions/fib/baseline --tag ci-attest --reps 1; then
+            echo "FAIL: official run accepted without attestation"; exit 1
+          fi
+          echo "ok: refused without attestation"

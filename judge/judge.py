@@ -61,6 +61,10 @@ _J = _CFG["judge"]
 COMPARATOR_TIMEOUT = _J["comparator_timeout_seconds"]
 AUDIT_TIMEOUT = _J["audit_timeout_seconds"]
 TIMING_TIMEOUT = _J["timing_timeout_seconds"]
+# Whole-performance-phase ceiling. Per-step timeouts do not bound a submission's total: with every
+# slot probed and each failure able to burn the full timing budget, one job could hold a judge for
+# hours. On exhaustion the remaining slots are marked and a normal verdict is still emitted.
+PERF_PHASE_BUDGET = _J.get("perf_phase_budget_seconds", 10800)
 DEFAULT_REPS = _J["timing_reps"]
 MAX_SUBMISSION_BYTES = _J["max_submission_bytes"]
 MAX_SUBMISSION_FILES = _J["max_submission_files"]
@@ -116,7 +120,9 @@ PRIMITIVES = [
     "Nat.shiftLeft", "Nat.shiftRight", "String.ofList",
 ]
 
-SLUG = re.compile(r"^[A-Za-z0-9_.-]+$")   # no slashes, no "..", no whitespace
+# No slashes, no "..", no whitespace — and no leading dash, so a name like "--reps" can never be
+# mistaken for an option when it is passed through argv (self-inflicted DoS, not an injection).
+SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 # The scaling-axis inputs are a CONFIGURED POLICY, never hardcoded: each problem's config.json
 # declares `perf` {min, max, count?, spacing?, jitter?}, with global fallbacks in
@@ -305,6 +311,29 @@ def _write_infra_verdict(problem, sub_name, reason, status="error"):
              "status": status, "reason": reason, "stages": {}}, indent=2))
     except Exception:
         pass
+
+
+def _network_is_reachable():
+    """Probe whether outbound networking works, as evidence the container envelope was applied.
+
+    Under `--network none` a connect() fails immediately with ENETUNREACH/EHOSTUNREACH, so this is
+    a fast, dependency-free check that the sandbox is REAL rather than merely configured. Any
+    successful connection (or a timeout, which implies a routable-but-filtered network) counts as
+    reachable and must fail the job."""
+    import socket
+    for addr in (("192.0.2.1", 80), ("8.8.8.8", 53)):        # TEST-NET-1, then a public resolver
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1.0)
+        try:
+            s.connect(addr)
+            return True                                       # connected → not isolated
+        except (socket.timeout, TimeoutError):
+            return True                                       # routable but filtered → not isolated
+        except OSError:
+            continue                                          # unreachable → consistent with isolation
+        finally:
+            s.close()
+    return False
 
 
 def has_real_landrun(env):
@@ -1095,14 +1124,23 @@ def _headline_row(scaling):
     return max(completed, key=lambda row: row["n"]) if completed else None
 
 
-def _collect_perf_slots(inputs, probe):
+def _collect_perf_slots(inputs, probe, deadline=None):
     """Probe every configured slot unless a deterministic fatal error is returned.
 
     `probe(n)` returns `(row, error)`. Timeout rows carry no error and therefore never suppress
     later inputs; a deterministic fault returns an error and terminates the curve.
+
+    `deadline` (monotonic seconds) bounds the WHOLE performance phase. Per-step timeouts alone let
+    one submission hold a judge slot for hours, because every failing slot may burn the full timing
+    budget and every slot is probed. On exhaustion the remaining slots are recorded as
+    `budget-exhausted` and the verdict is still emitted normally (a partial curve, not an error).
     """
     scaling = []
     for slot, n in enumerate(inputs):
+        if deadline is not None and time.monotonic() >= deadline:
+            for later_slot, later_n in enumerate(inputs[slot:], start=slot):
+                scaling.append({"slot": later_slot, "n": later_n, "result": "budget-exhausted"})
+            return scaling, None
         row, error = probe(n)
         if row is not None:
             row = {"slot": slot, **row}
@@ -1211,8 +1249,23 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
 
     # Fail-closed sandbox policy: production must have a real sandbox.
     env = tool_env()
-    if SANDBOX_MODE == "container" and not has_real_landrun(env):
-        raise InfraError("sandbox.mode=container but no real landrun on PATH (refusing to run unsandboxed)")
+    if SANDBOX_MODE == "container":
+        # Tool presence proves nothing: `landrun` and SANDBOX_MODE=container are both baked into
+        # the image, so a bare `docker run IMAGE judge.py ...` (no isolation flags at all) used to
+        # pass this check. Demand EVIDENCE of the envelope instead.
+        if not has_real_landrun(env):
+            raise InfraError("sandbox.mode=container but no real landrun on PATH "
+                             "(refusing to run unsandboxed)")
+        reachable = _network_is_reachable()
+        if reachable:
+            raise InfraError("sandbox.mode=container but the network is reachable — the container "
+                             "was started without --network none (refusing to run unsandboxed)")
+        result["stages"]["sandbox"] = {"mode": SANDBOX_MODE, "network_reachable": reachable}
+        if _official_eval() and not os.environ.get("ISOLATION_ATTESTATION"):
+            # scripts/run_isolated.sh injects this after applying the full docker envelope; its
+            # absence means the official job was not launched through the wrapper.
+            raise InfraError("official evaluation must be launched via scripts/run_isolated.sh "
+                             "(missing ISOLATION_ATTESTATION)")
 
     work = assemble(job_dir, problem, submission_dir)
     cfg = json.loads((PROBLEMS / problem / "config.json").read_text())
@@ -1455,7 +1508,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
             **_summarize_samples(payload),
         }, None
 
-    scaling, perf_error = _collect_perf_slots(inputs, probe_point)
+    perf_deadline = (time.monotonic() + PERF_PHASE_BUDGET) if PERF_PHASE_BUDGET else None
+    scaling, perf_error = _collect_perf_slots(inputs, probe_point, perf_deadline)
 
     timing = {"metric": TIMING_METRIC, "reps": reps, "scaling": scaling,
               "checker": CHECKER_ID,

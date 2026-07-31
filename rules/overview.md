@@ -90,6 +90,16 @@ may rely on, and what is scored.
   dependency preloading, and outer-process startup are not scored; checking the exact output
   literal is.
 
+> **Do not measure speed with `#eval`.** Use it to check that your function returns the *right
+> answer*, never to judge how fast it is. `#eval` runs the **compiled** path; the judge times
+> **kernel reduction**, and the two diverge exponentially *in both directions*. The naive `fibSpec`
+> is the classic trap: the equation compiler encodes it via `Nat.brecOn`, so the kernel reduces it
+> in linear time (`n = 2000` in ~0.06 s), while codegen emits an exponential call tree —
+> `#eval fibSpec 2000` would need on the order of φ²⁰⁰⁰ steps and never finishes. The reverse trap
+> is quieter: well-founded recursion compiles to fast native code (so `#eval` looks great) but
+> reduces poorly in the kernel. Measure locally with `scripts/perf_eval.py`, which uses the same
+> measurement boundary as the official judge.
+
 ## Problems (Stage 1)
 
 Every problem is parametric in `n : Nat`; the judge evaluates `impl` along that axis.

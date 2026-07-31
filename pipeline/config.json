@@ -2,7 +2,8 @@
   "judge": {
     "comparator_timeout_seconds": 3600,
     "audit_timeout_seconds": 300,
-    "timing_timeout_seconds": 1800,
+    "timing_timeout_seconds": 45,
+    "perf_phase_budget_seconds": 10800,
     "timing_reps": 3,
     "max_submission_bytes": 8388608,
     "max_submission_files": 256
