@@ -226,6 +226,12 @@ these pins; the third-party checkouts are not committed.
 
 ## Status
 
+> **The sampling ranges in `problems/*/config.json` are development/smoke values, not competition
+> values.** At the current ranges even the naive baseline completes every slot, so `reach` stops
+> discriminating and hardcoded answer tables become provable. They must be re-derived on the
+> evaluation host before launch — see **[`docs/pre-launch-checklist.md`](docs/pre-launch-checklist.md)**
+> for the measurements and the other open pre-launch items.
+
 **Prototype / pre-launch.** All 7 problems are functionalized and compile; the correctness
 gate (comparator + axiom audit) and the green-gate harness are in place (7 baselines +
 3 proven optimized submissions — `fib/doubling`, `ca-rule110/bitpacked`, `primecount/sqrt` —
