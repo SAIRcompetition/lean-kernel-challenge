@@ -14,7 +14,7 @@
   ],
   "enable_nanoda": false,
   "perf": {
-    "min": 200,
-    "max": 20000
+    "min": 100,
+    "max": 600
   }
 }

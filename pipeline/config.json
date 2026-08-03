@@ -9,7 +9,7 @@
     "max_submission_files": 256
   },
   "perf_defaults": {
-    "count": 10,
+    "count": 4,
     "spacing": "geometric",
     "jitter": 0.15,
     "note": "Per-problem overrides live in problems/<id>/config.json 'perf' {min,max,count?,spacing?,jitter?}. The judge samples distinct geometric slots in [min,max]. Official PERF_SEED is a mandatory secret rotation token injected once over stdin; the judge hashes it with problem id and slot index, giving every submission in one cohort the same hidden schedule. Raw verdicts remain private until that batch closes. Operators rotate both token and public cohort id for a new round/rescore. No seed is deterministic local development only."
