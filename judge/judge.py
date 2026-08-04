@@ -83,6 +83,14 @@ MAX_SUBMISSION_FILES = _J["max_submission_files"]
 TIMING_METRIC = os.environ.get("TIMING_METRIC", _CFG.get("timing", {}).get("metric", "wall_time"))
 SANDBOX_MODE = os.environ.get("SANDBOX_MODE", _CFG.get("sandbox", {}).get("mode", "none"))
 OFFICIAL_EVAL = os.environ.get("OFFICIAL_EVAL", "") == "1"
+# Opt out of the "producing the official metric implies an official evaluation" inference in
+# _official_eval() — for a practice runner that wants instruction counts (which requires a host
+# with a usable PMU, so in practice a remote executor) without the hidden-seed and attestation
+# machinery of a scored run. It is deliberately an EXPLICIT declaration: the inference exists so
+# that forgetting OFFICIAL_EVAL cannot silently produce unprotected official-metric verdicts, and
+# an accidental unset variable must never be enough to escape it. OFFICIAL_EVAL still wins, so
+# this cannot be used to weaken a run that declares itself official.
+PRACTICE_REMOTE = os.environ.get("PRACTICE_REMOTE", "") == "1"
 # Remote timing executor (KTP/2, lean-timer-executor). Comma-separated URLs in
 # active-standby order; used only when metric=perf_instructions. The secret is
 # the executor's bearer token and never appears in verdicts or logs.
@@ -149,7 +157,20 @@ EVALUATION_COHORT = os.environ.get("EVALUATION_COHORT", "")
 
 
 def _official_eval():
-    return TIMING_METRIC == "perf_instructions" or OFFICIAL_EVAL
+    """Whether this run must satisfy the scored-evaluation requirements (hidden seed, nonzero
+    jitter, isolation attestation).
+
+    `OFFICIAL_EVAL` is the direct declaration. The metric clause is a fail-closed inference:
+    `TIMING_METRIC=perf_instructions` is baked into the judge image, while `OFFICIAL_EVAL` is
+    injected only by scripts/run_isolated.sh, so a bare `docker run IMAGE judge.py ...` that
+    bypasses the wrapper would otherwise produce official-metric verdicts with no seed and no
+    attestation. Inferring official status from the metric closes that.
+
+    `PRACTICE_REMOTE=1` opts out of the inference only — a practice runner that needs instruction
+    counts (hence a PMU-capable host) but is not producing a scored result. It never overrides an
+    explicit `OFFICIAL_EVAL=1`.
+    """
+    return (TIMING_METRIC == "perf_instructions" and not PRACTICE_REMOTE) or OFFICIAL_EVAL
 
 
 def _perf_policy_error(problem, detail):

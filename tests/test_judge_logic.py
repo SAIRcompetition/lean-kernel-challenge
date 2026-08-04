@@ -27,6 +27,39 @@ class PerfInputTests(unittest.TestCase):
             with self.assertRaisesRegex(judge.InfraError, "PERF_SEED"):
                 judge.perf_inputs(cfg, "demo")
 
+    def test_official_identity_is_decoupled_from_the_metric(self):
+        # The metric clause is a fail-closed inference, not a definition of officialness:
+        # TIMING_METRIC=perf_instructions is an image default while OFFICIAL_EVAL is injected
+        # only by run_isolated.sh, so bypassing the wrapper must not yield an unprotected
+        # official-metric run. PRACTICE_REMOTE opts out of the inference and nothing else.
+        cases = [
+            # (metric,             OFFICIAL_EVAL, PRACTICE_REMOTE, expected)
+            ("perf_instructions", True, False, True),    # official wrapper
+            ("perf_instructions", False, False, True),   # wrapper bypassed -> still enforced
+            ("wall_time", False, False, False),          # practice today
+            ("perf_instructions", False, True, False),   # practice on a PMU host
+            ("perf_instructions", True, True, True),     # explicit official always wins
+            ("wall_time", True, True, True),             # ditto, whatever the metric
+        ]
+        for metric, official, practice_remote, expected in cases:
+            with self.subTest(metric=metric, official=official, practice=practice_remote):
+                with mock.patch.object(judge, "TIMING_METRIC", metric), \
+                     mock.patch.object(judge, "OFFICIAL_EVAL", official), \
+                     mock.patch.object(judge, "PRACTICE_REMOTE", practice_remote):
+                    self.assertEqual(judge._official_eval(), expected)
+
+    def test_practice_remote_does_not_bypass_seed_for_an_official_run(self):
+        # A run that declares itself official still needs the hidden seed even if something
+        # also set PRACTICE_REMOTE, so the opt-out cannot be used to skip scored-run protections.
+        cfg = {"perf": {"min": 1, "max": 100, "count": 4}}
+        with mock.patch.object(judge, "TIMING_METRIC", "perf_instructions"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", True), \
+             mock.patch.object(judge, "PRACTICE_REMOTE", True), \
+             mock.patch.object(judge, "PERF_SEED", ""), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            with self.assertRaisesRegex(judge.InfraError, "PERF_SEED"):
+                judge.perf_inputs(cfg, "demo")
+
     def test_shared_jitter_is_reproducible_and_exact_count(self):
         cfg = {
             "perf": {
