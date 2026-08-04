@@ -59,8 +59,9 @@ each successful target-declaration replay. The simplest submission is `impl := s
 
 ## What you submit
 
-One file, **`Submission.lean`** (optionally with helper files under `Submission/`).
-Nothing else. You fill two holes in a locked workspace:
+Exactly one file, **`Submission.lean`**. Nothing else — every lemma your proof needs
+lives in that file, inside `namespace Submission`. You fill two holes in a locked
+workspace:
 
 ```lean
 namespace Submission
@@ -83,7 +84,7 @@ and scoring work.
 A submission has two parts — a function `impl` and a proof `impl_correct` — and the rules
 follow that shape (full text in [`rules/overview.md`](rules/overview.md)):
 
-- **R1** Edit only `Submission.lean` and files under `Submission/`.
+- **R1** Submit exactly one file, `Submission.lean`; every other file is locked.
 - **R2** `impl` is a total core-Lean function that the kernel can reduce on every input
   (structural recursion is recommended; well-founded recursion is also permitted; no Mathlib).
 - **R3** `impl_correct` proves `∀ n, impl n = spec n` — correctness for *all* inputs.

@@ -1,6 +1,5 @@
 import Spec
 import Mathlib
-import Submission.Helpers
 
 /-! Adversarial: import Mathlib → workspace has no Mathlib dep, build fails (R4). -/
 

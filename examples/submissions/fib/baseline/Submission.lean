@@ -1,5 +1,4 @@
 import Spec
-import Submission.Helpers
 
 /-! Baseline: use the naive spec as the implementation. Correctness is trivial
 (`impl` IS `fibSpec`); the kernel evaluation of `impl n` runs the exponential

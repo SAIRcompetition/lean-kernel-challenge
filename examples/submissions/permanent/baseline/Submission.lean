@@ -1,5 +1,4 @@
 import Spec
-import Submission.Helpers
 
 /-! Baseline: naive parametric spec as impl. -/
 

@@ -1,5 +1,4 @@
 import Spec
-import Submission.Helpers
 
 /-! Adversarial: impl_correct left as sorry → sorryAx, must be rejected by the axiom audit (R3). -/
 

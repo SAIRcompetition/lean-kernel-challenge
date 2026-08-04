@@ -1,5 +1,4 @@
 import Spec
-import Submission.Helpers
 
 /-!
 Optimized submission: fast doubling — O(log n) big-number multiplications

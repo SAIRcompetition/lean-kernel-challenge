@@ -47,8 +47,9 @@ but they must survive the hidden schedule and their scored replay work is charge
 
 ## What you submit
 
-One file, **`Submission.lean`** (optionally with helpers under `Submission/`). You fill two holes
-in a locked workspace:
+Exactly one file, **`Submission.lean`**. Every lemma your proof needs lives in that file, inside
+`namespace Submission` — there is no separate helper module to manage. You fill two holes in a
+locked workspace:
 
 ```lean
 namespace Submission
@@ -72,7 +73,8 @@ A submission has two parts — a function `impl` and a proof `impl_correct` — 
 that shape: what you may edit, what `impl` must be, what `impl_correct` must prove, what the proof
 may rely on, and what is scored.
 
-- **R1 — Locked files.** You may edit only `Submission.lean` and files under `Submission/`.
+- **R1 — One file.** A submission is exactly one file, `Submission.lean`. Every other file in the
+  workspace is locked and the judge supplies its own copy.
 - **R2 — `impl` is a total core-Lean function the kernel can reduce.** It must be total and in core
   Lean (no Mathlib), and the kernel must reduce `impl n` to a literal on any input. This is enforced
   by the model, not a stylistic rule: a `partial` or `unsafe` `impl` is opaque to the kernel, so it
