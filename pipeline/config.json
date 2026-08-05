@@ -5,7 +5,7 @@
     "timing_timeout_seconds": 1800,
     "perf_phase_budget_seconds": 10800,
     "timing_reps": 3,
-    "max_submission_bytes": 8388608,
+    "max_submission_bytes": 1048576,
     "max_submission_files": 256
   },
   "perf_defaults": {
