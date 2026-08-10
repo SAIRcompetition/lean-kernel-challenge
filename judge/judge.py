@@ -885,12 +885,15 @@ def _time_remote(export_file, reps, target=None):
     raise TimingRetry(f"all timing executors unavailable (last: {last_err})")
 
 
-# Reference value v = impl n by KERNEL-side reduction (Meta `whnf`), NOT compiled `#eval`.
+# Reference value v = impl n by ELABORATOR-side reduction (Meta `whnf`), NOT compiled `#eval`.
 # `#eval` runs codegen output, which can be exponential even when the kernel reduction is
 # cheap (the naive fib spec compiles to an exponential tree but reduces via `brecOn` in
 # linear kernel time) — so a submission fast in the kernel could be un-evaluable by #eval.
-# whnf reduces the same way the timed replay will, handling Nat and Int results. A wrong v
-# cannot mis-score: the kernel-reduced proof in _perf_export would then fail to build.
+# whnf is the elaborator's reduction engine, not the kernel's (the kernel exposes none); it
+# only PROPOSES the literal, handling Nat and Int results, and the kernel redoes the whole
+# computation when it checks the generated theorem. A wrong v cannot mis-score: the
+# kernel-checked proof in _perf_export would then fail to build — as would a rare
+# whnf/kernel divergence, an unscored failure rather than a wrong score.
 _VALUE_META = r"""import Submission
 import Lean
 open Lean Meta
