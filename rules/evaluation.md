@@ -34,10 +34,11 @@ export and the per-input `impl n` medians contribute to the score.
 complete replay of the verified closure is charged. Its performance boundary is
 `target-declaration-replay-v1`: all non-target declarations are first replayed into a fresh
 environment without counting, then the counter encloses only replay of the generated
-`impl n = v` declaration. The timer reads only the exported artifact and runs outside the
-sandbox that elaborated the submission, so checking `impl`'s own definition is preloaded work
-the counter never sees. This is a scoped measurement, not an estimate obtained by subtracting
-two noisy process totals.
+`impl n = v` declaration. The timer is a separate trusted tool that reads only the exported
+artifact; it never runs inside the sandbox that elaborated the submission, so a submission cannot
+reach the process that measures it. Checking `impl`'s own definition belongs to that uncounted
+preload: it is charged once, in the correctness-closure replay, rather than again at every slot.
+This is a scoped measurement, not an estimate obtained by subtracting two noisy process totals.
 
 The generated proof is intentionally a direct `of_decide_eq_true rfl` term. Lean's
 `decide +kernel` tactic instead extracts the expensive check into a private
@@ -49,11 +50,12 @@ silently under-counted sample. Verdicts and cohort hashes pin this generator cho
 kernel's definitional-equality shortcuts; normalizing the single `decide` application to `true`
 keeps the reduction and the output-literal comparison inside one uniformly counted boundary.
 
-The value `v` is obtained by elaborator-side reduction (`Meta.whnf`) — the kernel exposes no
-reduction entry point of its own; it only re-derives computations while checking declarations —
-and never by compiled `#eval`. The oracle therefore needs no trust and is not scored: it merely
-proposes the literal the generated theorem asserts, and the kernel redoes the computation when
-it checks that theorem. A wrong value cannot be scored because the generated theorem then fails
+The value `v` is obtained by elaborator-side reduction (`Meta.whnf`), never by compiled `#eval`.
+`Meta.whnf` is the elaborator's reduction engine, not the kernel's; the kernel does expose its own
+`Kernel.whnf`, but core documents that as a debugging entry point, and nothing here depends on the
+choice. The oracle therefore needs no trust and is not scored: it merely proposes the literal the
+generated theorem asserts, and the kernel redoes the computation when it checks that theorem.
+A wrong value cannot be scored because the generated theorem then fails
 to check, and a rare divergence between the elaborator's engine and the kernel (or a `whnf`
 result that is no literal) fails the performance-export build — an unscored failure, never a
 wrong score. Target replay still includes reduction of `impl n` and comparison with its exact
