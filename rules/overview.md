@@ -47,9 +47,9 @@ but they must survive the hidden schedule and their scored replay work is charge
 
 ## What you submit
 
-Exactly one file, **`Submission.lean`**. Every lemma your proof needs lives in that file, inside
-`namespace Submission` — there is no separate helper module to manage. You fill two holes in a
-locked workspace:
+Exactly one file, **`Submission.lean`**, at most **1 MiB**. Every lemma your proof needs lives in
+that file, inside `namespace Submission` — there is no separate helper module to manage. You fill
+two holes in a locked workspace:
 
 ```lean
 namespace Submission

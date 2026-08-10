@@ -59,9 +59,9 @@ each successful target-declaration replay. The simplest submission is `impl := s
 
 ## What you submit
 
-Exactly one file, **`Submission.lean`**. Nothing else — every lemma your proof needs
-lives in that file, inside `namespace Submission`. You fill two holes in a locked
-workspace:
+Exactly one file, **`Submission.lean`**, at most 1 MiB. Nothing else — every lemma your
+proof needs lives in that file, inside `namespace Submission`. You fill two holes in a
+locked workspace:
 
 ```lean
 namespace Submission
