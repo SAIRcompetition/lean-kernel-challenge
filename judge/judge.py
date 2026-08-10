@@ -11,7 +11,7 @@ Pipeline per submission (each contestant job runs in a unique temp workspace):
      sandboxing. The SHA-256 of the verified Submission bytes is pinned for step 4.
   3. Axiom re-audit of the comparator-emitted solution export (whitelisted axioms only).
   4. Scored replay: time the comparator-verified correctness export, then for each
-     judge-chosen input n reduce `impl n` to a literal v via a kernel-side oracle, confirm the
+     judge-chosen input n reduce `impl n` to a literal v via an elaborator-side oracle, confirm the
      Submission is byte-unchanged from step 2, build+export a uniquely named
      `impl n = v` theorem whose direct proof forces kernel reduction, re-audit THAT export,
      and time the official kernel replaying it, N reps. A too-slow input occupies
@@ -885,12 +885,16 @@ def _time_remote(export_file, reps, target=None):
     raise TimingRetry(f"all timing executors unavailable (last: {last_err})")
 
 
-# Reference value v = impl n by KERNEL-side reduction (Meta `whnf`), NOT compiled `#eval`.
+# Reference value v = impl n by ELABORATOR-side reduction (Meta `whnf`), NOT compiled `#eval`.
 # `#eval` runs codegen output, which can be exponential even when the kernel reduction is
 # cheap (the naive fib spec compiles to an exponential tree but reduces via `brecOn` in
 # linear kernel time) — so a submission fast in the kernel could be un-evaluable by #eval.
-# whnf reduces the same way the timed replay will, handling Nat and Int results. A wrong v
-# cannot mis-score: the kernel-reduced proof in _perf_export would then fail to build.
+# `Meta.whnf` is the elaborator's reduction engine, not the kernel's (the kernel does expose its
+# own `Kernel.whnf`, but core documents it as a debugging entry point, and the oracle needs no
+# trust either way); it only PROPOSES the literal, handling Nat and Int results, and the kernel
+# redoes the whole computation when it checks the generated theorem. A wrong v cannot mis-score: the
+# kernel-checked proof in _perf_export would then fail to build — as would a rare
+# whnf/kernel divergence, an unscored failure rather than a wrong score.
 _VALUE_META = r"""import Submission
 import Lean
 open Lean Meta
@@ -913,7 +917,7 @@ run_meta do
 
 
 def _eval_impl_value(work, env, n, timeout, lean_bin="lean"):
-    """Reduce `impl n` to a literal via the kernel-side oracle above. Returns (kind, payload):
+    """Reduce `impl n` to a literal via the elaborator-side oracle above. Returns (kind, payload):
     ('ok', v) with v a decimal string; ('timeout', None) only when the real wall-clock budget
     expires; ('error', tail) for every deterministic Lean/oracle failure. Heartbeats are disabled
     in _VALUE_META so the process timeout is the oracle's sole computation budget."""
