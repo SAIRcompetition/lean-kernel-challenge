@@ -149,6 +149,17 @@ class PayloadPreflight(unittest.TestCase):
         with self.assertRaises(JUDGE.SubmissionError):
             JUDGE._preflight_payload(self.tmp)
 
+    def test_rejects_symlinked_submission_dir(self):
+        """A symlinked `Submission/` used to weigh nothing, so the caps saw an empty payload
+        while assemble() went on to copy whatever the link pointed at."""
+        elsewhere = Path(tempfile.mkdtemp(prefix="payload_target_"))
+        self.addCleanup(shutil.rmtree, elsewhere, True)
+        (elsewhere / "big.lean").write_bytes(b"x" * (JUDGE.MAX_SUBMISSION_BYTES + 1))
+        (self.tmp / "Submission").rmdir()
+        (self.tmp / "Submission").symlink_to(elsewhere, target_is_directory=True)
+        with self.assertRaises(JUDGE.SubmissionError):
+            JUDGE._preflight_payload(self.tmp)
+
 
 class PerfPhaseBudget(unittest.TestCase):
     """The whole performance phase is bounded, and exhaustion still yields a full slot record."""
