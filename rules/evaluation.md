@@ -35,9 +35,11 @@ complete replay of the verified closure is charged. Its performance boundary is
 `target-declaration-replay-v1`: all non-target declarations are first replayed into a fresh
 environment without counting, then the counter encloses only replay of the generated
 `impl n = v` declaration. The timer is a separate trusted tool that reads only the exported
-artifact; it never runs inside the sandbox that elaborated the submission, so a submission cannot
-reach the process that measures it. Checking `impl`'s own definition belongs to that uncounted
-preload: it is charged once, in the correctness-closure replay, rather than again at every slot.
+artifact — never contestant source, and never a submission's own process, which has already
+exited by the time anything is measured. On the official remote-executor path it does not even
+share a machine with the elaboration: only the immutable export is shipped to the timing host.
+Checking `impl`'s own definition belongs to that uncounted preload: it is charged once, in the
+correctness-closure replay, rather than again at every slot.
 This is a scoped measurement, not an estimate obtained by subtracting two noisy process totals.
 
 The generated proof is intentionally a direct `of_decide_eq_true rfl` term. Lean's
