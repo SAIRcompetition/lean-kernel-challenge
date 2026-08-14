@@ -561,7 +561,14 @@ def _preflight_payload(sd: Path):
     total = count = 0
     stack = [sd / "Submission.lean"]
     sub = sd / "Submission"
-    if sub.exists() or sub.is_symlink():
+    # `Submission/` itself must be a real directory. Skipping it as "a symlink, audited later"
+    # would skip the whole subtree: assemble()'s `.exists()` follows the link and copytree()
+    # follows its `src` argument (symlinks=True only preserves links found INSIDE the tree), so
+    # the caps would be applied to a tree already on disk — the one thing this preflight exists
+    # to prevent. Rejecting mirrors the same treatment `Submission.lean` gets in assemble().
+    if sub.is_symlink():
+        raise SubmissionError("submission: 'Submission' must be a directory, not a symlink")
+    if sub.exists():
         stack.append(sub)
     while stack:
         p = stack.pop()
