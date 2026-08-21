@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -156,6 +157,41 @@ class DeferredTimingModeTests(unittest.TestCase):
                 ("ok", [{"wall_ns": 1}]),
             )
         measure.assert_called_once_with()
+
+
+class LiveStageProgressTests(unittest.TestCase):
+    def test_progress_stream_is_optional(self):
+        with mock.patch.object(judge, "SAIR_PROGRESS_FILE", ""), \
+             mock.patch.object(judge.time, "monotonic", return_value=8.0):
+            judge._emit_stage_progress("comparator", "done", 7.0)
+
+    def test_progress_event_preserves_a_real_zero_duration(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "progress.jsonl"
+            path.write_bytes(b"")
+            with mock.patch.object(judge, "SAIR_PROGRESS_FILE", str(path)), \
+                 mock.patch.object(judge.time, "monotonic", return_value=7.0):
+                judge._emit_stage_progress("comparator", "done", 7.0)
+
+            self.assertEqual(json.loads(path.read_text()), {
+                "key": "comparator",
+                "status": "done",
+                "durationMs": 0,
+            })
+
+    def test_progress_target_must_already_exist(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "missing.jsonl"
+            with mock.patch.object(judge, "SAIR_PROGRESS_FILE", str(path)):
+                with self.assertRaisesRegex(judge.InfraError, "cannot append"):
+                    judge._emit_stage_progress("axiom_audit", "failed", time.monotonic())
+
+    def test_progress_rejects_invalid_status_and_key(self):
+        with mock.patch.object(judge, "SAIR_PROGRESS_FILE", "/unused"):
+            with self.assertRaisesRegex(judge.InfraError, "status"):
+                judge._emit_stage_progress("comparator", "running", time.monotonic())
+            with self.assertRaisesRegex(judge.InfraError, "stage key"):
+                judge._emit_stage_progress("Comparator", "done", time.monotonic())
 
 
 class OracleAndGeneratedTheoremTests(unittest.TestCase):

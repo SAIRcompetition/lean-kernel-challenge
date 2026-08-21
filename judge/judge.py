@@ -89,6 +89,10 @@ OFFICIAL_EVAL = os.environ.get("OFFICIAL_EVAL", "") == "1"
 # deliberately forbidden for official evaluation and requires the caller to
 # retain the workspace containing those exports.
 DEFER_TIMING = os.environ.get("DEFER_TIMING", "") == "1"
+# Optional host-owned JSONL stream for live Playground stage progress. The
+# service pre-creates this file in the per-run results mount and tails it while
+# the container is alive. Official/offline invocations leave it unset.
+SAIR_PROGRESS_FILE = os.environ.get("SAIR_PROGRESS_FILE", "")
 # Remote timing executor (KTP/2, lean-timer-executor). Comma-separated URLs in
 # active-standby order; used only when metric=perf_instructions. The secret is
 # the executor's bearer token and never appears in verdicts or logs.
@@ -176,6 +180,46 @@ def _deferred_measurement(target=None):
         "measurement_boundary": _measurement_boundary(target),
         "measurement_target": target,
     }
+
+
+def _emit_stage_progress(key, status, started_at):
+    """Append one completed stage boundary to the host-owned progress stream.
+
+    The stream is optional so standalone and official Judge invocations keep
+    their existing behavior. When configured it is a required orchestration
+    contract: an invalid or unavailable target is an infrastructure fault,
+    never something to hide behind a terminal verdict.
+    """
+    if not SAIR_PROGRESS_FILE:
+        return
+    if status not in ("done", "failed"):
+        raise InfraError(f"invalid live progress status {status!r}")
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", key):
+        raise InfraError(f"invalid live progress stage key {key!r}")
+    duration_ms = int((time.monotonic() - started_at) * 1000)
+    if duration_ms < 0:
+        raise InfraError("live progress monotonic clock moved backwards")
+    payload = (json.dumps({
+        "key": key,
+        "status": status,
+        "durationMs": duration_ms,
+    }, separators=(",", ":")) + "\n").encode("utf-8")
+    flags = os.O_WRONLY | os.O_APPEND
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(SAIR_PROGRESS_FILE, flags)
+        try:
+            view = memoryview(payload)
+            while view:
+                written = os.write(fd, view)
+                if written <= 0:
+                    raise OSError("short write")
+                view = view[written:]
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        raise InfraError(f"cannot append live stage progress: {exc}") from exc
 
 
 def _measure_or_defer(measure):
@@ -1365,22 +1409,27 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     result["stages"]["comparator"] = {"exit": rc, "seconds": round(time.monotonic() - t0, 1),
                                       "tail": out[-3000:]}
     if rc == "timeout":
+        _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "rejected", f"comparator timed out (> {COMPARATOR_TIMEOUT}s)"
         return finish()
     if _died_by_signal(rc):
+        _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "error", \
             f"comparator killed by signal (exit {rc}) — infrastructure fault, not a proof failure"
         return finish()
     if rc != 0:
+        _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "rejected", f"comparator: {last_line(out)}"
         return finish()
     if not export_file.exists() or export_file.stat().st_size == 0:
+        _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "error", "comparator accepted but emitted no export (patched comparator required)"
         return finish()
     # Identity binding (2/2): the submission must be byte-identical to what comparator just
     # verified — catch any mutation a submission-spawned process (elaboration-time IO) made
     # DURING the build, before we freeze and reuse the workspace for timing.
     if _submission_digest(work) != verified_digest:
+        _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "error", "submission changed during correctness verification"
         return finish()
     result["stages"]["export"] = {"source": "comparator-verified", "bytes": export_file.stat().st_size}
@@ -1393,30 +1442,38 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         "sha256": artifact_digest,
     }
     freeze_readonly(work)
+    _emit_stage_progress("comparator", "done", t0)
 
 
     # ---- Axiom re-audit (R4): whitelisted axioms only, on the comparator-verified correctness
     # export (the per-input timed exports are separately re-audited in the perf loop below) ----
+    axiom_started = time.monotonic()
     rc, out = run([str(TIMER), "--check-axioms", ",".join(axioms), str(export_file)],
                   work, env, AUDIT_TIMEOUT)
     result["stages"]["axioms"] = {"exit": rc, "tail": last_line(out)}
     if not _export_matches(export_file, correctness_export_bytes):
+        _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "error", "correctness export changed during axiom audit"
         return finish()
     if not _artifacts_match(artifact_lib, verified_artifacts):
+        _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "error", \
             "comparator-verified build artifacts changed during axiom audit"
         return finish()
     if rc == "timeout":
+        _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "error", "axiom re-audit timed out"
         return finish()
     if _died_by_signal(rc):
+        _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "error", \
             f"axiom auditor killed by signal (exit {rc}) — infrastructure fault, not a rule violation"
         return finish()
     if rc != 0:
+        _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "rejected", f"axiom audit: {last_line(out)}"
         return finish()
+    _emit_stage_progress("axiom_audit", "done", axiom_started)
 
     def time_export(export_path, target=None, budget_s=None):
         """Replay one export through the authoritative full or target-only boundary."""
