@@ -83,6 +83,12 @@ MAX_SUBMISSION_FILES = _J["max_submission_files"]
 TIMING_METRIC = os.environ.get("TIMING_METRIC", _CFG.get("timing", {}).get("metric", "wall_time"))
 SANDBOX_MODE = os.environ.get("SANDBOX_MODE", _CFG.get("sandbox", {}).get("mode", "none"))
 OFFICIAL_EVAL = os.environ.get("OFFICIAL_EVAL", "") == "1"
+# Playground orchestration may ask this isolated process to stop after it has
+# produced, pinned, and audited every export. The trusted host then performs
+# the authoritative KTP replay before persisting a terminal verdict. This is
+# deliberately forbidden for official evaluation and requires the caller to
+# retain the workspace containing those exports.
+DEFER_TIMING = os.environ.get("DEFER_TIMING", "") == "1"
 # Remote timing executor (KTP/2, lean-timer-executor). Comma-separated URLs in
 # active-standby order; used only when metric=perf_instructions. The secret is
 # the executor's bearer token and never appears in verdicts or logs.
@@ -150,6 +156,32 @@ EVALUATION_COHORT = os.environ.get("EVALUATION_COHORT", "")
 
 def _official_eval():
     return TIMING_METRIC == "perf_instructions" or OFFICIAL_EVAL
+
+
+def _validate_timing_mode(keep_workspace):
+    if not DEFER_TIMING:
+        return
+    if OFFICIAL_EVAL or TIMING_METRIC == "perf_instructions":
+        raise InfraError("DEFER_TIMING is only valid for non-official development runs")
+    if TIMING_EXECUTOR_URLS:
+        raise InfraError("DEFER_TIMING cannot be combined with in-judge remote timing")
+    if not keep_workspace:
+        raise InfraError("DEFER_TIMING requires --keep-workspace")
+
+
+def _deferred_measurement(target=None):
+    return {
+        "result": "deferred",
+        "measurement_contract": MEASUREMENT_CONTRACT,
+        "measurement_boundary": _measurement_boundary(target),
+        "measurement_target": target,
+    }
+
+
+def _measure_or_defer(measure):
+    if DEFER_TIMING:
+        return "deferred", None
+    return measure()
 
 
 def _perf_policy_error(problem, detail):
@@ -1428,7 +1460,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
 
     # Score the proof work too. This prevents a specialization table from appearing free merely
     # because its expensive closed-value proofs live in the already-verified correctness export.
-    correctness_status, correctness_payload = time_export(export_file, target=None)
+    correctness_status, correctness_payload = _measure_or_defer(
+        lambda: time_export(export_file, target=None))
     if not _export_matches(export_file, correctness_export_bytes):
         result["status"], result["reason"] = "error", "correctness export changed during timing"
         return finish()
@@ -1530,8 +1563,17 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         if arc != 0:
             return {"n": n, "result": "axiom-audit-error"}, \
                 f"perf export axiom audit failed at n={n}: {last_line(aout)}"
-        status, payload = time_export(perf_export, target=perf_target,
-                                      budget_s=budget(TIMING_TIMEOUT))
+        status, payload = _measure_or_defer(
+            lambda: time_export(
+                perf_export,
+                target=perf_target,
+                budget_s=budget(TIMING_TIMEOUT),
+            ))
+        if status == "deferred":
+            return {
+                "n": n,
+                **_deferred_measurement(perf_target),
+            }, None
         if not _export_matches(perf_export, perf_bytes):
             return {"n": n, "result": "identity-error"}, \
                 f"perf export changed during timing (at n={n})"
@@ -1572,6 +1614,12 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if perf_error is not None:
         result["timing"] = timing
         result["status"], result["reason"] = "error", perf_error
+        return finish()
+
+    if DEFER_TIMING:
+        result["timing"] = timing
+        result["status"] = "accepted"
+        result["reason"] = "timing deferred to the trusted host executor"
         return finish()
 
     # Correctness already passed, so the submission is ACCEPTED regardless of speed; the
@@ -1798,6 +1846,7 @@ def main():
         if TIMING_METRIC not in ("wall_time", "perf_instructions"):
             raise InfraError(f"invalid TIMING_METRIC '{TIMING_METRIC}' "
                              "(must be 'wall_time' or 'perf_instructions')")
+        _validate_timing_mode(args.keep_workspace)
         (RESULTS / "work").mkdir(parents=True, exist_ok=True)
         job_dir = Path(tempfile.mkdtemp(dir=RESULTS / "work", prefix=f"{problem}__{sub_name}__"))
         sys.exit(judge(job_dir, problem, args.submission, args.reps, tag))

@@ -100,6 +100,64 @@ class PerfInputTests(unittest.TestCase):
                         judge.perf_inputs({"perf": perf}, "bad")
 
 
+class DeferredTimingModeTests(unittest.TestCase):
+    def test_deferred_timing_requires_retained_nonofficial_workspace(self):
+        with mock.patch.object(judge, "DEFER_TIMING", True), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "TIMING_EXECUTOR_URLS", []):
+            judge._validate_timing_mode(True)
+            with self.assertRaisesRegex(judge.InfraError, "--keep-workspace"):
+                judge._validate_timing_mode(False)
+
+    def test_deferred_timing_rejects_official_or_in_judge_remote_modes(self):
+        cases = [
+            {"OFFICIAL_EVAL": True, "TIMING_METRIC": "wall_time",
+             "TIMING_EXECUTOR_URLS": []},
+            {"OFFICIAL_EVAL": False, "TIMING_METRIC": "perf_instructions",
+             "TIMING_EXECUTOR_URLS": []},
+            {"OFFICIAL_EVAL": False, "TIMING_METRIC": "wall_time",
+             "TIMING_EXECUTOR_URLS": ["https://timer.example"]},
+        ]
+        for values in cases:
+            with self.subTest(values=values), \
+                 mock.patch.object(judge, "DEFER_TIMING", True), \
+                 mock.patch.object(judge, "OFFICIAL_EVAL", values["OFFICIAL_EVAL"]), \
+                 mock.patch.object(judge, "TIMING_METRIC", values["TIMING_METRIC"]), \
+                 mock.patch.object(
+                     judge, "TIMING_EXECUTOR_URLS", values["TIMING_EXECUTOR_URLS"]):
+                with self.assertRaises(judge.InfraError):
+                    judge._validate_timing_mode(True)
+
+    def test_deferred_measurement_preserves_remote_contract_fields(self):
+        target = "LeanKernelChallengeJudge.Generated_demo.check"
+        self.assertEqual(judge._deferred_measurement(), {
+            "result": "deferred",
+            "measurement_contract": judge.MEASUREMENT_CONTRACT,
+            "measurement_boundary": judge.FULL_REPLAY_BOUNDARY,
+            "measurement_target": None,
+        })
+        self.assertEqual(judge._deferred_measurement(target), {
+            "result": "deferred",
+            "measurement_contract": judge.MEASUREMENT_CONTRACT,
+            "measurement_boundary": judge.TARGET_REPLAY_BOUNDARY,
+            "measurement_target": target,
+        })
+
+    def test_deferred_timing_never_invokes_the_local_measurement(self):
+        measure = mock.Mock(return_value=("ok", [{"wall_ns": 1}]))
+        with mock.patch.object(judge, "DEFER_TIMING", True):
+            self.assertEqual(judge._measure_or_defer(measure), ("deferred", None))
+        measure.assert_not_called()
+
+        with mock.patch.object(judge, "DEFER_TIMING", False):
+            self.assertEqual(
+                judge._measure_or_defer(measure),
+                ("ok", [{"wall_ns": 1}]),
+            )
+        measure.assert_called_once_with()
+
+
 class OracleAndGeneratedTheoremTests(unittest.TestCase):
     def test_oracle_and_generated_proof_disable_heartbeats(self):
         self.assertIn("set_option maxHeartbeats 0", judge._VALUE_META)

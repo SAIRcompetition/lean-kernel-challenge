@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -196,7 +197,7 @@ class BudgetThreadedIntoSubSteps(unittest.TestCase):
             seen["deadline"] = deadline
             return {"n": n, "result": "ok"}, None
 
-        target = 12345.0
+        target = time.monotonic() + 60.0
         JUDGE._collect_perf_slots([1], probe, deadline=target)
         self.assertEqual(seen["deadline"], target,
                          "the deadline must reach probe() so sub-steps can be capped")
