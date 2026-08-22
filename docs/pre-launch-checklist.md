@@ -20,7 +20,7 @@ Measured on this tree (naive `baseline` submission, value oracle at each problem
 | `primecount` | 100 – 600 | 8.2 s — completes |
 | `ca-rule110` | 50 – 300 | 10.1 s — completes |
 | `sha256` | 1 – 8 | ~2.6 s — completes |
-| `discriminant` | 0 – 5 | 5.7 s — completes |
+| `polydisc` | 0 – 5 | 5.7 s — completes |
 
 Two consequences, both of which void the competition if launched as-is:
 
@@ -49,7 +49,7 @@ n≈60); `mertens` [10^3, 10^6–10^7] (naive ~50 s at 10^3, ~n^2→n^3/log n gr
 memory caveat in item 1b); `saw` conditional on item 1b's OOM fix (naive ~30 s at n=9, memory
 grows ~250–300 MB per second of reduction); `sha256` re-derive with the others (naive
 truncates n≈7000 at ~0.26 s/step); `ca-rule110` — NO range works until item 1c is resolved;
-`discriminant` — the raise-max rule does NOT apply (naive Laplace dies at degree 5–6, n≈7–9,
+`polydisc` — the raise-max rule does NOT apply (naive Laplace dies at degree 5–6, n≈7–9,
 far below any competitive range): anchor the range to the optimized rung instead — Bareiss
 floors at ~5.5 s per 47×47 instance from n=45 (list-op bound, ±2x), so [8, 300–1000] with the
 closure-priced table economics doing the anti-table work; re-derive on the host.

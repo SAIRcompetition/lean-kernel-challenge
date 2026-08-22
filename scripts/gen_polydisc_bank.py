@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Instance-bank generator and independent reference for problem `discriminant`.
+"""Instance-bank generator and independent reference for problem `polydisc`.
 
 Reproduces, word for word, the instance construction in
-problems/discriminant/Spec.lean (Knuth-MMIX LCG -> centered k-bit coefficients,
+problems/polydisc/Spec.lean (Knuth-MMIX LCG -> centered k-bit coefficients,
 degree min(2 + n//2, 24), width 4 + 8*max(0, n-44) bits), and checks the
 discriminant against an INDEPENDENT reference: Sylvester matrix + fraction
 Gaussian elimination, cross-checked against classical closed-form identities
 (quadratic, depressed and general cubic, cyclotomic Phi_5, repeated roots) and,
 when available, SymPy across degrees 2..24.
 
-Run: python3 scripts/gen_discriminant_bank.py [max_n]
+Run: python3 scripts/gen_polydisc_bank.py [max_n]
 Prints the bank table and exits nonzero on any mismatch.
 """
 import sys

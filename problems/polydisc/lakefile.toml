@@ -1,4 +1,4 @@
-name = "track2discriminant"
+name = "track2polydisc"
 defaultTargets = ["Challenge", "Solution"]
 
 [leanOptions]

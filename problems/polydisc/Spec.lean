@@ -1,5 +1,5 @@
 /-!
-# Lean Kernel Challenge problem `discriminant` — SPEC (trusted, locked)
+# Lean Kernel Challenge problem `polydisc` — SPEC (trusted, locked)
 
 The discriminant of a monic integer polynomial, computed the textbook way:
 `disc(p) = (-1)^(d(d-1)/2) · Res(p, p')`, with the resultant as the determinant
@@ -9,7 +9,7 @@ deliberately so.
 
 The instance bank is parametric in `n` and auditable: coefficients come from a
 Knuth-MMIX LCG seeded with `n` (generator script:
-`scripts/gen_discriminant_bank.py`, which also cross-checks this construction
+`scripts/gen_polydisc_bank.py`, which also cross-checks this construction
 against an independent fraction-elimination reference and SymPy). Degree ramps as
 `min (2 + n/2) 24` — two inputs per degree, the classical head where the naive
 spec is feasible — and once the degree caps at 24 (n = 44) the coefficient

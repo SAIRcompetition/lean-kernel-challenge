@@ -1,7 +1,7 @@
 import Spec
 
 /-!
-# Lean Kernel Challenge problem `discriminant` — CHALLENGE (trusted, locked)
+# Lean Kernel Challenge problem `polydisc` — CHALLENGE (trusted, locked)
 
 Provide a function `impl : Nat -> Int` and a proof it equals `discSpec` on
 every input. The judge evaluates `impl` on inputs of its choosing. Fill both

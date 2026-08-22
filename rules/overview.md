@@ -116,7 +116,7 @@ Every problem is parametric in `n : Nat`; the judge evaluates `impl` along that 
 | `saw` | count of self-avoiding walks of length n on ℤ² | exponential |
 | `ca-rule110` | a Rule 110 automaton's state after n steps | linear (list-based) |
 | `sha256` | the SHA-256 hash chain digest after n steps | linear (~0.3 s/step, word-per-Nat) |
-| `discriminant` | the discriminant of a monic degree-min(2+n/2,24) integer polynomial (Int; coefficient width grows past n=44) | factorial in the degree (Laplace) |
+| `polydisc` | the discriminant of a monic degree-min(2+n/2,24) integer polynomial (Int; coefficient width grows past n=44) | factorial in the degree (Laplace) |
 
 Each spec is intentionally naive, so reducing it directly in the kernel blows up as n grows;
 competitive submissions need a better algorithm *and* a kernel-friendly encoding. The worked `fib`

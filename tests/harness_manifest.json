@@ -42,7 +42,7 @@
       "expect": "accepted"
     },
     {
-      "problem": "discriminant",
+      "problem": "polydisc",
       "submission": "baseline",
       "expect": "accepted"
     },
