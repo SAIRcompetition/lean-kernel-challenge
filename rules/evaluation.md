@@ -16,7 +16,7 @@ Submission.lean
                        the comparator-verified export outside the counter and charge one replay
                        of its complete declaration closure
   → performance      : for each judge-chosen input n, export a theorem `impl n = v` whose
-                       `of_decide_eq_true rfl` proof remains directly in that declaration;
+                       direct `rfl` proof remains in that declaration;
                        parse it and preload its non-target dependency closure outside the
                        counter, then charge only replay of the generated target declaration.
                        Checking its `rfl` forces the kernel to fully reduce `impl n`
@@ -42,15 +42,19 @@ Checking `impl`'s own definition belongs to that uncounted preload: it is charge
 correctness-closure replay, rather than again at every slot.
 This is a scoped measurement, not an estimate obtained by subtracting two noisy process totals.
 
-The generated proof is intentionally a direct `of_decide_eq_true rfl` term. Lean's
-`decide +kernel` tactic instead extracts the expensive check into a private
+The generated proof is intentionally a direct `rfl` term kept in the target declaration itself.
+Lean's `decide +kernel` tactic instead extracts the expensive check into a private
 `check._proof_*` theorem and leaves `check` as a cheap wrapper, which would move the algorithm
 outside this boundary. The timer rejects such extracted target helpers rather than publishing a
 silently under-counted sample. Verdicts and cohort hashes pin this generator choice as
-`direct-of-decide-eq-true-rfl-v1`; older records without that field are unscored. A bare
-`rfl : impl n = v` proof would also force kernel reduction, but its cost would ride the
-kernel's definitional-equality shortcuts; normalizing the single `decide` application to `true`
-keeps the reduction and the output-literal comparison inside one uniformly counted boundary.
+`direct-rfl-v1-experimental`; records with other encodings (including the earlier
+`direct-of-decide-eq-true-rfl-v1`) never share a ranking with it. The earlier
+`of_decide_eq_true (rfl : decide (impl n = v) = true)` form measured the same kernel replay but
+required the *elaborator* to normalize the `decide` application when the theorem is built; on
+specs whose terms nest deeply (e.g. `sha256`'s per-round structures), that normalization
+overflows the elaborator irrespective of `maxRecDepth`, while the bare `rfl` builds in under a
+second and the kernel replay still reduces `impl n` and compares the exact output literal. The
+encoding is marked experimental until the organizers ratify it for an official cohort.
 
 The value `v` is obtained by elaborator-side reduction (`Meta.whnf`), never by compiled `#eval`.
 `Meta.whnf` is the elaborator's reduction engine, not the kernel's; the kernel does expose its own

@@ -129,7 +129,7 @@ This is measurement contract `kernel-replay-v2`, with boundaries
 harness cost without subtracting noisy process totals. Target replay still reduces `impl n` and
 compares the exact result, so checking a large `Nat`/`Int` literal remains input-dependent scored
 work. The verdict also pins the direct target-proof encoding
-`direct-of-decide-eq-true-rfl-v1`, preventing extracted-proof wrapper timings from mixing in.
+`direct-rfl-v1-experimental`, preventing extracted-proof wrapper timings from mixing in.
 
 For official evaluation, `PERF_SEED` is a secret rotation token. The judge hashes it with
 the problem id and slot index, so every submission in one public evaluation cohort receives
