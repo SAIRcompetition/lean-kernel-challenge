@@ -20,6 +20,7 @@ Measured on this tree (naive `baseline` submission, value oracle at each problem
 | `primecount` | 100 – 600 | 8.2 s — completes |
 | `ca-rule110` | 50 – 300 | 10.1 s — completes |
 | `sha256` | 1 – 8 | ~2.6 s — completes |
+| `discriminant` | 0 – 5 | 5.7 s — completes |
 
 Two consequences, both of which void the competition if launched as-is:
 
@@ -47,7 +48,11 @@ n≈60); `mertens` [10^3, 10^6–10^7] (naive ~50 s at 10^3, ~n^2→n^3/log n gr
 [6, 20] (min ≥ 6 escapes the 1,1,1,2,2 head; naive truncates n≈9–10 — see the saw/permanent
 memory caveat in item 1b); `saw` conditional on item 1b's OOM fix (naive ~30 s at n=9, memory
 grows ~250–300 MB per second of reduction); `sha256` re-derive with the others (naive
-truncates n≈7000 at ~0.26 s/step); `ca-rule110` — NO range works until item 1c is resolved.
+truncates n≈7000 at ~0.26 s/step); `ca-rule110` — NO range works until item 1c is resolved;
+`discriminant` — the raise-max rule does NOT apply (naive Laplace dies at degree 5–6, n≈7–9,
+far below any competitive range): anchor the range to the optimized rung instead — Bareiss
+floors at ~5.5 s per 47×47 instance from n=45 (list-op bound, ±2x), so [8, 300–1000] with the
+closure-priced table economics doing the anti-table work; re-derive on the host.
 
 ## 1b. Kernel memory growth can OOM-kill perf builds — judge scores it as a fatal fault
 
@@ -83,7 +88,15 @@ without the table. Decide before launch: either embrace it (it still ranks step-
 kernel-fu; state that the closure budget is the effective table budget) or reweight the
 correctness-closure term for chain problems. Tracked since the `sha256` review (2026-08-21).
 
-## 2. Full 8-problem sweep on the evaluation host — not yet run
+## 1d. Jitter clamping makes the top slot predictable half the time — judge sampling fix
+
+The slot sampler jitters geometric positions then clamps into `[min, max]`; upward jitter of the
+top position clamps to exactly `max`, so the decisive hardest slot equals `max` with probability
+~1/2 while the rules promise a hidden schedule. Targeted single-value tables at `max` become a
+coin-flip win. **To close:** jitter the top slot inward only (or resample instead of clamping)
+in `judge.perf_inputs`, and rotate cohorts after the change.
+
+## 2. Full 9-problem sweep on the evaluation host — not yet run
 
 All local numbers are wall-clock on a laptop. The official metric is `perf -e instructions` on a
 bare-metal Linux host with PMU access. Nothing in this repo has been run under
@@ -110,4 +123,4 @@ placement over best-N problems) has no agreed weights yet; `rules/evaluation.md`
 ## 5. Remaining optimized example submissions — nice to have
 
 `fib/doubling`, `ca-rule110/bitpacked` and `primecount/sqrt` ship with full `∀ n` proofs. The other
-four problems have only baselines, so their ladders are unproven by example.
+six problems have only baselines, so their ladders are unproven by example.
