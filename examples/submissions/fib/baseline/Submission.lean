@@ -1,8 +1,11 @@
 import Spec
 
 /-! Baseline: use the naive spec as the implementation. Correctness is trivial
-(`impl` IS `fibSpec`); the kernel evaluation of `impl n` runs the exponential
-spec, so it is slow. Beating this is the game. -/
+(`impl` IS `fibSpec`); the kernel reduces it via `brecOn` course-of-values
+recursion in near-linear time (~5.5 s at n = 100000) — slow, but NOT the
+exponential blowup the source suggests; the big win is fast doubling
+(O(log n) big-number multiplications), not a linear rewrite. Beating this
+baseline is the game. -/
 
 namespace Submission
 

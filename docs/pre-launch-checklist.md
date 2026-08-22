@@ -39,6 +39,39 @@ algorithm is already meaningfully cheaper, and re-check that `permanent` avoids 
 (`p(6)=17, p(7)=133, p(8)=380, p(9)=2010, p(10)=8908`). A previously calibrated example: `fib`
 `max = 1000000`, where the baseline oracle exceeds 90 s while fast doubling finishes in 19.1 s.
 
+Suggested launch ranges from the 2026-08-25 per-problem dives (wall-clock on the dev Mac, ±2x —
+re-derive the exact constants on the evaluation host): `fib` [10^4, 10^7] (naive truncates
+≈3.2×10^6; doubling reaches 10^7 in 44 ms); `partition` [50, 3×10^4–5×10^4] (naive truncates
+n≈60); `mertens` [10^3, 10^6–10^7] (naive ~50 s at 10^3, ~n^2→n^3/log n growth); `primecount`
+[5×10^3, 10^8–10^9] (naive truncates ≈1.06×10^4; sqrt example ~40x cheaper); `permanent`
+[6, 20] (min ≥ 6 escapes the 1,1,1,2,2 head; naive truncates n≈9–10 — see the saw/permanent
+memory caveat in item 1b); `saw` conditional on item 1b's OOM fix (naive ~30 s at n=9, memory
+grows ~250–300 MB per second of reduction); `sha256` re-derive with the others (naive
+truncates n≈7000 at ~0.26 s/step); `ca-rule110` — NO range works until item 1c is resolved.
+
+## 1b. Kernel memory growth can OOM-kill perf builds — judge scores it as a fatal fault
+
+Confirmed on `saw` (2026-08-25 dive): kernel reduction memory grows roughly linearly with
+reduction work (~250–300 MB/s observed); at `saw` n=9 the perf build already exceeds the
+official 4 GiB sandbox cap, and the sandbox SIGKILL surfaces as a deterministic build fault —
+an `error` verdict that destroys the submission — instead of a failed slot like a timeout.
+`permanent` at n≥10 likely dies the same way (3.6M-element foldl spine). **To close:** teach the
+judge to classify sandbox OOM kills of the perf build/replay as an unsuccessful slot (continue
+with later slots), and size official ranges so the naive truncation mode is the timeout, not the
+memory cap.
+
+## 1c. ca-rule110 instance is trivialized by a 166-state orbit — instance must change
+
+Confirmed empirically (2026-08-25 dive, verified independently in Python and Lean): the fixed
+32-cell `initRow` orbit has preperiod 118 and period 48, so `caSpecN n` for n ≥ 118 takes only
+48 values and `caSpecN n = caSpecN (118 + (n − 118) % 48)` holds. A submission that proves the
+cycle once (the shipped `bitpacked` example already contains the hard part — the full ∀n
+bitpacked equivalence proof) answers every large-n slot by table lookup over 48 values. No
+`{min,max}` choice rescues the current instance. **To close:** enlarge the instance (wider row
+and/or rotating seed-derived `initRow` per cohort, with the generator script committed so the
+instance is auditable — the current LCG seed comment has no reproducing script in the repo), and
+re-check the orbit structure of any new instance before launch.
+
 **Caveat — the range remedy does not neutralize tables on chain problems (`sha256`,
 `ca-rule110`).** The argument above assumes a table's `∀ n` proof must reduce the *naive spec* at
 large `n`. On an iterated-map problem a contestant instead proves digest anchors at stride `s`
