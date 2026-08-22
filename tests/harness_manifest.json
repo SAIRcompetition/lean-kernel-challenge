@@ -37,6 +37,11 @@
       "expect": "accepted"
     },
     {
+      "problem": "sha256",
+      "submission": "baseline",
+      "expect": "accepted"
+    },
+    {
       "problem": "fib",
       "submission": "doubling",
       "expect": "accepted",

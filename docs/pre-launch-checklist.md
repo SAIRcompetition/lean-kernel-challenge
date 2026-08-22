@@ -19,6 +19,7 @@ Measured on this tree (naive `baseline` submission, value oracle at each problem
 | `mertens` | 50 – 300 | 8.8 s — completes |
 | `primecount` | 100 – 600 | 8.2 s — completes |
 | `ca-rule110` | 50 – 300 | 10.1 s — completes |
+| `sha256` | 1 – 8 | ~2.6 s — completes |
 
 Two consequences, both of which void the competition if launched as-is:
 
@@ -38,7 +39,7 @@ algorithm is already meaningfully cheaper, and re-check that `permanent` avoids 
 (`p(6)=17, p(7)=133, p(8)=380, p(9)=2010, p(10)=8908`). A previously calibrated example: `fib`
 `max = 1000000`, where the baseline oracle exceeds 90 s while fast doubling finishes in 19.1 s.
 
-## 2. Full 7-problem sweep on the evaluation host — not yet run
+## 2. Full 8-problem sweep on the evaluation host — not yet run
 
 All local numbers are wall-clock on a laptop. The official metric is `perf -e instructions` on a
 bare-metal Linux host with PMU access. Nothing in this repo has been run under
