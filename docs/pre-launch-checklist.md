@@ -21,6 +21,7 @@ Measured on this tree (naive `baseline` submission, value oracle at each problem
 | `ca-rule110` | 50 – 300 | 10.1 s — completes |
 | `sha256` | 1 – 8 | ~2.6 s — completes |
 | `polydisc` | 0 – 5 | 5.7 s — completes |
+| `conv` | 4 – 64 | 2.6 s — completes |
 
 Two consequences, both of which void the competition if launched as-is:
 
@@ -48,7 +49,9 @@ n≈60); `mertens` [10^3, 10^6–10^7] (naive ~50 s at 10^3, ~n^2→n^3/log n gr
 [6, 20] (min ≥ 6 escapes the 1,1,1,2,2 head; naive truncates n≈9–10 — see the saw/permanent
 memory caveat in item 1b); `saw` conditional on item 1b's OOM fix (naive ~30 s at n=9, memory
 grows ~250–300 MB per second of reduction); `sha256` re-derive with the others (naive
-truncates n≈7000 at ~0.26 s/step); `ca-rule110` — NO range works until item 1c is resolved;
+truncates n≈7000 at ~0.26 s/step); `conv` [32, ~10^4] — naive truncates n≈600–800, but the
+Kronecker apex runs at noise floor at any length, so the max is bounded by oracle/literal size
+rather than replay cost (re-derive on the host); `ca-rule110` — NO range works until item 1c is resolved;
 `polydisc` — the raise-max rule does NOT apply (naive Laplace dies at degree 5–6, n≈7–9,
 far below any competitive range): anchor the range to the optimized rung instead — Bareiss
 floors at ~5.5 s per 47×47 instance from n=45 (list-op bound, ±2x), so [8, 300–1000] with the
@@ -96,7 +99,7 @@ top position clamps to exactly `max`, so the decisive hardest slot equals `max` 
 coin-flip win. **To close:** jitter the top slot inward only (or resample instead of clamping)
 in `judge.perf_inputs`, and rotate cohorts after the change.
 
-## 2. Full 9-problem sweep on the evaluation host — not yet run
+## 2. Full 10-problem sweep on the evaluation host — not yet run
 
 All local numbers are wall-clock on a laptop. The official metric is `perf -e instructions` on a
 bare-metal Linux host with PMU access. Nothing in this repo has been run under
@@ -123,4 +126,4 @@ placement over best-N problems) has no agreed weights yet; `rules/evaluation.md`
 ## 5. Remaining optimized example submissions — nice to have
 
 `fib/doubling`, `ca-rule110/bitpacked` and `primecount/sqrt` ship with full `∀ n` proofs. The other
-six problems have only baselines, so their ladders are unproven by example.
+seven problems have only baselines, so their ladders are unproven by example.
