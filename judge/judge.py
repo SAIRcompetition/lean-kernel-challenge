@@ -112,7 +112,7 @@ TIMER = Path(os.environ.get("TIMER_BIN", ROOT / "judge/timer-kernel/.lake/build/
 MEASUREMENT_CONTRACT = "kernel-replay-v2"
 FULL_REPLAY_BOUNDARY = "full-closure-replay-v1"
 TARGET_REPLAY_BOUNDARY = "target-declaration-replay-v1"
-TARGET_PROOF_ENCODING = "direct-of-decide-eq-true-rfl-v1"
+TARGET_PROOF_ENCODING = "direct-rfl-v1-experimental"
 CHECKER_ID = f"official-kernel-replay v4.32.0-rc1 ({MEASUREMENT_CONTRACT})"
 _TIMER_TIMING_PREFIX = "KERNEL_TIMING="
 # There is no READY/ACK channel in v2. The process watchdog therefore bounds untimed
@@ -957,9 +957,14 @@ def _perf_theorem_source(n, v, nonce):
         "set_option maxRecDepth 4000000\n"
         "set_option maxHeartbeats 0\n"
         f"namespace {namespace}\n"
-        f"theorem check : Submission.impl {n} = {v} :=\n"
-        f"  of_decide_eq_true "
-        f"(rfl : decide (Submission.impl {n} = {v}) = true)\n"
+        # EXPERIMENT (branch problem/sha256): bare `rfl` instead of
+        # `of_decide_eq_true (rfl : decide (...) = true)`. The decide form makes the
+        # ELABORATOR normalize `decide (impl n = v)` via Meta.whnf, whose recursion depth
+        # mirrors the term's nesting; on deep dependency DAGs (sha256: structures/lists per
+        # round) that overflows the 8 MiB elaborator stack, and with a 2 GiB stack it still
+        # exceeds maxRecDepth 4000000 — while bare rfl elaborates in <1 s and the kernel
+        # replay does the same full reduction either way. Encoding id bumped accordingly.
+        f"theorem check : Submission.impl {n} = {v} := rfl\n"
         f"end {namespace}\n"
     )
     return source, theorem
