@@ -117,6 +117,7 @@ Every problem is parametric in `n : Nat`; the judge evaluates `impl` along that 
 | `ca-rule110` | a Rule 110 automaton's state after n steps | linear (list-based) |
 | `sha256` | the SHA-256 hash chain digest after n steps | linear (~0.3 s/step, word-per-Nat) |
 | `polydisc` | the discriminant of a monic degree-min(2+n/2,24) integer polynomial (Int; coefficient width grows past n=44) | factorial in the degree (Laplace) |
+| `conv` | the packed integer convolution of two length-n 16-bit sequences (a NN conv layer / polynomial product) | ~n^2.5 (naive double sum, list walks) |
 
 Each spec is intentionally naive, so reducing it directly in the kernel blows up as n grows;
 competitive submissions need a better algorithm *and* a kernel-friendly encoding. The worked `fib`
@@ -125,7 +126,7 @@ times out in the kernel while fast doubling is checked in well under a second.
 
 ## Status
 
-**Prototype / pre-launch.** All 9 problems are functionalized and compile; the judge runs the full
+**Prototype / pre-launch.** All 10 problems are functionalized and compile; the judge runs the full
 pipeline end-to-end — correctness gate plus a new-paradigm performance phase that times the kernel
 reducing `impl n` at judge-chosen inputs into a scaling curve (local timing or the remote KTP/2
 executor, measurement contract `kernel-replay-v2`). Not yet finalized: perf instruction-counting
