@@ -107,6 +107,7 @@ Every problem is parametric in `n : Nat`; the judge evaluates `impl` along that 
 | `permanent` | the permanent of a deterministic n×n 0/1 matrix | n! |
 | `saw` | count of self-avoiding walks of length n on ℤ² | exponential |
 | `ca-rule110` | a Rule 110 automaton's state after n steps | linear (list-based) |
+| `sha256` | the SHA-256 hash chain digest after n steps | linear (~0.3 s/step, word-per-Nat) |
 
 Each spec is intentionally naive: reducing it directly in the kernel blows up as `n`
 grows, so competitive submissions require both better algorithms and kernel-level
@@ -128,7 +129,7 @@ This is measurement contract `kernel-replay-v2`, with boundaries
 harness cost without subtracting noisy process totals. Target replay still reduces `impl n` and
 compares the exact result, so checking a large `Nat`/`Int` literal remains input-dependent scored
 work. The verdict also pins the direct target-proof encoding
-`direct-of-decide-eq-true-rfl-v1`, preventing extracted-proof wrapper timings from mixing in.
+`direct-rfl-v1-experimental`, preventing extracted-proof wrapper timings from mixing in.
 
 For official evaluation, `PERF_SEED` is a secret rotation token. The judge hashes it with
 the problem id and slot index, so every submission in one public evaluation cohort receives
@@ -209,7 +210,7 @@ the wrapper checks this before it starts elaborating the submission.
 ```
 lean-kernel-challenge/
 ├─ rules/           overview.md (binding rules) · evaluation.md (judging + I/O contract)
-├─ problems/<id>/   7 locked problem workspaces (Spec / Challenge / Solution / config)
+├─ problems/<id>/   8 locked problem workspaces (Spec / Challenge / Solution / config)
 ├─ examples/submissions/<problem>/<name>/   worked + adversarial example submissions
 ├─ judge/           judge.py (the judge) · timer-kernel/ (kernel replay + axiom audit)
 ├─ pipeline/        config.json (budgets, sandbox mode, toolchain pins)
@@ -233,8 +234,8 @@ these pins; the third-party checkouts are not committed.
 > evaluation host before launch — see **[`docs/pre-launch-checklist.md`](docs/pre-launch-checklist.md)**
 > for the measurements and the other open pre-launch items.
 
-**Prototype / pre-launch.** All 7 problems are functionalized and compile; the correctness
-gate (comparator + axiom audit) and the green-gate harness are in place (7 baselines +
+**Prototype / pre-launch.** All 8 problems are functionalized and compile; the correctness
+gate (comparator + axiom audit) and the green-gate harness are in place (8 baselines +
 3 proven optimized submissions — `fib/doubling`, `ca-rule110/bitpacked`, `primecount/sqrt` —
 accepted; three fib cheat classes — `sorry`, illegal axiom, Mathlib — rejected). The main
 judge (`judge/judge.py`) times both the comparator-verified correctness closure and every

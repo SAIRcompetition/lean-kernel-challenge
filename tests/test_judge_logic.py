@@ -107,8 +107,13 @@ class OracleAndGeneratedTheoremTests(unittest.TestCase):
         source, theorem = judge._perf_theorem_source(7, "13", "nonce-a")
         self.assertIn("set_option maxHeartbeats 0", source)
         self.assertIn("set_option maxRecDepth 4000000", source)
-        self.assertIn(f"theorem check : Submission.impl 7 = 13", source)
-        self.assertIn("of_decide_eq_true", source)
+        # EXPERIMENT (branch problem/sha256): kernel-checked addDecl encoding; both
+        # source-level forms fail on one problem shape each. See _perf_theorem_source.
+        self.assertIn("Lean.addDecl", source)
+        self.assertIn("Lean.mkNatLit 7", source)
+        self.assertIn("Lean.mkNatLit 13", source)
+        self.assertIn(f"name := `{theorem}", source)
+        self.assertNotIn("of_decide_eq_true", source)
         self.assertNotIn("by decide +kernel", source)
         self.assertTrue(theorem.startswith("LeanKernelChallengeJudge.Generated_"))
         self.assertNotIn("theorem perf_check", source)

@@ -19,6 +19,7 @@ Measured on this tree (naive `baseline` submission, value oracle at each problem
 | `mertens` | 50 – 300 | 8.8 s — completes |
 | `primecount` | 100 – 600 | 8.2 s — completes |
 | `ca-rule110` | 50 – 300 | 10.1 s — completes |
+| `sha256` | 1 – 8 | ~2.6 s — completes |
 
 Two consequences, both of which void the competition if launched as-is:
 
@@ -38,7 +39,18 @@ algorithm is already meaningfully cheaper, and re-check that `permanent` avoids 
 (`p(6)=17, p(7)=133, p(8)=380, p(9)=2010, p(10)=8908`). A previously calibrated example: `fib`
 `max = 1000000`, where the baseline oracle exceeds 90 s while fast doubling finishes in 19.1 s.
 
-## 2. Full 7-problem sweep on the evaluation host — not yet run
+**Caveat — the range remedy does not neutralize tables on chain problems (`sha256`,
+`ca-rule110`).** The argument above assumes a table's `∀ n` proof must reduce the *naive spec* at
+large `n`. On an iterated-map problem a contestant instead proves digest anchors at stride `s`
+by chaining their own proved-equal fast step function — the exact artifact the contest wants
+optimized — paying one chain traversal in the correctness closure, after which every slot below
+the anchor horizon replays in ~`s` steps regardless of `{min, max}`. Under the current ranking
+(completed slots → coverage → bitmap → W) that submission weakly dominates the same submission
+without the table. Decide before launch: either embrace it (it still ranks step-function
+kernel-fu; state that the closure budget is the effective table budget) or reweight the
+correctness-closure term for chain problems. Tracked since the `sha256` review (2026-08-21).
+
+## 2. Full 8-problem sweep on the evaluation host — not yet run
 
 All local numbers are wall-clock on a laptop. The official metric is `perf -e instructions` on a
 bare-metal Linux host with PMU access. Nothing in this repo has been run under
