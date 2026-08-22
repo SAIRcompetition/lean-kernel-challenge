@@ -952,20 +952,43 @@ def _perf_theorem_source(n, v, nonce):
     token = hashlib.sha256(f"{nonce}\0{n}\0{v}".encode()).hexdigest()[:24]
     namespace = f"LeanKernelChallengeJudge.Generated_{token}"
     theorem = f"{namespace}.check"
+    # EXPERIMENT (branch problem/sha256): the target theorem `impl n = v := Eq.refl v` is
+    # added via `Lean.addDecl`, so the KERNEL alone type-checks it. Neither source-level
+    # encoding works everywhere: `of_decide_eq_true (rfl : decide (...) = true)` makes the
+    # elaborator normalize the decide application (Meta.whnf recursion mirrors term nesting →
+    # stack overflow on deep-DAG specs like sha256, and still > maxRecDepth 4000000 with a
+    # 2 GiB stack), while a source-level bare `rfl` sends the elaborator's isDefEq down
+    # lazy-delta unfolding that pathologically slows on fib-shaped impls at large n. The
+    # generator below does only inferType/mkNatLit/mkEq — no deep Meta reduction — and the
+    # kernel replays the identical `Eq.refl` theorem either source form would produce.
+    value = str(v)
+    if value.startswith("-"):
+        rhs = f"Lean.mkApp (Lean.mkConst ``Int.negSucc) (Lean.mkNatLit {int(value[1:]) - 1})"
+    else:
+        # Output type decided at generator runtime: Nat gets a raw literal, Int gets Int.ofNat.
+        rhs = (f"if outIsInt then Lean.mkApp (Lean.mkConst ``Int.ofNat) (Lean.mkNatLit {value}) "
+               f"else Lean.mkNatLit {value}")
     source = (
         "import Submission\n"
+        "import Lean\n"
         "set_option maxRecDepth 4000000\n"
         "set_option maxHeartbeats 0\n"
-        f"namespace {namespace}\n"
-        # EXPERIMENT (branch problem/sha256): bare `rfl` instead of
-        # `of_decide_eq_true (rfl : decide (...) = true)`. The decide form makes the
-        # ELABORATOR normalize `decide (impl n = v)` via Meta.whnf, whose recursion depth
-        # mirrors the term's nesting; on deep dependency DAGs (sha256: structures/lists per
-        # round) that overflows the 8 MiB elaborator stack, and with a 2 GiB stack it still
-        # exceeds maxRecDepth 4000000 — while bare rfl elaborates in <1 s and the kernel
-        # replay does the same full reduction either way. Encoding id bumped accordingly.
-        f"theorem check : Submission.impl {n} = {v} := rfl\n"
-        f"end {namespace}\n"
+        "open Lean Meta Elab in\n"
+        "run_meta do\n"
+        "  let implC := Lean.mkConst ``Submission.impl\n"
+        f"  let lhs := Lean.mkApp implC (Lean.mkNatLit {n})\n"
+        "  let out ← whnf (← inferType implC).bindingBody!\n"
+        "  let outIsInt := out.isConstOf ``Int\n"
+        "  unless outIsInt || out.isConstOf ``Nat do\n"
+        "    throwError \"unsupported impl output type {out}\"\n"
+        f"  let rhs := {rhs}\n"
+        "  let ty ← mkEq lhs rhs\n"
+        "  let pf ← mkEqRefl rhs\n"
+        "  Lean.addDecl (.thmDecl {\n"
+        f"    name := `{theorem},\n"
+        "    levelParams := [],\n"
+        "    type := ty,\n"
+        "    value := pf })\n"
     )
     return source, theorem
 
