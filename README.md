@@ -108,6 +108,7 @@ Every problem is parametric in `n : Nat`; the judge evaluates `impl` along that 
 | `saw` | count of self-avoiding walks of length n on ℤ² | exponential |
 | `ca-rule110` | a Rule 110 automaton's state after n steps | linear (list-based) |
 | `sha256` | the SHA-256 hash chain digest after n steps | linear (~0.3 s/step, word-per-Nat) |
+| `discriminant` | the discriminant of a monic degree-min(2+n/2,24) integer polynomial (Int; coefficient width grows past n=44) | factorial in the degree (Laplace) |
 
 Each spec is intentionally naive: reducing it directly in the kernel blows up as `n`
 grows, so competitive submissions require both better algorithms and kernel-level
@@ -210,7 +211,7 @@ the wrapper checks this before it starts elaborating the submission.
 ```
 lean-kernel-challenge/
 ├─ rules/           overview.md (binding rules) · evaluation.md (judging + I/O contract)
-├─ problems/<id>/   8 locked problem workspaces (Spec / Challenge / Solution / config)
+├─ problems/<id>/   9 locked problem workspaces (Spec / Challenge / Solution / config)
 ├─ examples/submissions/<problem>/<name>/   worked + adversarial example submissions
 ├─ judge/           judge.py (the judge) · timer-kernel/ (kernel replay + axiom audit)
 ├─ pipeline/        config.json (budgets, sandbox mode, toolchain pins)
@@ -234,8 +235,8 @@ these pins; the third-party checkouts are not committed.
 > evaluation host before launch — see **[`docs/pre-launch-checklist.md`](docs/pre-launch-checklist.md)**
 > for the measurements and the other open pre-launch items.
 
-**Prototype / pre-launch.** All 8 problems are functionalized and compile; the correctness
-gate (comparator + axiom audit) and the green-gate harness are in place (8 baselines +
+**Prototype / pre-launch.** All 9 problems are functionalized and compile; the correctness
+gate (comparator + axiom audit) and the green-gate harness are in place (9 baselines +
 3 proven optimized submissions — `fib/doubling`, `ca-rule110/bitpacked`, `primecount/sqrt` —
 accepted; three fib cheat classes — `sorry`, illegal axiom, Mathlib — rejected). The main
 judge (`judge/judge.py`) times both the comparator-verified correctness closure and every

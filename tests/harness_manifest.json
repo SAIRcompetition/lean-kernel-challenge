@@ -42,6 +42,11 @@
       "expect": "accepted"
     },
     {
+      "problem": "discriminant",
+      "submission": "baseline",
+      "expect": "accepted"
+    },
+    {
       "problem": "fib",
       "submission": "doubling",
       "expect": "accepted",
