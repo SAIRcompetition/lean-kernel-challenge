@@ -8,9 +8,10 @@ with the **Lean FRO** and the **SAIR Foundation**.
 | | |
 |---|---|
 | **Stage** | Stage 1 — Kernel Computation Track |
-| **Status** | Pre-launch draft (rules stable; scoring & logistics TBD) |
-| **Start** | 2026-09-01 |
-| **End** | TBD |
+| **Status** | Pre-launch (see [`prelaunch.md`](prelaunch.md); rules stable, scoring & logistics TBD) |
+| **Pre-registration** | 2026-08-26 |
+| **Official launch** | 2026-09-15, 12:00 UTC |
+| **Submission deadline** | 2026-11-15, 23:59 AoE |
 | **Prizes** | TBD |
 | **Submission platform** | TBD |
 

@@ -75,7 +75,9 @@ end Submission
 ```
 
 The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, `config.json`) are
-fixed; the judge supplies its own copies. See **[`rules/overview.md`](rules/overview.md)**
+fixed; the judge supplies its own copies. For the timeline, registration, and
+co-organizers see **[`rules/prelaunch.md`](rules/prelaunch.md)**. See
+**[`rules/overview.md`](rules/overview.md)**
 for the binding rules and **[`rules/evaluation.md`](rules/evaluation.md)** for how judging
 and scoring work.
 
