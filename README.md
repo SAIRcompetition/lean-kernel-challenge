@@ -21,8 +21,8 @@ The Lean Kernel Challenge is a competition series that brings the Lean community
 improve the performance of verified computation in the Lean kernel.
 
 Stage 1 is the first, experimental stage of the series. It begins with a set of fundamental
-computational problems. Later stages will cover a broader range of mathematical fields and more
-complex problems.
+computational problems. Later stages will cover a broader range of mathematical and scientific
+fields and more complex problems.
 
 The Lean 4 kernel is the trusted core that type-checks every proof the system accepts.
 Type-checking includes definitional-equality checking, which the kernel discharges by

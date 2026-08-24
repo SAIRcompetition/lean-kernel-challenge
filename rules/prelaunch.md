@@ -30,7 +30,7 @@ Lean kernel.
 
 Stage 1 is the first, experimental stage of the series. It begins with a set of
 fundamental computational problems. Later stages will cover a broader range of
-mathematical fields and more complex problems.
+mathematical and scientific fields and more complex problems.
 
 The Lean 4 kernel is the trusted component that checks every proof accepted by
 Lean. It checks definitional equality by reducing expressions; when a proof
