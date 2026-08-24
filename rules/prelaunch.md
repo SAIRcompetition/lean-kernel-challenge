@@ -1,6 +1,7 @@
-# Lean Kernel Challenge — Pre-launch & Registration
+# Lean Kernel Challenge Stage 1 — Pre-launch & Registration
 
-*A competition on the performance of verified computation in the Lean 4 kernel.*
+*Stage 1 of a multi-stage competition on the performance of verified
+computation in the Lean 4 kernel.*
 
 ## Co-organizers
 
@@ -18,19 +19,21 @@ and Terence Tao.
 
 ## Background
 
+Lean Kernel Challenge Stage 1 is the Kernel Computation Track of a multi-stage
+competition. Further stages will be announced separately.
+
 The Lean 4 kernel is the trusted component that checks every proof accepted by
 Lean. It checks definitional equality by reducing expressions; when a proof
 depends on a computed result, that computation becomes part of proof
 verification.
 
-The primary goal of the Lean Kernel Challenge is to bring the community
-together to improve the performance of verified computation in the Lean
-kernel. After each evaluation cohort closes, all results and benchmark data
-from that cohort will be released publicly under an open license. Together with
-the algorithms and representations developed through the challenge, this open
-record will support the Lean community, contribute to Lean's continued
-development, and allow Lean users worldwide to reproduce, reuse, and build on
-the community's work.
+The primary goal of Stage 1 is to bring the community together to improve the
+performance of verified computation in the Lean kernel. After each evaluation
+cohort closes, all results and benchmark data from that cohort will be released
+publicly under an open license. Together with the algorithms and
+representations developed through the challenge, this open record will support
+the Lean community, contribute to Lean's continued development, and allow Lean
+users worldwide to reproduce, reuse, and build on the community's work.
 
 ## Task
 
@@ -68,3 +71,25 @@ team on SAIR.
 
 The official repository, SAIR Playground, and submission system will become
 available at the official launch.
+
+## Experimental Status and Participant Costs
+
+Lean Kernel Challenge Stage 1 is experimental. Participants are responsible
+for any computing costs they incur while developing, testing, submitting, or
+otherwise participating in Stage 1. The co-organizers do not reimburse these
+costs.
+
+## Team Participation and Anti-Cheating Policy
+
+- Each individual may participate only once, either individually or as a member
+  of one team. Each organization may participate through only one team.
+- Teams must declare all members and any team sponsors through the registration
+  process before their first submission.
+- If coordinated cheating is detected, including through sockpuppet teams, all
+  related teams will be disqualified.
+
+## Community Feedback
+
+Community feedback and contributions are welcome. Join the
+[SAIR Foundation Zulip community](https://zulip.sair.foundation/) for discussion
+and collaboration.

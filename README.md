@@ -1,6 +1,7 @@
-# Lean Kernel Challenge
+# Lean Kernel Challenge Stage 1
 
-*A competition on the performance of verified computation in the Lean 4 kernel.*
+*Stage 1 of a multi-stage competition on the performance of verified computation in the Lean 4
+kernel.*
 
 **Individual co-organizers:** Joachim Breitner, Leonardo de Moura, Kim Morrison,
 and Terence Tao.
@@ -10,6 +11,9 @@ and Terence Tao.
 
 ## Background
 
+This repository contains Lean Kernel Challenge Stage 1, the Kernel Computation Track. Further
+stages will be announced separately.
+
 The Lean 4 kernel is the trusted core that type-checks every proof the system accepts.
 Type-checking includes definitional-equality checking, which the kernel discharges by
 reduction (β/δ/ι reduction and evaluation to weak head normal form). When a proof
@@ -17,7 +21,7 @@ depends on a computed result — for instance an equation `f x = y` closed by `r
 kernel establishes it by reducing `f x` and comparing. Verifying such a proof and
 performing the computation are therefore one and the same operation.
 
-The challenge brings the Lean community together to improve the performance of
+Stage 1 brings the Lean community together to improve the performance of
 verified computation in the kernel. The resulting algorithms, representations,
 and openly licensed results and benchmark data will form a collective
 contribution to Lean's continued development and benefit Lean users worldwide.
@@ -39,8 +43,6 @@ and submissions compete on how few instructions it takes to check them. Speed al
 not the objective — a submission is a general algorithm plus a machine-verifiable proof
 that it matches the spec on every input, so progress comes from stronger algorithms and
 kernel-level encodings rather than from bypassing the computation.
-
-This repository holds **Stage 1**, the kernel-computation track.
 
 ---
 
@@ -83,8 +85,9 @@ end Submission
 ```
 
 The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, `config.json`) are
-fixed; the judge supplies its own copies. For the timeline, registration, and
-co-organizers see **[`rules/prelaunch.md`](rules/prelaunch.md)**. See
+fixed; the judge supplies its own copies. For the timeline, registration,
+participation policies, and co-organizers see
+**[`rules/prelaunch.md`](rules/prelaunch.md)**. See
 **[`rules/overview.md`](rules/overview.md)**
 for the binding rules and **[`rules/evaluation.md`](rules/evaluation.md)** for how judging
 and scoring work.
@@ -262,6 +265,6 @@ and shared within a cohort through a rotating official `PERF_SEED`; the seed is 
 to elaboration. `scripts/score.py` applies the coverage-then-total-work contract within each
 cohort, with α/β as report-only diagnostics. Not yet finalized: a PMU-hardware
 run; the cross-problem scoring aggregation (best-N + relative placement); the four remaining
-optimized example submissions; and prize details.
-Rule text may still change before launch (see `rules/overview.md`). Track 1 (certificate
-verification) and Track 3 (open problems) are planned for later stages.
+optimized example submissions. Rule text may still change before launch (see
+`rules/overview.md`). Future stages are planned to cover certificate verification and open
+problems; their scope and schedules will be announced separately.

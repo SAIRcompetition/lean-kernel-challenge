@@ -1,6 +1,7 @@
-# Lean Kernel Challenge — Overview
+# Lean Kernel Challenge Stage 1 — Overview
 
-*A competition on the performance of verified computation in the Lean 4 kernel.*
+*Stage 1 of a multi-stage competition on the performance of verified computation in the Lean 4
+kernel.*
 
 **Individual co-organizers:** Joachim Breitner, Leonardo de Moura, Kim Morrison,
 and Terence Tao.
@@ -15,12 +16,14 @@ and Terence Tao.
 | **Registration and team formation open** | 2026-08-26 |
 | **Official launch** | 2026-09-15, 12:00 UTC |
 | **Submission deadline** | 2026-11-15, 23:59 AoE (UTC−12) |
-| **Prizes** | Announced before the official launch |
 | **Submission platform** | [SAIR](https://competition.sair.foundation/) |
 
 ---
 
 ## Background
+
+Lean Kernel Challenge Stage 1 is the Kernel Computation Track. Further stages will be announced
+separately.
 
 The Lean 4 kernel type-checks every proof the system accepts. Type-checking includes
 definitional-equality checking, which the kernel discharges by reduction. When a proof depends
@@ -72,6 +75,9 @@ judge supplies its own copies. The simplest submission is `impl := spec` with
 the naive spec. Beating that baseline is the whole game.
 
 ## Rules
+
+Participation is also subject to the team, anti-cheating, and participant-cost policies in
+[`prelaunch.md`](prelaunch.md).
 
 A submission has two parts — a function `impl` and a proof `impl_correct` — and the rules follow
 that shape: what you may edit, what `impl` must be, what `impl_correct` must prove, what the proof
@@ -134,5 +140,5 @@ times out in the kernel while fast doubling is checked in well under a second.
 pipeline end-to-end — correctness gate plus a new-paradigm performance phase that times the kernel
 reducing `impl n` at judge-chosen inputs into a scaling curve (local timing or the remote KTP/2
 executor, measurement contract `kernel-replay-v2`). Not yet finalized: perf instruction-counting
-on PMU hardware; the scoring aggregation
-(best-N + relative placement); and prize details. Rule text may still change before launch.
+on PMU hardware and the scoring aggregation (best-N + relative placement). Rule text may still
+change before launch.
