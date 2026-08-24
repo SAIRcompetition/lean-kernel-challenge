@@ -1,4 +1,4 @@
-# Lean Kernel Challenge Stage 1 — Evaluation
+# Lean Kernel Challenge — Stage 1: Evaluation
 
 How submissions are judged and scored. For the task, rules, and problems see `overview.md`.
 

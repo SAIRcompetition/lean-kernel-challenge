@@ -1,12 +1,12 @@
-# Lean Kernel Challenge Stage 1 — Pre-launch & Registration
+# Lean Kernel Challenge — Stage 1
 
 *Stage 1 of a multi-stage competition on improving the performance of verified
 computation in the Lean 4 kernel.*
 
 ## Co-organizers
 
-Lean Kernel Challenge Stage 1 is co-organized by (in alphabetical order by
-surname):
+Stage 1 of the Lean Kernel Challenge is co-organized by (in alphabetical order
+by surname):
 
 - Joachim Breitner
 - Leonardo de Moura
@@ -83,10 +83,10 @@ available at the official launch.
 
 ## Experimental Status and Participant Costs
 
-Lean Kernel Challenge Stage 1 is experimental. Participants are responsible
-for any computing costs they incur while developing, testing, submitting, or
-otherwise participating in Stage 1. The co-organizers do not reimburse these
-costs.
+Stage 1 of the Lean Kernel Challenge is experimental. Participants are
+responsible for any computing costs they incur while developing, testing,
+submitting, or otherwise participating in Stage 1. The co-organizers do not
+reimburse these costs.
 
 ## Team Participation and Anti-Cheating Policy
 
