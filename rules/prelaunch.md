@@ -37,9 +37,11 @@ Lean. It checks definitional equality by reducing expressions; when a proof
 depends on a computed result, that computation becomes part of proof
 verification.
 
-After each evaluation cohort closes, all results and benchmark data from that
-cohort will be publicly released under an open-source license so Lean users
-worldwide can reproduce, reuse, and build on them.
+After the evaluation phase, all results and benchmark data will be released
+publicly under an open-source license. Together with the algorithms and
+representations developed through the challenge, they will form a collective
+contribution to Lean's development that the global Lean community can
+reproduce, reuse, and build on.
 
 ## Task
 

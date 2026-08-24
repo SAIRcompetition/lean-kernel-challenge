@@ -160,9 +160,8 @@ the problem id and slot index, so every submission in one public evaluation coho
 the same hidden schedule. Operators rotate the token and cohort id for a new round or
 deliberate rescore; an unset seed is deterministic local development only. The production
 wrapper injects the seed once over stdin, never into the submission's elaboration environment.
-Raw verdicts stay private until that evaluation cohort closes; later submissions are evaluated
-under a newly rotated cohort. Once a cohort closes, all results and benchmark data from that
-cohort are released publicly under an open-source license.
+Raw verdicts and exact inputs remain private throughout the evaluation phase. After that phase,
+all results and benchmark data are released publicly under an open-source license.
 
 ## Scoring
 

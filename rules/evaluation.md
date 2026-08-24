@@ -97,11 +97,11 @@ different randomly selected `n`. The production wrapper injects the secret once 
 untrusted elaboration and the judge removes it from every child environment. An unset seed is
 permitted only for deterministic local development and is not an official score.
 
-Because a cohort shares one schedule, its raw verdicts and exact inputs are operator-private until
-that cohort is closed. Once closed, all results and benchmark data for that cohort are released
+Because a cohort shares one schedule, its raw verdicts and exact inputs are operator-private
+throughout the evaluation phase. After that phase, all results and benchmark data are released
 publicly under an open-source license. Submissions are evaluated as a batch after the submission
 cutoff; later entries or deliberate re-evaluations use a new seed and cohort and rescore the
-comparison set. Publishing an active cohort's inputs would turn evaluation into an oracle for
+comparison set. Publishing active evaluation inputs would turn evaluation into an oracle for
 targeted tables.
 
 **Hardcoding and proof cost.** R3 guarantees extensional correctness; it does *not* imply that a
