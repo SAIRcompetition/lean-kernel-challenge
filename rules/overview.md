@@ -20,8 +20,9 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 | **Stage** | Stage 1 — Kernel Computation Track |
 | **Status** | Pre-launch; remaining scoring and logistics details will be finalized before launch |
 | **Registration and team formation open** | 2026-08-26 |
-| **Official launch** | 2026-09-15, 12:00 UTC |
-| **Submission deadline** | 2026-11-15, 23:59 AoE (UTC−12) |
+| **Official launch** | 2026-09-15 |
+| **Submission deadline** | 2026-11-20, 23:59 AoE (UTC−12) |
+| **Stage 2 begins** | December 2026 (exact date TBD) |
 | **Submission platform** | [SAIR](https://competition.sair.foundation/) |
 
 ---

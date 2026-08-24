@@ -64,8 +64,9 @@ problems will be announced at the official launch.
 ## Key Dates
 
 - Registration and team formation open: **August 26, 2026**
-- Official launch: **September 15, 2026, 12:00 UTC**
-- Submission deadline: **November 15, 2026, 23:59 AoE (UTC−12)**
+- Official launch: **September 15, 2026**
+- Submission deadline: **November 20, 2026, 23:59 AoE (UTC−12)**
+- Stage 2 begins: **December 2026** (exact date TBD)
 
 ## Registration & Teams
 
