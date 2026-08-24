@@ -4,14 +4,11 @@
 
 ## Co-organizers
 
-The Lean Kernel Challenge is co-organized by:
+**Individual co-organizers:** Joachim Breitner, Leonardo de Moura, Kim Morrison,
+and Terence Tao.
 
-- Joachim Breitner
-- Leonardo de Moura
-- Kim Morrison
-- Terence Tao
-- [Lean FRO](https://lean-fro.org/)
-- [SAIR Foundation](https://sair.foundation/)
+**Co-organizing institutions:** [Lean FRO](https://lean-fro.org/) and the
+[SAIR Foundation](https://sair.foundation/).
 
 <p align="center">
   <a href="https://lean-fro.org/"><img src="../assets/lean-fro-logo.svg" alt="Lean FRO" width="260"></a>
@@ -21,68 +18,51 @@ The Lean Kernel Challenge is co-organized by:
 
 ## Background
 
-The Lean 4 kernel is the small trusted core that type-checks every proof the
-system accepts. Type-checking includes definitional-equality checking, which
-the kernel discharges by reduction — so when a proof depends on a computed
-result, verifying the proof and performing the computation are one and the
-same operation. This makes the kernel a well-defined, deterministic model of
-computation with its own performance characteristics, and raises a concrete,
-largely unstudied question:
+The Lean 4 kernel is the trusted component that checks every proof accepted by
+Lean. Some proofs require the kernel to reduce expressions when checking
+definitional equality. When an equality depends on a computed value, this
+reduction performs the computation as part of proof verification.
 
-> **How efficiently can a computation be expressed so that the kernel
-> *verifies* it, and which algorithmic and encoding techniques scale within
-> the kernel's reduction model?**
+The Lean Kernel Challenge studies how algorithms and representations affect
+the cost of verified computation in the kernel.
 
 ## Task
 
-Each challenge provides a trusted Lean specification. You submit a
-**function** implementing a faster algorithm together with a
-**machine-checked proof** that it agrees with the specification on *every*
-input. What is scored is not how fast your compiled code runs: the official
-Lean kernel replays your submission, and the kernel's own work is measured.
+For each problem, the organizers provide a trusted Lean specification.
+Participants submit:
 
-The challenge set spans algebra, number theory, combinatorics, cryptography,
-discrete mathematics, and other areas of computational mathematics. Specific
-problems and instances will be revealed only at the official launch.
+1. an implementation optimized for kernel verification; and
+2. a machine-checked proof that the implementation agrees with the
+   specification on every input.
 
-No prior familiarity with these fields is required, and no specific problem is
-revealed here. The full problem set will be published at the official launch.
-Until then, the shape above — one function, one `∀`-proof, kernel replay as the
-metric — is everything a team needs to know to prepare.
+The judge verifies the universal correctness proof. Scoring measures the work
+performed by a pinned Lean kernel when it replays the verified correctness
+artifact and checks the implementation at selected inputs. Compiled execution,
+including `#eval`, is not the competition metric.
+
+The problem set draws from algebra, number theory, combinatorics, cryptography,
+discrete mathematics, and other areas of computational mathematics. The
+specific problems will be announced at the official launch.
 
 ## Key Dates
 
-- Pre-registration and team formation open: **August 26, 2026**
-- Official launch — problems, binding rules, and judge published: **September 15, 2026, 12:00 UTC**
+- Registration and team formation open: **August 26, 2026**
+- Official launch: **September 15, 2026, 12:00 UTC**
 - Submission deadline: **November 15, 2026, 23:59 AoE**
 
 ## Registration & Teams
 
 Registration and team management take place on
-[SAIR](https://competition.sair.foundation/) beginning August 26. To register,
-create or sign in to your SAIR account, complete the required profile and
-participant information, and agree to SAIR's competition terms. You may
-participate individually or as a team; teams can be formed and named from
-registration onward. Team composition and size rules are stated on the
-competition page.
-
-## What you can do now
-
-- Install [Lean 4](https://lean-lang.org/) and get comfortable with core-Lean
-  programming (the competition pins a specific toolchain, announced at
-  launch).
-- Build intuition for the kernel's reduction model. A caution that will save
-  you time later: `#eval` runs *compiled* code, while the judge measures
-  *kernel reduction* — the two can diverge exponentially, in both directions.
-- Form your team, and watch the competition page for launch-day announcements.
+[SAIR](https://competition.sair.foundation/). To register, participants must
+create a SAIR account, complete the required profile information, and agree to
+the SAIR competition terms. Participants may compete individually or form a
+team through the SAIR platform.
 
 ## Prizes
 
-To be announced before launch.
+Prize details will be announced before the official launch.
 
 ## Official Repository & Playground
 
-The official repository — locked problem workspaces, the judge, worked
-examples, and the binding rule texts — will be published at the official
-launch on September 15, 2026. The SAIR Playground and submission system will
-also become available at the official launch.
+The official repository, SAIR Playground, and submission system will become
+available at the official launch.
