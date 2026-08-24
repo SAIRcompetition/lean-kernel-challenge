@@ -1,12 +1,18 @@
 # Lean Kernel Challenge Stage 1
 
-*Stage 1 of a multi-stage competition on the performance of verified computation in the Lean 4
-kernel.*
+*Stage 1 of a multi-stage competition on improving the performance of verified computation in the
+Lean 4 kernel.*
 
-**Individual co-organizers:** Joachim Breitner, Leonardo de Moura, Kim Morrison,
-and Terence Tao.
+## Co-organizers
 
-**Co-organizing institutions:** [Lean FRO](https://lean-fro.org/) and the
+Lean Kernel Challenge Stage 1 is co-organized by (in alphabetical order by surname):
+
+- Joachim Breitner
+- Leonardo de Moura
+- Kim Morrison
+- Terence Tao
+
+The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 [SAIR Foundation](https://sair.foundation/).
 
 ## Background
