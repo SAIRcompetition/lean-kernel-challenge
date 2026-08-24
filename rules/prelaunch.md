@@ -24,9 +24,9 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 
 ## Background
 
-The Lean Kernel Challenge is a competition series that brings the Lean
-community together to improve the performance of verified computation in the
-Lean kernel.
+The Lean Kernel Challenge is a competition series that brings the community
+together to improve the performance of verified computation in the Lean
+kernel.
 
 Stage 1 is the first, experimental stage of the series. It begins with a set of
 fundamental computational problems. Later stages will cover a broader range of
