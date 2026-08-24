@@ -19,14 +19,18 @@ and Terence Tao.
 ## Background
 
 The Lean 4 kernel is the trusted component that checks every proof accepted by
-Lean. Some proofs require the kernel to reduce expressions when checking
-definitional equality. When an equality depends on a computed value, this
-reduction performs the computation as part of proof verification.
+Lean. It checks definitional equality by reducing expressions; when a proof
+depends on a computed result, that computation becomes part of proof
+verification.
 
 The primary goal of the Lean Kernel Challenge is to bring the community
 together to improve the performance of verified computation in the Lean
-kernel. The resulting algorithms, representations, and benchmarks form a
-collective contribution to Lean's continued development.
+kernel. After each evaluation cohort closes, all results and benchmark data
+from that cohort will be released publicly under an open license. Together with
+the algorithms and representations developed through the challenge, this open
+record will support the Lean community, contribute to Lean's continued
+development, and allow Lean users worldwide to reproduce, reuse, and build on
+the community's work.
 
 ## Task
 
@@ -37,28 +41,28 @@ Participants submit:
 2. a machine-checked proof that the implementation agrees with the
    specification on every input.
 
-The judge verifies the universal correctness proof. Scoring measures the work
-performed by a pinned Lean kernel when it replays the verified correctness
-artifact and checks the implementation at selected inputs. Compiled execution,
-including `#eval`, is not the competition metric.
+The judge first checks the proof of correctness for all inputs. Scoring
+measures the work performed by a pinned Lean kernel when replaying the complete
+verified correctness artifact and the generated checks for judge-selected
+inputs. Compiled execution, including `#eval`, is not scored.
 
-The problem set draws from algebra, number theory, combinatorics, cryptography,
-discrete mathematics, and other areas of computational mathematics. The
-specific problems will be announced at the official launch.
+The problem set spans areas of computational mathematics including algebra,
+number theory, combinatorics, cryptography, and discrete mathematics. Specific
+problems will be announced at the official launch.
 
 ## Key Dates
 
 - Registration and team formation open: **August 26, 2026**
 - Official launch: **September 15, 2026, 12:00 UTC**
-- Submission deadline: **November 15, 2026, 23:59 AoE**
+- Submission deadline: **November 15, 2026, 23:59 AoE (UTC−12)**
 
 ## Registration & Teams
 
 Registration and team management take place on
-[SAIR](https://competition.sair.foundation/). To register, participants must
-create a SAIR account, complete the required profile information, and agree to
-the SAIR competition terms. Participants may compete individually or form a
-team through the SAIR platform.
+[SAIR](https://competition.sair.foundation/). Participants must have a SAIR
+account, complete the required profile information, and agree to the SAIR
+competition terms before registering. They may compete individually or form a
+team on SAIR.
 
 ## Prizes
 

@@ -2,18 +2,21 @@
 
 *A competition on the performance of verified computation in the Lean 4 kernel.*
 
-**Co-organized by** Joachim Breitner, Leonardo de Moura, Kim Morrison, and Terence Tao —
-with the **Lean FRO** and the **SAIR Foundation**.
+**Individual co-organizers:** Joachim Breitner, Leonardo de Moura, Kim Morrison,
+and Terence Tao.
+
+**Co-organizing institutions:** [Lean FRO](https://lean-fro.org/) and the
+[SAIR Foundation](https://sair.foundation/).
 
 | | |
 |---|---|
 | **Stage** | Stage 1 — Kernel Computation Track |
-| **Status** | Pre-launch (see [`prelaunch.md`](prelaunch.md); rules stable, scoring & logistics TBD) |
-| **Pre-registration** | 2026-08-26 |
+| **Status** | Pre-launch; remaining scoring and logistics details will be finalized before launch |
+| **Registration and team formation open** | 2026-08-26 |
 | **Official launch** | 2026-09-15, 12:00 UTC |
-| **Submission deadline** | 2026-11-15, 23:59 AoE |
-| **Prizes** | TBD |
-| **Submission platform** | TBD |
+| **Submission deadline** | 2026-11-15, 23:59 AoE (UTC−12) |
+| **Prizes** | Announced before the official launch |
+| **Submission platform** | [SAIR](https://competition.sair.foundation/) |
 
 ---
 
@@ -132,5 +135,4 @@ pipeline end-to-end — correctness gate plus a new-paradigm performance phase t
 reducing `impl n` at judge-chosen inputs into a scaling curve (local timing or the remote KTP/2
 executor, measurement contract `kernel-replay-v2`). Not yet finalized: perf instruction-counting
 on PMU hardware; the scoring aggregation
-(best-N + relative placement); the submission platform; prizes and end date. Rule text may still
-change before launch.
+(best-N + relative placement); and prize details. Rule text may still change before launch.

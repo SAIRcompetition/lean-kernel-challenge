@@ -2,8 +2,11 @@
 
 *A competition on the performance of verified computation in the Lean 4 kernel.*
 
-Co-organized by Joachim Breitner, Leonardo de Moura, Kim Morrison, and Terence Tao —
-with the **Lean FRO** and the **SAIR Foundation**.
+**Individual co-organizers:** Joachim Breitner, Leonardo de Moura, Kim Morrison,
+and Terence Tao.
+
+**Co-organizing institutions:** [Lean FRO](https://lean-fro.org/) and the
+[SAIR Foundation](https://sair.foundation/).
 
 ## Background
 
@@ -13,6 +16,11 @@ reduction (β/δ/ι reduction and evaluation to weak head normal form). When a p
 depends on a computed result — for instance an equation `f x = y` closed by `rfl` — the
 kernel establishes it by reducing `f x` and comparing. Verifying such a proof and
 performing the computation are therefore one and the same operation.
+
+The challenge brings the Lean community together to improve the performance of
+verified computation in the kernel. The resulting algorithms, representations,
+and openly licensed results and benchmark data will form a collective
+contribution to Lean's continued development and benefit Lean users worldwide.
 
 This makes the kernel a well-defined, deterministic model of computation with its own
 performance characteristics: reduction is call-by-name, natural-number literals are
@@ -141,7 +149,8 @@ the same hidden schedule. Operators rotate the token and cohort id for a new rou
 deliberate rescore; an unset seed is deterministic local development only. The production
 wrapper injects the seed once over stdin, never into the submission's elaboration environment.
 Raw verdicts stay private until that evaluation cohort closes; later submissions are evaluated
-under a newly rotated cohort.
+under a newly rotated cohort. Once a cohort closes, all results and benchmark data from that
+cohort are released publicly under an open license.
 
 ## Scoring
 
@@ -166,8 +175,8 @@ exact schedule, toolchain, timing policy, and executor. Run `python3 scripts/sco
 the canonical tables.
 
 Each problem has its own leaderboard. Your overall standing aggregates your best problems
-with a relative-placement component; the exact formula is published with the scoring
-appendix and may be finalized mid-competition once the field is known.
+with a relative-placement component. The exact formula will be published in the scoring
+appendix before the official launch.
 
 ## Quick start
 
@@ -253,6 +262,6 @@ and shared within a cohort through a rotating official `PERF_SEED`; the seed is 
 to elaboration. `scripts/score.py` applies the coverage-then-total-work contract within each
 cohort, with α/β as report-only diagnostics. Not yet finalized: a PMU-hardware
 run; the cross-problem scoring aggregation (best-N + relative placement); the four remaining
-optimized example submissions; prizes, timeline, and the submission platform.
+optimized example submissions; and prize details.
 Rule text may still change before launch (see `rules/overview.md`). Track 1 (certificate
 verification) and Track 3 (open problems) are planned for later stages.

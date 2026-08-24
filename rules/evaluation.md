@@ -98,9 +98,10 @@ untrusted elaboration and the judge removes it from every child environment. An 
 permitted only for deterministic local development and is not an official score.
 
 Because a cohort shares one schedule, its raw verdicts and exact inputs are operator-private until
-that cohort is closed. Submissions are evaluated as a batch after the submission cutoff; later
-entries or deliberate re-evaluations use a new seed and cohort and rescore the comparison set.
-Publishing an active cohort's inputs would turn evaluation into an oracle for targeted tables.
+that cohort is closed. Once closed, all results and benchmark data for that cohort are released
+publicly under an open license. Submissions are evaluated as a batch after the submission cutoff;
+later entries or deliberate re-evaluations use a new seed and cohort and rescore the comparison
+set. Publishing an active cohort's inputs would turn evaluation into an oracle for targeted tables.
 
 **Hardcoding and proof cost.** R3 guarantees extensional correctness; it does *not* imply that a
 literal answer must be proved by directly reducing the naïve spec. A submission may derive a
