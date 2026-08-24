@@ -23,8 +23,10 @@ Lean. Some proofs require the kernel to reduce expressions when checking
 definitional equality. When an equality depends on a computed value, this
 reduction performs the computation as part of proof verification.
 
-The Lean Kernel Challenge studies how algorithms and representations affect
-the cost of verified computation in the kernel.
+The primary goal of the Lean Kernel Challenge is to bring the community
+together to improve the performance of verified computation in the Lean
+kernel. The resulting algorithms, representations, and benchmarks form a
+collective contribution to Lean's continued development.
 
 ## Task
 
