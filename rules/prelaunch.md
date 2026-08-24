@@ -33,19 +33,22 @@ largely unstudied question:
 > *verifies* it, and which algorithmic and encoding techniques scale within
 > the kernel's reduction model?**
 
-The Lean Kernel Challenge is a competition on exactly this question. Each
-problem provides a trusted specification; you submit a **function** (your fast
-algorithm) together with a **machine-checked proof** that it agrees with the
-specification on *every* input. What is scored is not how fast your compiled
-code runs — the official Lean kernel replays your submission, and the kernel's
-own work is measured. Stronger algorithms and kernel-friendly encodings win;
-bypassing the computation is impossible, because the measurement *is* the
-proof check.
+## Task
 
-No prior familiarity with the problem domains is needed or revealed here: the
-problem set is published at the official launch. Until then, the shape above —
-one function, one `∀`-proof, kernel replay as the metric — is everything a
-team needs to know to prepare.
+Each challenge provides a trusted Lean specification. You submit a
+**function** implementing a faster algorithm together with a
+**machine-checked proof** that it agrees with the specification on *every*
+input. What is scored is not how fast your compiled code runs: the official
+Lean kernel replays your submission, and the kernel's own work is measured.
+
+The challenge set spans algebra, number theory, combinatorics, cryptography,
+discrete mathematics, and other areas of computational mathematics. Specific
+problems and instances will be revealed only at the official launch.
+
+No prior familiarity with these fields is required, and no specific problem is
+revealed here. The full problem set will be published at the official launch.
+Until then, the shape above — one function, one `∀`-proof, kernel replay as the
+metric — is everything a team needs to know to prepare.
 
 ## Key Dates
 
@@ -77,8 +80,9 @@ competition page.
 
 To be announced before launch.
 
-## Official Repository
+## Official Repository & Playground
 
 The official repository — locked problem workspaces, the judge, worked
 examples, and the binding rule texts — will be published at the official
-launch on September 15, 2026.
+launch on September 15, 2026. The SAIR Playground and submission system will
+also become available at the official launch.
