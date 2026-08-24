@@ -17,8 +17,12 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 
 ## Background
 
-This repository contains Lean Kernel Challenge Stage 1, the Kernel Computation Track. Further
-stages will be announced separately.
+The Lean Kernel Challenge is a competition series that brings the Lean community together to
+improve the performance of verified computation in the Lean kernel.
+
+Stage 1 is the first, experimental stage of the series. It begins with a set of fundamental
+computational problems. Later stages will cover a broader range of mathematical fields and more
+complex problems.
 
 The Lean 4 kernel is the trusted core that type-checks every proof the system accepts.
 Type-checking includes definitional-equality checking, which the kernel discharges by
@@ -27,10 +31,9 @@ depends on a computed result — for instance an equation `f x = y` closed by `r
 kernel establishes it by reducing `f x` and comparing. Verifying such a proof and
 performing the computation are therefore one and the same operation.
 
-Stage 1 brings the Lean community together to improve the performance of
-verified computation in the kernel. The resulting algorithms, representations,
-and openly licensed results and benchmark data will form a collective
-contribution to Lean's continued development and benefit Lean users worldwide.
+The algorithms, representations, and openly licensed results and benchmark
+data produced through the competition will form a collective contribution to
+Lean's continued development and benefit Lean users worldwide.
 
 This makes the kernel a well-defined, deterministic model of computation with its own
 performance characteristics: reduction is call-by-name, natural-number literals are
@@ -272,5 +275,4 @@ to elaboration. `scripts/score.py` applies the coverage-then-total-work contract
 cohort, with α/β as report-only diagnostics. Not yet finalized: a PMU-hardware
 run; the cross-problem scoring aggregation (best-N + relative placement); the four remaining
 optimized example submissions. Rule text may still change before launch (see
-`rules/overview.md`). Future stages are planned to cover certificate verification and open
-problems; their scope and schedules will be announced separately.
+`rules/overview.md`).

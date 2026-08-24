@@ -24,21 +24,25 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 
 ## Background
 
-Lean Kernel Challenge Stage 1 is the Kernel Computation Track of a multi-stage
-competition. Further stages will be announced separately.
+The Lean Kernel Challenge is a competition series that brings the Lean
+community together to improve the performance of verified computation in the
+Lean kernel.
+
+Stage 1 is the first, experimental stage of the series. It begins with a set of
+fundamental computational problems. Later stages will cover a broader range of
+mathematical fields and more complex problems.
 
 The Lean 4 kernel is the trusted component that checks every proof accepted by
 Lean. It checks definitional equality by reducing expressions; when a proof
 depends on a computed result, that computation becomes part of proof
 verification.
 
-The primary goal of Stage 1 is to bring the community together to improve the
-performance of verified computation in the Lean kernel. After each evaluation
-cohort closes, all results and benchmark data from that cohort will be released
-publicly under an open license. Together with the algorithms and
-representations developed through the challenge, this open record will support
-the Lean community, contribute to Lean's continued development, and allow Lean
-users worldwide to reproduce, reuse, and build on the community's work.
+After each evaluation cohort closes, all results and benchmark data from that
+cohort will be released publicly under an open license. Together with the
+algorithms and representations developed through the challenge, this open
+record will support the Lean community, contribute to Lean's continued
+development, and allow Lean users worldwide to reproduce, reuse, and build on
+the community's work.
 
 ## Task
 
