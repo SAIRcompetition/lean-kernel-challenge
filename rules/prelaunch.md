@@ -38,11 +38,8 @@ depends on a computed result, that computation becomes part of proof
 verification.
 
 After each evaluation cohort closes, all results and benchmark data from that
-cohort will be released publicly under an open license. Together with the
-algorithms and representations developed through the challenge, this open
-record will support the Lean community, contribute to Lean's continued
-development, and allow Lean users worldwide to reproduce, reuse, and build on
-the community's work.
+cohort will be publicly released under an open-source license so Lean users
+worldwide can reproduce, reuse, and build on them.
 
 ## Task
 

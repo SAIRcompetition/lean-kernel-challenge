@@ -31,7 +31,7 @@ depends on a computed result — for instance an equation `f x = y` closed by `r
 kernel establishes it by reducing `f x` and comparing. Verifying such a proof and
 performing the computation are therefore one and the same operation.
 
-The algorithms, representations, and openly licensed results and benchmark
+The algorithms, representations, and open-source results and benchmark
 data produced through the competition will form a collective contribution to
 Lean's continued development and benefit Lean users worldwide.
 
@@ -162,7 +162,7 @@ deliberate rescore; an unset seed is deterministic local development only. The p
 wrapper injects the seed once over stdin, never into the submission's elaboration environment.
 Raw verdicts stay private until that evaluation cohort closes; later submissions are evaluated
 under a newly rotated cohort. Once a cohort closes, all results and benchmark data from that
-cohort are released publicly under an open license.
+cohort are released publicly under an open-source license.
 
 ## Scoring
 
