@@ -83,6 +83,16 @@ MAX_SUBMISSION_FILES = _J["max_submission_files"]
 TIMING_METRIC = os.environ.get("TIMING_METRIC", _CFG.get("timing", {}).get("metric", "wall_time"))
 SANDBOX_MODE = os.environ.get("SANDBOX_MODE", _CFG.get("sandbox", {}).get("mode", "none"))
 OFFICIAL_EVAL = os.environ.get("OFFICIAL_EVAL", "") == "1"
+# Playground orchestration may ask this isolated process to stop after it has
+# produced, pinned, and audited every export. The trusted host then performs
+# the authoritative KTP replay before persisting a terminal verdict. This is
+# deliberately forbidden for official evaluation and requires the caller to
+# retain the workspace containing those exports.
+DEFER_TIMING = os.environ.get("DEFER_TIMING", "") == "1"
+# Optional host-owned JSONL stream for live Playground stage progress. The
+# service pre-creates this file in the per-run results mount and tails it while
+# the container is alive. Official/offline invocations leave it unset.
+SAIR_PROGRESS_FILE = os.environ.get("SAIR_PROGRESS_FILE", "")
 # Remote timing executor (KTP/2, lean-timer-executor). Comma-separated URLs in
 # active-standby order; used only when metric=perf_instructions. The secret is
 # the executor's bearer token and never appears in verdicts or logs.
@@ -150,6 +160,72 @@ EVALUATION_COHORT = os.environ.get("EVALUATION_COHORT", "")
 
 def _official_eval():
     return TIMING_METRIC == "perf_instructions" or OFFICIAL_EVAL
+
+
+def _validate_timing_mode(keep_workspace):
+    if not DEFER_TIMING:
+        return
+    if OFFICIAL_EVAL or TIMING_METRIC == "perf_instructions":
+        raise InfraError("DEFER_TIMING is only valid for non-official development runs")
+    if TIMING_EXECUTOR_URLS:
+        raise InfraError("DEFER_TIMING cannot be combined with in-judge remote timing")
+    if not keep_workspace:
+        raise InfraError("DEFER_TIMING requires --keep-workspace")
+
+
+def _deferred_measurement(target=None):
+    return {
+        "result": "deferred",
+        "measurement_contract": MEASUREMENT_CONTRACT,
+        "measurement_boundary": _measurement_boundary(target),
+        "measurement_target": target,
+    }
+
+
+def _emit_stage_progress(key, status, started_at):
+    """Append one completed stage boundary to the host-owned progress stream.
+
+    The stream is optional so standalone and official Judge invocations keep
+    their existing behavior. When configured it is a required orchestration
+    contract: an invalid or unavailable target is an infrastructure fault,
+    never something to hide behind a terminal verdict.
+    """
+    if not SAIR_PROGRESS_FILE:
+        return
+    if status not in ("done", "failed"):
+        raise InfraError(f"invalid live progress status {status!r}")
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", key):
+        raise InfraError(f"invalid live progress stage key {key!r}")
+    duration_ms = int((time.monotonic() - started_at) * 1000)
+    if duration_ms < 0:
+        raise InfraError("live progress monotonic clock moved backwards")
+    payload = (json.dumps({
+        "key": key,
+        "status": status,
+        "durationMs": duration_ms,
+    }, separators=(",", ":")) + "\n").encode("utf-8")
+    flags = os.O_WRONLY | os.O_APPEND
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(SAIR_PROGRESS_FILE, flags)
+        try:
+            view = memoryview(payload)
+            while view:
+                written = os.write(fd, view)
+                if written <= 0:
+                    raise OSError("short write")
+                view = view[written:]
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        raise InfraError(f"cannot append live stage progress: {exc}") from exc
+
+
+def _measure_or_defer(measure):
+    if DEFER_TIMING:
+        return "deferred", None
+    return measure()
 
 
 def _perf_policy_error(problem, detail):
@@ -1361,22 +1437,27 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     result["stages"]["comparator"] = {"exit": rc, "seconds": round(time.monotonic() - t0, 1),
                                       "tail": out[-3000:]}
     if rc == "timeout":
+        _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "rejected", f"comparator timed out (> {COMPARATOR_TIMEOUT}s)"
         return finish()
     if _died_by_signal(rc):
+        _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "error", \
             f"comparator killed by signal (exit {rc}) — infrastructure fault, not a proof failure"
         return finish()
     if rc != 0:
+        _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "rejected", f"comparator: {last_line(out)}"
         return finish()
     if not export_file.exists() or export_file.stat().st_size == 0:
+        _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "error", "comparator accepted but emitted no export (patched comparator required)"
         return finish()
     # Identity binding (2/2): the submission must be byte-identical to what comparator just
     # verified — catch any mutation a submission-spawned process (elaboration-time IO) made
     # DURING the build, before we freeze and reuse the workspace for timing.
     if _submission_digest(work) != verified_digest:
+        _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "error", "submission changed during correctness verification"
         return finish()
     result["stages"]["export"] = {"source": "comparator-verified", "bytes": export_file.stat().st_size}
@@ -1389,30 +1470,38 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         "sha256": artifact_digest,
     }
     freeze_readonly(work)
+    _emit_stage_progress("comparator", "done", t0)
 
 
     # ---- Axiom re-audit (R4): whitelisted axioms only, on the comparator-verified correctness
     # export (the per-input timed exports are separately re-audited in the perf loop below) ----
+    axiom_started = time.monotonic()
     rc, out = run([str(TIMER), "--check-axioms", ",".join(axioms), str(export_file)],
                   work, env, AUDIT_TIMEOUT)
     result["stages"]["axioms"] = {"exit": rc, "tail": last_line(out)}
     if not _export_matches(export_file, correctness_export_bytes):
+        _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "error", "correctness export changed during axiom audit"
         return finish()
     if not _artifacts_match(artifact_lib, verified_artifacts):
+        _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "error", \
             "comparator-verified build artifacts changed during axiom audit"
         return finish()
     if rc == "timeout":
+        _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "error", "axiom re-audit timed out"
         return finish()
     if _died_by_signal(rc):
+        _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "error", \
             f"axiom auditor killed by signal (exit {rc}) — infrastructure fault, not a rule violation"
         return finish()
     if rc != 0:
+        _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "rejected", f"axiom audit: {last_line(out)}"
         return finish()
+    _emit_stage_progress("axiom_audit", "done", axiom_started)
 
     def time_export(export_path, target=None, budget_s=None):
         """Replay one export through the authoritative full or target-only boundary."""
@@ -1456,7 +1545,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
 
     # Score the proof work too. This prevents a specialization table from appearing free merely
     # because its expensive closed-value proofs live in the already-verified correctness export.
-    correctness_status, correctness_payload = time_export(export_file, target=None)
+    correctness_status, correctness_payload = _measure_or_defer(
+        lambda: time_export(export_file, target=None))
     if not _export_matches(export_file, correctness_export_bytes):
         result["status"], result["reason"] = "error", "correctness export changed during timing"
         return finish()
@@ -1558,8 +1648,17 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         if arc != 0:
             return {"n": n, "result": "axiom-audit-error"}, \
                 f"perf export axiom audit failed at n={n}: {last_line(aout)}"
-        status, payload = time_export(perf_export, target=perf_target,
-                                      budget_s=budget(TIMING_TIMEOUT))
+        status, payload = _measure_or_defer(
+            lambda: time_export(
+                perf_export,
+                target=perf_target,
+                budget_s=budget(TIMING_TIMEOUT),
+            ))
+        if status == "deferred":
+            return {
+                "n": n,
+                **_deferred_measurement(perf_target),
+            }, None
         if not _export_matches(perf_export, perf_bytes):
             return {"n": n, "result": "identity-error"}, \
                 f"perf export changed during timing (at n={n})"
@@ -1600,6 +1699,12 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if perf_error is not None:
         result["timing"] = timing
         result["status"], result["reason"] = "error", perf_error
+        return finish()
+
+    if DEFER_TIMING:
+        result["timing"] = timing
+        result["status"] = "accepted"
+        result["reason"] = "timing deferred to the trusted host executor"
         return finish()
 
     # Correctness already passed, so the submission is ACCEPTED regardless of speed; the
@@ -1826,6 +1931,7 @@ def main():
         if TIMING_METRIC not in ("wall_time", "perf_instructions"):
             raise InfraError(f"invalid TIMING_METRIC '{TIMING_METRIC}' "
                              "(must be 'wall_time' or 'perf_instructions')")
+        _validate_timing_mode(args.keep_workspace)
         (RESULTS / "work").mkdir(parents=True, exist_ok=True)
         job_dir = Path(tempfile.mkdtemp(dir=RESULTS / "work", prefix=f"{problem}__{sub_name}__"))
         sys.exit(judge(job_dir, problem, args.submission, args.reps, tag))
