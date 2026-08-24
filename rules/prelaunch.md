@@ -81,13 +81,6 @@ team on SAIR.
 The official repository, SAIR Playground, and submission system will become
 available at the official launch.
 
-## Experimental Status and Participant Costs
-
-Stage 1 of the Lean Kernel Challenge is experimental. Participants are
-responsible for any computing costs they incur while developing, testing,
-submitting, or otherwise participating in Stage 1. The co-organizers do not
-reimburse these costs.
-
 ## Team Participation and Anti-Cheating Policy
 
 - Each individual may participate only once, either individually or as a member
@@ -96,6 +89,13 @@ reimburse these costs.
   process before their first submission.
 - If coordinated cheating is detected, including through sockpuppet teams, all
   related teams will be disqualified.
+
+## Experimental Status
+
+Stage 1 of the Lean Kernel Challenge is experimental. Participants are
+responsible for any computing costs they incur while developing, testing,
+submitting, or otherwise participating in Stage 1. The co-organizers do not
+reimburse these costs.
 
 ## Community Feedback
 
