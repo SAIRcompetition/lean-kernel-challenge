@@ -2,8 +2,8 @@
 """Lean Kernel Challenge judge.
 
 Pipeline per submission (each contestant job runs in a unique temp workspace):
-  1. Validate + assemble: copy the locked problem template, then overlay the contestant's
-     Submission.lean (+ Submission/). Contestant files are re-audited ON THE ASSEMBLED
+  1. Validate + assemble: copy the locked problem template, then overlay the contestant's single
+     Submission.lean. The file is re-audited ON THE ASSEMBLED
      tree (regular files, no symlinks, size/count caps, containment) to close the
      validate-then-copy TOCTOU window.
   2. Correctness gate: run comparator (statement match, axiom whitelist, kernel replay of
@@ -31,6 +31,8 @@ this process — use scripts/run_isolated.sh. The bundled process-group kill and
 freeze here are defense in depth, not a security boundary.
 """
 import argparse
+import collections
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -38,6 +40,7 @@ import math
 import os
 import re
 import resource
+import select
 import shutil
 import signal
 import stat
@@ -45,6 +48,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -79,6 +83,7 @@ PERF_PHASE_BUDGET = _J.get("perf_phase_budget_seconds", 10800)
 DEFAULT_REPS = _J["timing_reps"]
 MAX_SUBMISSION_BYTES = _J["max_submission_bytes"]
 MAX_SUBMISSION_FILES = _J["max_submission_files"]
+MAX_TOOL_OUTPUT_BYTES = _J.get("max_tool_output_bytes", 1_048_576)
 # Timing metric + sandbox mode; env overrides let the Docker host switch to perf.
 TIMING_METRIC = os.environ.get("TIMING_METRIC", _CFG.get("timing", {}).get("metric", "wall_time"))
 SANDBOX_MODE = os.environ.get("SANDBOX_MODE", _CFG.get("sandbox", {}).get("mode", "none"))
@@ -144,6 +149,7 @@ PRIMITIVES = [
 # No slashes, no "..", no whitespace — and no leading dash, so a name like "--reps" can never be
 # mistaken for an option when it is passed through argv (self-inflicted DoS, not an injection).
 SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+MAX_SLUG_LENGTH = 96
 
 # The scaling-axis inputs are a CONFIGURED POLICY, never hardcoded: each problem's config.json
 # declares `perf` {min, max, count?, spacing?, jitter?}, with global fallbacks in
@@ -156,6 +162,17 @@ _PERF_DEFAULTS = _CFG.get("perf_defaults", {"count": 10, "spacing": "geometric",
 PERF_SEED = os.environ.pop("PERF_SEED", "")
 _PERF_SEED_SOURCE = ["environment" if PERF_SEED else None]
 EVALUATION_COHORT = os.environ.get("EVALUATION_COHORT", "")
+EVALUATION_RUN_ID = os.environ.get("EVALUATION_RUN_ID", "")
+EVALUATION_EXECUTOR_ID = os.environ.get("EVALUATION_EXECUTOR_ID", "local")
+EVALUATION_EXECUTOR_VERSION = os.environ.get(
+    "EVALUATION_EXECUTOR_VERSION", "fixed-host")
+EVALUATION_RESOURCE_POLICY = {
+    "image": os.environ.get("EVALUATION_IMAGE", "local-unspecified"),
+    "memory": os.environ.get("EVALUATION_MEMORY", "local-unspecified"),
+    "cpus": os.environ.get("EVALUATION_CPUS", "local-unspecified"),
+    "pids_limit": os.environ.get("EVALUATION_PIDS_LIMIT", "local-unspecified"),
+    "sandbox_mode": SANDBOX_MODE,
+}
 
 
 def _official_eval():
@@ -354,6 +371,17 @@ class TimingRetry(Exception):
     submission losslessly (never an error verdict for an executor outage)."""
 
 
+class PerfBudgetExhausted(Exception):
+    """Raised internally when an absolute performance-phase deadline is exhausted."""
+
+
+def _remaining_timeout(deadline, cap):
+    """Return the remaining timeout for one sub-step, or zero after an absolute deadline."""
+    if deadline is None:
+        return float(cap)
+    return max(0.0, min(float(cap), deadline - time.monotonic()))
+
+
 def _consume_perf_seed_stdin():
     """Read the official seed once, before any untrusted process is started.
 
@@ -383,19 +411,84 @@ def _consume_perf_seed_stdin():
 
 
 def valid_slug(s: str) -> bool:
-    return bool(s) and s != ".." and SLUG.match(s) is not None
+    return (isinstance(s, str) and 0 < len(s) <= MAX_SLUG_LENGTH
+            and s not in (".", "..") and SLUG.fullmatch(s) is not None)
+
+
+def _atomic_json(path: Path, payload):
+    """Atomically replace one JSON file so report readers never see a partial verdict."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(dir=path.parent, suffix=".json.tmp")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            json.dump(payload, handle, indent=2, allow_nan=False)
+        os.replace(temporary, path)
+    finally:
+        try:
+            Path(temporary).unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _store_verdict(problem, sub_name, payload, promote):
+    """Persist every attempt and optionally promote it to the current verdict.
+
+    Immutable attempt records keep prior cohorts and infrastructure failures available for audit.
+    A retry/error never replaces an existing accepted or rejected result.
+    """
+    safe_problem = problem if valid_slug(problem or "") else "_infra"
+    safe_name = sub_name if valid_slug(sub_name or "") else "_invalid"
+    record = dict(payload)
+    run_id = record.get("run_id")
+    if not valid_slug(run_id or ""):
+        run_id = f"run-{os.getpid()}-{time.time_ns()}"
+        record["run_id"] = run_id
+
+    outdir = RESULTS / safe_problem
+    attempt = outdir / "attempts" / f"{safe_name}__{run_id}.json"
+    current = outdir / f"{safe_name}.json"
+    _atomic_json(attempt, record)
+    # Serialize the current-verdict read/decision/write across judge processes. Without the
+    # lock, a retry can observe no current verdict, pause, and then replace an accepted verdict
+    # written by a concurrent run. Attempt files remain immutable and need no shared lock.
+    lock_dir = outdir / ".locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    with (lock_dir / f"{safe_name}.lock").open("a+") as lock:
+        lock_deadline = time.monotonic() + 5
+        while True:
+            try:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= lock_deadline:
+                    raise InfraError(
+                        f"timed out acquiring verdict lock for {safe_problem}/{safe_name}")
+                time.sleep(0.05)
+        should_promote = promote or not current.exists()
+        if not should_promote:
+            try:
+                previous = json.loads(current.read_text())
+                should_promote = previous.get("status") not in ("accepted", "rejected")
+            except (OSError, UnicodeError, ValueError, AttributeError):
+                should_promote = True
+        if should_promote:
+            _atomic_json(current, record)
+            return current
+    return attempt
 
 
 def _write_infra_verdict(problem, sub_name, reason, status="error"):
     """Best-effort error verdict so the contract 'always a verdict file, never a
-    traceback' holds even for unexpected failures."""
+    traceback' holds even for unexpected failures. Non-terminal attempts do not overwrite a
+    prior judged result."""
     try:
-        outdir = RESULTS / (problem if valid_slug(problem or "") else "_infra")
-        outdir.mkdir(parents=True, exist_ok=True)
-        name = sub_name if valid_slug(sub_name or "") else "_invalid"
-        (outdir / f"{name}.json").write_text(json.dumps(
-            {"problem": problem, "submission": sub_name,
-             "status": status, "reason": reason, "stages": {}}, indent=2))
+        _store_verdict(
+            problem,
+            sub_name,
+            {"problem": problem, "submission": sub_name, "run_id": EVALUATION_RUN_ID,
+             "status": status, "reason": reason, "stages": {}},
+            promote=status in ("accepted", "rejected"),
+        )
     except Exception:
         pass
 
@@ -497,40 +590,128 @@ def _raise_stack():
             continue
 
 
+class _OutputTail:
+    """A bounded byte ring used while a subprocess is running."""
+
+    def __init__(self, limit):
+        self.limit = max(1, limit)
+        self.chunks = collections.deque()
+        self.size = 0
+        self.truncated = False
+
+    def append(self, data):
+        if not data:
+            return
+        if len(data) >= self.limit:
+            self.truncated = self.truncated or self.size > 0 or len(data) > self.limit
+            self.chunks.clear()
+            data = data[-self.limit:]
+            self.chunks.append(data)
+            self.size = len(data)
+            return
+        self.chunks.append(data)
+        self.size += len(data)
+        while self.size > self.limit:
+            excess = self.size - self.limit
+            first = self.chunks[0]
+            self.truncated = True
+            if len(first) <= excess:
+                self.size -= len(self.chunks.popleft())
+            else:
+                self.chunks[0] = first[excess:]
+                self.size -= excess
+
+    def text(self):
+        prefix = b"[earlier tool output truncated]\n" if self.truncated else b""
+        return (prefix + b"".join(self.chunks)).decode(errors="replace")
+
+
+def _drain_output(stream, tail, stop):
+    fd = stream.fileno()
+    os.set_blocking(fd, False)
+    try:
+        while not stop.is_set():
+            readable, _, _ = select.select([fd], [], [], 0.02)
+            if not readable:
+                continue
+            try:
+                chunk = os.read(fd, 64 * 1024)
+            except BlockingIOError:
+                continue
+            if not chunk:
+                break
+            tail.append(chunk)
+    except (OSError, ValueError):
+        # The parent closes the pipe if an escaped descendant keeps it open after the direct
+        # child exits. Output already collected remains useful as a bounded diagnostic tail.
+        return
+    finally:
+        try:
+            stream.close()
+        except OSError:
+            pass
+
+
 def run(cmd, cwd, env, timeout, stdout_path=None):
     """Run a command in its own process group. The saved pgid is killed on timeout AND on
     normal exit (pgid captured at spawn, not via getpgid on an already-exited child).
-    Returns (exit_code | 'timeout', output_tail)."""
+    Tool output is continuously drained into a bounded in-memory tail, preventing verbose
+    elaboration from consuming unbounded memory or disk. Returns
+    (exit_code | 'timeout', output_tail)."""
     popen_kw = dict(cwd=cwd, env=env, start_new_session=True, preexec_fn=_raise_stack)
     p = None
     pgid = None
+    output_file = None
+    output_pipe = None
+    reader = None
+    reader_stop = threading.Event()
+    tail = _OutputTail(MAX_TOOL_OUTPUT_BYTES)
     try:
         if stdout_path:
-            with open(stdout_path, "wb") as f:
-                p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.PIPE, **popen_kw)
-                pgid = p.pid  # start_new_session=True → child is its own group leader
-                try:
-                    _, err = p.communicate(timeout=timeout)
-                except subprocess.TimeoutExpired:
-                    _kill_group(pgid); p.wait()
-                    return "timeout", f"timed out after {timeout}s"
-            out = (err or b"").decode(errors="replace")
+            output_file = open(stdout_path, "wb")
+            p = subprocess.Popen(cmd, stdout=output_file, stderr=subprocess.PIPE, **popen_kw)
+            output_pipe = p.stderr
         else:
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **popen_kw)
-            pgid = p.pid
-            try:
-                out_b, _ = p.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                _kill_group(pgid); p.wait()
-                return "timeout", f"timed out after {timeout}s"
-            out = (out_b or b"").decode(errors="replace")
-        return p.returncode, out
+            output_pipe = p.stdout
+        pgid = p.pid  # start_new_session=True → child is its own group leader
+        reader = threading.Thread(
+            target=_drain_output, args=(output_pipe, tail, reader_stop), daemon=True,
+            name=f"tool-output-{p.pid}")
+        reader.start()
+        timed_out = False
+        try:
+            p.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _kill_group(pgid)
+            p.wait()
+        else:
+            # Kill group descendants before waiting for pipe EOF. A descendant that inherited
+            # stdout/stderr would otherwise keep the reader blocked after the direct child exits.
+            _kill_group(pgid)
+
+        # Output has been drained continuously, so EOF should be immediate for an ordinary
+        # child. Keep only a short grace period; an escaped descendant must not extend a phase
+        # deadline by holding the inherited pipe open.
+        reader.join(timeout=0.25)
+        if reader.is_alive():
+            reader_stop.set()
+            reader.join(timeout=0.1)
+        output = tail.text()
+        if timed_out:
+            return "timeout", f"timed out after {timeout}s\n{output}"
+        return p.returncode, output
     except FileNotFoundError as e:
         raise InfraError(f"tool not found: {e}")
     finally:
         # Reap any descendants left in the group (dev boxes without landrun). Uses the
         # pgid captured at spawn, so it works even though the direct child has exited.
         _kill_group(pgid)
+        if output_file is not None:
+            output_file.close()
+        if output_pipe is not None and not output_pipe.closed:
+            output_pipe.close()
 
 
 def last_line(out):
@@ -625,7 +806,7 @@ def thaw(path):
 
 
 def _preflight_payload(sd: Path):
-    """Validate the contestant's SOURCE payload before a single byte is copied.
+    """Validate the contestant's single-file SOURCE payload before it is copied.
 
     Two reasons this runs on the source rather than (only) the assembled tree:
       * a special file (FIFO/socket/device) makes `shutil.copytree` raise a bare `shutil.Error`
@@ -634,41 +815,32 @@ def _preflight_payload(sd: Path):
       * the size/count caps otherwise apply only AFTER the whole tree is on disk, so the copy cost
         is proportional to whatever was supplied instead of to the configured cap.
     """
-    total = count = 0
-    stack = [sd / "Submission.lean"]
-    sub = sd / "Submission"
-    # `Submission/` itself must be a real directory. Skipping it as "a symlink, audited later"
-    # would skip the whole subtree: assemble()'s `.exists()` follows the link and copytree()
-    # follows its `src` argument (symlinks=True only preserves links found INSIDE the tree), so
-    # the caps would be applied to a tree already on disk — the one thing this preflight exists
-    # to prevent. Rejecting mirrors the same treatment `Submission.lean` gets in assemble().
-    if sub.is_symlink():
-        raise SubmissionError("submission: 'Submission' must be a directory, not a symlink")
-    if sub.exists():
-        stack.append(sub)
-    while stack:
-        p = stack.pop()
-        try:
-            if p.is_symlink():                    # audited later on the assembled tree
-                continue
-            if not p.exists():
-                continue
-            st = p.stat()
-            if p.is_dir():
-                stack.extend(p.iterdir())
-                continue
-            if not stat.S_ISREG(st.st_mode):
-                raise SubmissionError(
-                    f"submission: only regular files are allowed ({p.name} is a special file)")
-            count += 1
-            total += st.st_size
-            if count > MAX_SUBMISSION_FILES:
-                raise SubmissionError(f"submission: too many files (> {MAX_SUBMISSION_FILES})")
-            if total > MAX_SUBMISSION_BYTES:
-                raise SubmissionError(
-                    f"submission: payload too large (> {MAX_SUBMISSION_BYTES} bytes)")
-        except OSError as e:
-            raise SubmissionError(f"submission: unreadable payload entry ({e})")
+    try:
+        entries = list(sd.iterdir())
+    except OSError as e:
+        raise SubmissionError(f"submission: unreadable payload directory ({e})")
+    unexpected = sorted(p.name for p in entries if p.name != "Submission.lean")
+    if unexpected:
+        preview = ", ".join(repr(name) for name in unexpected[:3])
+        if len(unexpected) > 3:
+            preview += ", ..."
+        raise SubmissionError(
+            f"submission: exactly one Submission.lean file is allowed (unexpected: {preview})")
+
+    source = sd / "Submission.lean"
+    try:
+        if source.is_symlink():
+            raise SubmissionError("submission: Submission.lean may not be a symlink")
+        st = source.stat()
+        if not stat.S_ISREG(st.st_mode):
+            raise SubmissionError("submission: Submission.lean must be a regular file")
+        if st.st_size > MAX_SUBMISSION_BYTES:
+            raise SubmissionError(
+                f"submission: payload too large (> {MAX_SUBMISSION_BYTES} bytes)")
+    except FileNotFoundError:
+        raise SubmissionError("submission: missing Submission.lean")
+    except OSError as e:
+        raise SubmissionError(f"submission: unreadable Submission.lean ({e})")
 
 
 def assemble(job_dir: Path, problem, submission_dir):
@@ -679,10 +851,8 @@ def assemble(job_dir: Path, problem, submission_dir):
     if (sd / "Submission.lean").is_symlink() or not (sd / "Submission.lean").is_file():
         raise SubmissionError(f"submission '{submission_dir}' has no regular Submission.lean")
 
-    # Pre-flight the SOURCE payload before writing anything: reject special files (FIFO/socket/
-    # device — a bare shutil.Error would otherwise escape as an infra `error`, i.e. exit 2, and the
-    # caller would requeue a submission that can never succeed) and stop at the caps instead of
-    # copying an arbitrarily large tree first and only then rejecting it.
+    # Pre-flight the SOURCE payload before writing anything: enforce the one-file rule, reject
+    # special files, and stop at the size cap before copying.
     _preflight_payload(sd)
 
     work = job_dir / "workspace"
@@ -690,20 +860,14 @@ def assemble(job_dir: Path, problem, submission_dir):
     # never silently follow one).
     shutil.copytree(prob_dir, work, symlinks=True,
                     ignore=shutil.ignore_patterns(".lake", "lake-manifest.json"))
-    # Overlay contestant files, preserving symlinks as symlinks (do NOT follow them).
+    # Overlay the one contestant file without following symlinks.
     try:
         shutil.copy(sd / "Submission.lean", work / "Submission.lean", follow_symlinks=False)
-        if (sd / "Submission").exists():
-            shutil.rmtree(work / "Submission", ignore_errors=True)
-            shutil.copytree(sd / "Submission", work / "Submission", symlinks=True)
     except (shutil.Error, OSError) as e:
         # Contestant's payload is at fault → rejected (exit 0), never an infra retry loop.
         raise SubmissionError(f"submission: unreadable or special file in payload ({e})")
     # Re-audit the ASSEMBLED contestant files (closes validate→copy TOCTOU).
-    roots = [work / "Submission.lean"]
-    if (work / "Submission").exists():
-        roots.append(work / "Submission")
-    _audit_tree(work, roots)
+    _audit_tree(work, [work / "Submission.lean"])
     return work
 
 
@@ -891,7 +1055,7 @@ def _remote_response_error(data, reps, target=None):
     return None
 
 
-def _time_remote(export_file, reps, target=None):
+def _time_remote(export_file, reps, target=None, budget_s=None, deadline=None):
     """Run all timing reps on a remote KTP/2 executor (lean-timer-executor).
 
     Returns the executor's decoded 200 response: {"status": "ok", "samples":
@@ -902,21 +1066,57 @@ def _time_remote(export_file, reps, target=None):
     separated by short sleeps, and exhaustion raises TimingRetry — never an
     error verdict, so an executor outage can only delay a score, not destroy
     a submission."""
+    if budget_s is not None and deadline is not None:
+        raise InfraError("remote timing received both a relative and absolute deadline")
+    if deadline is None and budget_s is not None:
+        deadline = time.monotonic() + budget_s
+
+    # A budget already exhausted before dispatch is attributable to earlier contestant work.
+    # Once dispatch starts, failure to obtain a valid executor response is infrastructure and
+    # must remain retryable even if the remaining phase time expires during transport/backoff.
+    if budget_s is not None and budget_s <= 0:
+        raise PerfBudgetExhausted(
+            "performance-phase budget exhausted before remote timing")
+
+    if deadline is not None and deadline <= time.monotonic():
+        raise PerfBudgetExhausted(
+            "performance-phase budget exhausted before remote timing")
     export_bytes = export_file.read_bytes()
     digest = hashlib.sha256(export_bytes).hexdigest()
-    # Budget: the executor holds the connection for the whole job.
-    request_timeout = reps * TIMING_TIMEOUT + 120
+    if deadline is not None and deadline <= time.monotonic():
+        raise PerfBudgetExhausted(
+            "performance-phase budget exhausted while preparing remote timing input")
+
+    def remaining():
+        if deadline is None:
+            return None
+        return deadline - time.monotonic()
+
     last_err = "no executor URLs configured"
     # Restrict to the pinned node once one has served this submission (else the full list).
     urls = [_PINNED_EXECUTOR[0]] if _PINNED_EXECUTOR[0] else TIMING_EXECUTOR_URLS
     for sleep_s in _EXECUTOR_ATTEMPT_SLEEPS:
         if sleep_s:
+            rem = remaining()
+            if rem is not None and (rem <= 0 or sleep_s >= rem):
+                raise TimingRetry(
+                    f"timing executor unavailable until phase deadline (last: {last_err})")
             time.sleep(sleep_s)
         for base in urls:
+            rem = remaining()
+            if rem is not None and rem <= 0:
+                raise TimingRetry(
+                    f"timing executor unavailable until phase deadline (last: {last_err})")
+            per_replay_timeout = TIMING_TIMEOUT
+            if rem is not None:
+                per_replay_timeout = max(1, min(TIMING_TIMEOUT, int(rem / max(reps, 1))))
+            request_timeout = reps * per_replay_timeout + 120
+            if rem is not None:
+                request_timeout = max(0.001, min(request_timeout, rem))
             boundary = _measurement_boundary(target)
             query = urllib.parse.urlencode({
                 "reps": reps,
-                "timeout_secs": TIMING_TIMEOUT,
+                "timeout_secs": per_replay_timeout,
                 "measurement_contract": MEASUREMENT_CONTRACT,
                 "boundary": boundary,
                 "target": target or "",
@@ -946,6 +1146,12 @@ def _time_remote(export_file, reps, target=None):
                         f"{pinned_identity[0]}/{pinned_identity[1]} to "
                         f"{identity[0]}/{identity[1]}")
                     continue
+                # A validated kernel failure is fatal evidence and must never be softened into
+                # a contestant budget exhaustion merely because transport returned late.
+                if (data["status"] != "failed" and deadline is not None
+                        and deadline <= time.monotonic()):
+                    raise PerfBudgetExhausted(
+                        "performance-phase budget expired before the remote result arrived")
                 # Pin only after the entire response is validated. A malformed `status=ok`
                 # therefore cannot capture the submission and suppress a healthy standby.
                 _PINNED_EXECUTOR[0] = base
@@ -978,6 +1184,7 @@ def _time_remote(export_file, reps, target=None):
 # redoes the whole computation when it checks the generated theorem. A wrong v cannot mis-score: the
 # kernel-checked proof in _perf_export would then fail to build — as would a rare
 # whnf/kernel divergence, an unscored failure rather than a wrong score.
+_VALUE_OUTPUT = "EvalValue.out"
 _VALUE_META = r"""import Submission
 import Lean
 open Lean Meta
@@ -986,16 +1193,16 @@ set_option maxHeartbeats 0
 run_meta do
   let e0 ← whnf (mkApp (mkConst ``Submission.impl) (mkNatLit __N__))
   match e0 with
-  | .lit (.natVal v) => IO.println s!"VALUE={v}"
+  | .lit (.natVal v) => IO.FS.writeFile "EvalValue.out" s!"{v}"
   | .app (.const ``Int.ofNat _) a =>
     match (← whnf a) with
-    | .lit (.natVal v) => IO.println s!"VALUE={v}"
-    | _ => IO.println "NONLIT"
+    | .lit (.natVal v) => IO.FS.writeFile "EvalValue.out" s!"{v}"
+    | _ => IO.FS.writeFile "EvalValue.out" "NONLIT"
   | .app (.const ``Int.negSucc _) a =>
     match (← whnf a) with
-    | .lit (.natVal v) => IO.println s!"VALUE=-{v + 1}"
-    | _ => IO.println "NONLIT"
-  | _ => IO.println "NONLIT"
+    | .lit (.natVal v) => IO.FS.writeFile "EvalValue.out" s!"-{v + 1}"
+    | _ => IO.FS.writeFile "EvalValue.out" "NONLIT"
+  | _ => IO.FS.writeFile "EvalValue.out" "NONLIT"
 """
 
 
@@ -1004,19 +1211,27 @@ def _eval_impl_value(work, env, n, timeout, lean_bin="lean"):
     ('ok', v) with v a decimal string; ('timeout', None) only when the real wall-clock budget
     expires; ('error', tail) for every deterministic Lean/oracle failure. Heartbeats are disabled
     in _VALUE_META so the process timeout is the oracle's sole computation budget."""
+    value_path = work / _VALUE_OUTPUT
+    try:
+        value_path.unlink(missing_ok=True)
+    except OSError as e:
+        return "error", f"cannot clear stale value-oracle output: {e}"
     (work / "EvalVal.lean").write_text(_VALUE_META.replace("__N__", str(n)))
     rc, out = run([str(lean_bin), "EvalVal.lean"], work, env, timeout)
     if rc == "timeout":
         return "timeout", None
     if rc != 0:
         return "error", last_line(out)
-    for line in out.splitlines():
-        if line.startswith("VALUE="):
-            value = line[6:].strip()
-            if re.fullmatch(r"-?(0|[1-9][0-9]*)", value):
-                return "ok", value
-            return "error", f"value oracle produced an invalid integer literal ({value!r})"
-    return "error", "value oracle produced no literal (NONLIT)"
+    try:
+        value = value_path.read_text().strip()
+    except (OSError, UnicodeError) as e:
+        return "error", f"value oracle produced no readable result: {e}; {last_line(out)}"
+    if re.fullmatch(r"-?(0|[1-9][0-9]*)", value):
+        return "ok", value
+    if value == "NONLIT":
+        return "error", "value oracle produced no literal (NONLIT)"
+    preview = value[:120] + ("…" if len(value) > 120 else "")
+    return "error", f"value oracle produced an invalid integer literal ({preview!r})"
 
 
 def _perf_theorem_source(n, v, nonce):
@@ -1069,17 +1284,15 @@ def _perf_theorem_source(n, v, nonce):
     return source, theorem
 
 
-def _perf_export(work, env, n, v, out_path, timeout, artifact_lib, lean_bin):
+def _perf_export(work, env, n, v, out_path, timeout, artifact_lib, lean_bin, deadline=None):
     """Build and export a uniquely namespaced, directly reducible `impl n = v` theorem.
 
-    The direct `of_decide_eq_true rfl` term deliberately avoids tactic proof extraction:
-    the exported target declaration itself contains the computation instead of merely
-    referring to an untimed private `_proof_...` theorem. Its kernel replay re-checks
-    `decide (impl n = v) = true` by reduction,
-    which forces the kernel to reduce `impl n` at this specific n — so timing the replay
-    times the COMPUTATION at n, not the ∀n correctness proof. Returns
+    The generated `Eq.refl` theorem is added directly as a declaration, so the exported target
+    contains the computation instead of referring to an untimed extracted proof helper. Kernel
+    replay therefore reduces `impl n` at this specific n. Returns
     (kind, error, fully_qualified_theorem): 'ok';
-    'timeout' when this slot's build/export is too slow; or 'error' for a
+    'timeout' when this slot's build/export is too slow; 'budget-exhausted' when the shared phase
+    deadline expires; or 'error' for a
     non-timeout build/export failure — which includes a wrong reference `v` (the direct proof
     then fails to prove `impl n = v` *deterministically*, so it is errored, not scored). The
     caller records only wall-clock timeouts as unsuccessful slots and continues with later
@@ -1096,21 +1309,25 @@ def _perf_export(work, env, n, v, out_path, timeout, artifact_lib, lean_bin):
             return "error", f"cannot replace generated Perf.olean at n={n}: {e}", theorem
     # Compile only the judge-owned theorem. `import Submission` resolves to the byte-pinned
     # comparator artifact; no contestant source is re-elaborated in the performance phase.
+    step_timeout = _remaining_timeout(deadline, timeout)
+    if step_timeout <= 0:
+        return "budget-exhausted", None, theorem
     rc, out = run(
         [str(lean_bin), "-o", str(perf_olean), "Perf.lean"],
-        work, env, timeout)
+        work, env, step_timeout)
     if rc == "timeout":
         # This build timeout is distinct from the later timer process watchdog.
         return "timeout", None, theorem
     if rc != 0:
         # The oracle already produced a value, so the build should succeed. Any DETERMINISTIC
-        # failure is a fault, never a timeout: a wrong value makes `decide` false (and its deep
-        # Decidable comparison of a huge literal blows maxRecDepth), while a correct value reduces
-        # in the kernel without hitting maxRecDepth. So a wrong oracle value can never be scored —
-        # it surfaces here as an error, even at large n (closing the maxRecDepth-masking hole).
+        # failure is a fault, never a timeout. In particular, a wrong oracle value makes the
+        # direct equality theorem fail kernel checking, so it can never be scored.
         return "error", f"perf build failed at n={n}: {last_line(out)}", theorem
+    step_timeout = _remaining_timeout(deadline, timeout)
+    if step_timeout <= 0:
+        return "budget-exhausted", None, theorem
     rc, out = run([str(LEAN4EXPORT_BIN / "lean4export"), "Perf", "--", theorem],
-                  work, env, timeout, stdout_path=out_path)
+                  work, env, step_timeout, stdout_path=out_path)
     if rc == "timeout":
         return "timeout", None, theorem
     if rc != 0:
@@ -1121,16 +1338,12 @@ def _perf_export(work, env, n, v, out_path, timeout, artifact_lib, lean_bin):
 
 
 def _submission_digest(work):
-    """SHA-256 over the contestant's Submission.lean and Submission/ contents (by relative
-    path), so the perf phase can prove the `impl` it times is byte-identical to the one
+    """SHA-256 over the contestant's Submission.lean, so the perf phase can prove the `impl` it
+    times is byte-identical to the one
     comparator verified `impl_correct : ∀n` against — an axiom-clean but different impl,
     swapped in after verification, has a different digest and is rejected as a fault."""
     h = hashlib.sha256()
     paths = [work / "Submission.lean"]
-    subdir = work / "Submission"
-    if subdir.is_dir():
-        paths += sorted((p for p in subdir.rglob("*") if p.is_file()),
-                        key=lambda p: p.relative_to(work).as_posix())
     for p in paths:
         h.update(p.relative_to(work).as_posix().encode() + b"\0")
         try:
@@ -1318,39 +1531,106 @@ def _canonical_work(correctness_timing, scaling, metric=None):
     }
 
 
+def _problem_bundle_digest(problem):
+    """Hash the locked files that define one problem and its build environment."""
+    base = PROBLEMS / problem
+    if not base.is_dir():
+        raise InfraError(f"unknown problem '{problem}'")
+    digest = hashlib.sha256()
+    files = []
+    for path in base.rglob("*"):
+        rel = path.relative_to(base)
+        if ".lake" in rel.parts or rel.as_posix() in ("Submission.lean", "lake-manifest.json"):
+            continue
+        if path.is_symlink():
+            raise InfraError(f"problem bundle contains a symlink ({rel.as_posix()})")
+        if path.is_file():
+            files.append(path)
+    for path in sorted(files, key=lambda p: p.relative_to(base).as_posix()):
+        rel = path.relative_to(base).as_posix()
+        try:
+            payload = path.read_bytes()
+        except OSError as e:
+            raise InfraError(f"cannot hash problem file '{rel}': {e}")
+        digest.update(rel.encode() + b"\0" + payload + b"\0")
+    if not files:
+        raise InfraError(f"problem bundle '{problem}' contains no locked files")
+    return digest.hexdigest()
+
+
+def _evaluator_bundle_digest():
+    """Hash the repository files that define judging, timing, scoring, and isolation policy."""
+    paths = [
+        ROOT / "Dockerfile",
+        ROOT / "judge" / "judge.py",
+        ROOT / "judge" / "timer-kernel" / "Main.lean",
+        ROOT / "judge" / "timer-kernel" / "timer_control.c",
+        ROOT / "judge" / "timer-kernel" / "lakefile.lean",
+        ROOT / "pipeline" / "config.json",
+        ROOT / "lean-toolchain",
+        ROOT / "scripts" / "run_isolated.sh",
+        ROOT / "scripts" / "setup.sh",
+        ROOT / "scripts" / "score.py",
+        ROOT / "patches" / "comparator-emit-export.patch",
+    ]
+    digest = hashlib.sha256()
+    for path in paths:
+        try:
+            payload = path.read_bytes()
+        except OSError as e:
+            raise InfraError(f"cannot hash evaluator file '{path.relative_to(ROOT)}': {e}")
+        rel = path.relative_to(ROOT).as_posix()
+        digest.update(rel.encode() + b"\0" + payload + b"\0")
+    return digest.hexdigest()
+
+
 def _evaluation_cohort(problem, cfg, inputs, reps, result):
     """Return the public comparison cohort recorded in every current verdict.
 
-    The round label is operator supplied. The derived id additionally commits to the exact
-    schedule, metric, repetitions, budgets, toolchain, and timing executor identity, preventing
-    the scorer from silently mixing results that were not measured under one contract.
+    The round label is operator supplied. The derived id commits to the exact schedule, problem
+    bundle, budgets, resource envelope, toolchain, measurement contract, and executor identity.
     """
     round_id = EVALUATION_COHORT or "local-dev"
     executor = result.get("stages", {}).get("timing_executor") or {
-        "executor": "local",
-        "version": "fixed-host",
+        "kind": "local",
+        "executor": EVALUATION_EXECUTOR_ID,
+        "version": EVALUATION_EXECUTOR_VERSION,
     }
     policy = {
+        "schema": "evaluation-policy-v1",
         "round": round_id,
         "problem": problem,
+        "problem_bundle_sha256": _problem_bundle_digest(problem),
+        "evaluator_bundle_sha256": _evaluator_bundle_digest(),
+        "evaluation_mode": "official" if OFFICIAL_EVAL else "development",
         "perf": cfg.get("perf"),
-        "perf_defaults": _PERF_DEFAULTS,
+        "perf_defaults": {
+            key: _PERF_DEFAULTS.get(key) for key in ("count", "spacing", "jitter")
+        },
         "inputs": inputs,
         "metric": TIMING_METRIC,
         "reps": reps,
-        "timing_timeout_seconds": TIMING_TIMEOUT,
+        "budgets": {
+            "comparator_timeout_seconds": COMPARATOR_TIMEOUT,
+            "audit_timeout_seconds": AUDIT_TIMEOUT,
+            "timing_timeout_seconds": TIMING_TIMEOUT,
+            "perf_phase_budget_seconds": PERF_PHASE_BUDGET,
+        },
+        "resource_policy": dict(EVALUATION_RESOURCE_POLICY),
         "toolchain": _CFG.get("toolchain"),
         "checker": CHECKER_ID,
         "timing_protocol": result.get("timing_protocol"),
         "measurement_contract": _measurement_contract_record(),
         "executor": executor,
     }
-    encoded = json.dumps(policy, sort_keys=True, separators=(",", ":")).encode()
+    encoded = json.dumps(
+        policy, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     return {
         "id": hashlib.sha256(encoded).hexdigest()[:24],
         "round": round_id,
         "executor": executor,
         "policy_sha256": hashlib.sha256(encoded).hexdigest(),
+        "policy": policy,
     }
 
 
@@ -1361,19 +1641,20 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         if TIMING_METRIC == "perf_instructions" and TIMING_EXECUTOR_URLS
         else "local-v2"
     )
-    result = {"problem": problem, "submission": sub_name,
+    run_id = EVALUATION_RUN_ID or job_dir.name
+    result = {"problem": problem, "submission": sub_name, "run_id": run_id,
               "status": None, "reason": None, "metric": TIMING_METRIC, "stages": {},
+              "evaluation_mode": "official" if OFFICIAL_EVAL else "development",
               "timing_protocol": timing_protocol,
               "measurement_contract": _measurement_contract_record()}
 
     def finish():
-        outdir = RESULTS / problem
-        outdir.mkdir(parents=True, exist_ok=True)
-        # atomic write so a concurrent reader never sees a half-written verdict
-        fd, tmp = tempfile.mkstemp(dir=outdir, suffix=".json.tmp")
-        with os.fdopen(fd, "w") as f:
-            json.dump(result, f, indent=2)
-        os.replace(tmp, outdir / f"{sub_name}.json")
+        _store_verdict(
+            problem,
+            sub_name,
+            result,
+            promote=result["status"] in ("accepted", "rejected"),
+        )
         icon = {"accepted": "✅", "rejected": "❌", "error": "💥"}[result["status"]]
         sc = result.get("score")
         print(f"{icon} {problem}/{sub_name}: {result['status']}"
@@ -1391,6 +1672,23 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         raise InfraError("official evaluation requires one-shot PERF_SEED stdin injection")
     if OFFICIAL_EVAL and not EVALUATION_COHORT:
         raise InfraError("official evaluation requires a nonempty EVALUATION_COHORT")
+    if OFFICIAL_EVAL and not valid_slug(EVALUATION_RUN_ID):
+        raise InfraError("official evaluation requires a valid EVALUATION_RUN_ID")
+    if OFFICIAL_EVAL and TIMING_METRIC != "perf_instructions":
+        raise InfraError("official evaluation requires TIMING_METRIC=perf_instructions")
+    if OFFICIAL_EVAL and not TIMING_EXECUTOR_URLS and (
+            not EVALUATION_EXECUTOR_ID or EVALUATION_EXECUTOR_ID == "local"
+            or not EVALUATION_EXECUTOR_VERSION
+            or EVALUATION_EXECUTOR_VERSION == "fixed-host"):
+        raise InfraError("official evaluation requires a pinned local PMU executor identity")
+    image_id = EVALUATION_RESOURCE_POLICY.get("image", "")
+    if (OFFICIAL_EVAL and not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id)):
+        raise InfraError("official evaluation requires an immutable Docker image ID")
+    if OFFICIAL_EVAL and SANDBOX_MODE != "container":
+        raise InfraError("official evaluation requires sandbox.mode=container")
+    if OFFICIAL_EVAL and os.environ.get("ISOLATION_ATTESTATION") != "run_isolated.sh":
+        raise InfraError("official evaluation must be launched via scripts/run_isolated.sh "
+                         "(missing or invalid ISOLATION_ATTESTATION)")
 
     # Fail-closed sandbox policy: production must have a real sandbox.
     env = tool_env()
@@ -1406,11 +1704,6 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
             raise InfraError("sandbox.mode=container but the network is reachable — the container "
                              "was started without --network none (refusing to run unsandboxed)")
         result["stages"]["sandbox"] = {"mode": SANDBOX_MODE, "network_reachable": reachable}
-        if _official_eval() and not os.environ.get("ISOLATION_ATTESTATION"):
-            # scripts/run_isolated.sh injects this after applying the full docker envelope; its
-            # absence means the official job was not launched through the wrapper.
-            raise InfraError("official evaluation must be launched via scripts/run_isolated.sh "
-                             "(missing ISOLATION_ATTESTATION)")
 
     work = assemble(job_dir, problem, submission_dir)
     cfg = json.loads((PROBLEMS / problem / "config.json").read_text())
@@ -1503,11 +1796,17 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         return finish()
     _emit_stage_progress("axiom_audit", "done", axiom_started)
 
-    def time_export(export_path, target=None, budget_s=None):
+    def time_export(export_path, target=None, deadline=None):
         """Replay one export through the authoritative full or target-only boundary."""
         if TIMING_METRIC == "perf_instructions" and TIMING_EXECUTOR_URLS:
-            remote = _time_remote(export_path, reps, target)      # may raise TimingRetry
+            if deadline is not None and _remaining_timeout(deadline, float("inf")) <= 0:
+                return "budget-exhausted", None
+            try:
+                remote = _time_remote(export_path, reps, target, deadline=deadline)
+            except PerfBudgetExhausted:
+                return "budget-exhausted", None
             result["stages"].setdefault("timing_executor", {
+                "kind": "remote",
                 "executor": remote["executor"], "version": remote["version"]})
             if remote["status"] == "timeout":
                 timeout_meta = _timeout_measurement(target, "remote-process-watchdog")
@@ -1530,8 +1829,11 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
 
         samples = []
         for i in range(reps):
+            step_timeout = _remaining_timeout(deadline, TIMING_TIMEOUT)
+            if step_timeout <= 0:
+                return "budget-exhausted", None
             trc, tout, sample = _time_replay(
-                export_path, work, env, budget_s or TIMING_TIMEOUT, target=target)
+                export_path, work, env, step_timeout, target=target)
             if trc == "timeout":
                 return "timeout", sample
             if trc != 0:
@@ -1572,21 +1874,43 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         return finish()
     result["correctness_timing"] = correctness_timing
 
-    # ---- Performance: time the kernel reducing `impl n` at judge-chosen inputs ----
-    # Correctness (the ∀n proof) was verified by comparator above. Here we time the
-    # COMPUTATION, not the ∀n proof: for each input n we export `impl n = v` with a direct
-    # `of_decide_eq_true rfl` proof, then time the kernel replaying THAT declaration. This
-    # forces reduction of `impl n` at this n and yields the algorithm's scaling curve.
-    # Reuse the exact comparator build graph. Re-elaborating identical source is not an identity
-    # proof: run_meta/run_elab can depend on environment or filesystem state. Only judge-owned
-    # EvalVal/Perf modules are compiled below, importing the pinned Submission.olean.
-    _prepare_generated_workspace(work, artifact_lib)
     inputs = perf_inputs(cfg, problem)
     if not inputs:
         result["status"], result["reason"] = "error", f"no perf policy configured for '{problem}'"
         return finish()
     result["stages"]["perf_inputs"] = inputs
     result["evaluation_cohort"] = _evaluation_cohort(problem, cfg, inputs, reps, result)
+
+    # A timed correctness replay is required for every score. Once it times out, running the
+    # performance curve cannot change scoreability, so record the complete schedule and stop.
+    if correctness_status == "timeout":
+        scaling = [
+            {"slot": slot, "n": n, "result": "not-run",
+             "reason": "correctness-timing-timeout"}
+            for slot, n in enumerate(inputs)
+        ]
+        result["timing"] = {
+            "metric": TIMING_METRIC,
+            "reps": reps,
+            "scaling": scaling,
+            "checker": CHECKER_ID,
+            "measurement_contract": MEASUREMENT_CONTRACT,
+            "measurement_boundary": TARGET_REPLAY_BOUNDARY,
+            **_coverage_fields(inputs, scaling),
+        }
+        result["status"] = "accepted"
+        result["reason"] = "unscored: correctness export did not complete in time"
+        return finish()
+
+    # ---- Performance: time the kernel reducing `impl n` at judge-chosen inputs ----
+    # Correctness (the ∀n proof) was verified by comparator above. Here we time the
+    # COMPUTATION, not the ∀n proof: for each input n we export a direct `impl n = v` theorem,
+    # then time the kernel replaying THAT declaration. This
+    # forces reduction of `impl n` at this n and yields the algorithm's scaling curve.
+    # Reuse the exact comparator build graph. Re-elaborating identical source is not an identity
+    # proof: run_meta/run_elab can depend on environment or filesystem state. Only judge-owned
+    # EvalVal/Perf modules are compiled below, importing the pinned Submission.olean.
+    _prepare_generated_workspace(work, artifact_lib)
 
     # A timeout occupies only its own configured slot. We still probe every later slot because a
     # valid implementation's reduction cost need not be monotone in n. Deterministic failures
@@ -1596,14 +1920,15 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         # a single slot chains value-eval + build + export + audit + timing, so per-step limits
         # alone let one slot overshoot the whole-phase budget by thousands of seconds.
         def budget(step_timeout):
-            if deadline is None:
-                return step_timeout
-            return max(1, min(step_timeout, int(deadline - time.monotonic())))
+            return _remaining_timeout(deadline, step_timeout)
 
         if not _artifacts_match(artifact_lib, verified_artifacts):
             return {"n": n, "result": "identity-error"}, \
                 f"comparator-verified build artifacts changed before n={n}"
-        vkind, v = _eval_impl_value(work, verified_env, n, budget(TIMING_TIMEOUT), lean_bin)
+        step_timeout = budget(TIMING_TIMEOUT)
+        if step_timeout <= 0:
+            return {"n": n, "result": "budget-exhausted"}, None
+        vkind, v = _eval_impl_value(work, verified_env, n, step_timeout, lean_bin)
         if not _artifacts_match(artifact_lib, verified_artifacts):
             return {"n": n, "result": "identity-error"}, \
                 f"comparator-verified build artifacts changed during value evaluation at n={n}"
@@ -1619,12 +1944,15 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                 f"submission changed after correctness verification (at n={n})"
         perf_export = job_dir / f"perf_{n}.export.ndjson"
         pkind, err, perf_target = _perf_export(
-            work, verified_env, n, v, perf_export, budget(TIMING_TIMEOUT), artifact_lib, lean_bin)
+            work, verified_env, n, v, perf_export, TIMING_TIMEOUT, artifact_lib, lean_bin,
+            deadline=deadline)
         if not _artifacts_match(artifact_lib, verified_artifacts):
             return {"n": n, "result": "identity-error"}, \
                 f"comparator-verified build artifacts changed during perf build at n={n}"
         if pkind == "timeout":
             return {"n": n, "result": "build-timeout"}, None
+        if pkind == "budget-exhausted":
+            return {"n": n, "result": "budget-exhausted"}, None
         if pkind == "error":
             return {"n": n, "result": "build-error"}, err
         # Source is not re-elaborated, but a mutation during the generated theorem build is still
@@ -1635,8 +1963,11 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         # Pin the exact export bytes and freeze the file, so the axiom audit and the (separate)
         # timing process provably run identical bytes — not different ones swapped in between.
         perf_bytes = _pin_export_bytes(perf_export)
+        step_timeout = budget(AUDIT_TIMEOUT)
+        if step_timeout <= 0:
+            return {"n": n, "result": "budget-exhausted"}, None
         arc, aout = run([str(TIMER), "--check-axioms", ",".join(axioms), str(perf_export)],
-                        work, env, budget(AUDIT_TIMEOUT))
+                        work, env, step_timeout)
         if not _export_matches(perf_export, perf_bytes):
             return {"n": n, "result": "identity-error"}, \
                 f"perf export changed during axiom audit (at n={n})"
@@ -1652,7 +1983,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
             lambda: time_export(
                 perf_export,
                 target=perf_target,
-                budget_s=budget(TIMING_TIMEOUT),
+                deadline=deadline,
             ))
         if status == "deferred":
             return {
@@ -1668,6 +1999,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         if status == "failed":
             return {"n": n, "result": "timing-error"}, \
                 f"official kernel rejected perf export at n={n}: {payload}"
+        if status == "budget-exhausted":
+            return {"n": n, "result": "budget-exhausted"}, None
         if status == "timeout":
             return {
                 "n": n,
@@ -1793,7 +2126,7 @@ def leaderboard():
         for f in sorted(pdir.glob("*.json")):
             try:
                 r = json.loads(f.read_text())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError, UnicodeError, ValueError, RecursionError):
                 continue
             # Only rank official judge verdicts, identified by STRUCTURE (a legitimate submission
             # may be named e.g. "x.perf", so a filename-suffix filter would wrongly drop it).
@@ -1847,11 +2180,12 @@ def leaderboard():
                 lines.append("")
                 lines.append("| rank | submission | coverage | total work | score |")
                 lines.append("|---|---|---|---|---|")
-                for i, (r, view) in enumerate(ranked, 1):
+                placements = scorer._competition_ranks([view for _, view in ranked])
+                for (r, view), placement in zip(ranked, placements):
                     coverage = f"{view['completed_slots']}/{view['planned_slots']}"
                     total = scorer._format_work(view["total_work"], metric)
                     lines.append(
-                        f"| {i} | {md_cell(r['submission'])} | {coverage} | "
+                        f"| {placement} | {md_cell(r['submission'])} | {coverage} | "
                         f"{md_cell(total)} | {md_cell(r.get('score'))} |")
                 lines.append("")
                 if unscored:

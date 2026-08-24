@@ -30,6 +30,50 @@ SCORER = importlib.util.module_from_spec(SCORE_SPEC)
 SCORE_SPEC.loader.exec_module(SCORER)
 
 
+def validate_manifest(cases):
+    """Fail if an example is unregistered, duplicated, or points to a missing submission."""
+    if not isinstance(cases, list):
+        raise ValueError("manifest cases must be a list")
+    keys = []
+    for index, case in enumerate(cases):
+        if not isinstance(case, dict):
+            raise ValueError(f"manifest case {index} is not an object")
+        problem, submission = case.get("problem"), case.get("submission")
+        if not (isinstance(problem, str) and isinstance(submission, str)):
+            raise ValueError(f"manifest case {index} lacks problem/submission strings")
+        if case.get("expect") not in ("accepted", "rejected", "error"):
+            raise ValueError(f"manifest case {problem}/{submission} has invalid expectation")
+        keys.append((problem, submission))
+    if len(keys) != len(set(keys)):
+        raise ValueError("manifest contains duplicate problem/submission cases")
+
+    discovered = {
+        (path.parent.parent.name, path.parent.name)
+        for path in SUBS.glob("*/*/Submission.lean")
+    }
+    registered = set(keys)
+    missing = sorted(registered - discovered)
+    unregistered = sorted(discovered - registered)
+    problem_ids = {
+        path.parent.name for path in (ROOT / "problems").glob("*/config.json")
+    }
+    covered_problem_ids = {problem for problem, _ in registered}
+    uncovered_problems = sorted(problem_ids - covered_problem_ids)
+    unknown_problems = sorted(covered_problem_ids - problem_ids)
+    if missing or unregistered or uncovered_problems or unknown_problems:
+        details = []
+        if missing:
+            details.append("missing examples: " + ", ".join(f"{p}/{s}" for p, s in missing))
+        if unregistered:
+            details.append(
+                "unregistered examples: " + ", ".join(f"{p}/{s}" for p, s in unregistered))
+        if uncovered_problems:
+            details.append("problems without a harness case: " + ", ".join(uncovered_problems))
+        if unknown_problems:
+            details.append("manifest references unknown problems: " + ", ".join(unknown_problems))
+        raise ValueError("; ".join(details))
+
+
 def run_case(case, reps):
     problem, name = case["problem"], case["submission"]
     sub_dir = SUBS / problem / name
@@ -135,6 +179,11 @@ def main():
         os.environ["PERF_COUNT"] = "4"
 
     cases = json.loads(MANIFEST.read_text())["cases"]
+    try:
+        validate_manifest(cases)
+    except ValueError as error:
+        print(f"invalid harness manifest: {error}", file=sys.stderr)
+        sys.exit(2)
     if args.only:
         cases = [c for c in cases if args.only in c["problem"]]
         if not cases:

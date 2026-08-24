@@ -214,6 +214,21 @@ class OracleAndGeneratedTheoremTests(unittest.TestCase):
         _, other = judge._perf_theorem_source(7, "13", "nonce-b")
         self.assertNotEqual(theorem, other)
 
+    def test_value_result_is_independent_of_diagnostic_tail_limit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            work = Path(temp)
+            digits = "1" + "0" * (judge.MAX_TOOL_OUTPUT_BYTES + 10)
+
+            def fake_run(_cmd, cwd, _env, _timeout):
+                (Path(cwd) / judge._VALUE_OUTPUT).write_text(digits)
+                return 0, "[earlier tool output truncated]\n"
+
+            with mock.patch.object(judge, "run", side_effect=fake_run):
+                kind, value = judge._eval_impl_value(work, {}, 1, 10)
+
+        self.assertEqual(kind, "ok")
+        self.assertEqual(value, digits)
+
     def test_only_wall_clock_expiry_is_an_oracle_timeout(self):
         with tempfile.TemporaryDirectory() as td:
             work = Path(td)
@@ -243,6 +258,20 @@ class OracleAndGeneratedTheoremTests(unittest.TestCase):
         self.assertTrue(target.startswith("LeanKernelChallengeJudge.Generated_"))
         export_cmd = run_mock.call_args_list[-1].args[0]
         self.assertEqual(export_cmd[-1], target)
+
+    def test_perf_export_rechecks_shared_deadline_between_build_and_export(self):
+        with tempfile.TemporaryDirectory() as td:
+            work = Path(td)
+            artifact_lib = work / "lib"
+            artifact_lib.mkdir()
+            with mock.patch.object(judge, "run", return_value=(0, "")) as run_mock, \
+                 mock.patch.object(judge, "_remaining_timeout", side_effect=[1.0, 0.0]):
+                kind, detail, _ = judge._perf_export(
+                    work, {}, 7, "13", work / "point.export", 9,
+                    artifact_lib, Path("lean"), deadline=123.0)
+
+        self.assertEqual((kind, detail), ("budget-exhausted", None))
+        self.assertEqual(run_mock.call_count, 1)
 
 
 def _timer_output(target=None, wall_ns=123456):
@@ -400,6 +429,42 @@ class RemoteTimingTests(unittest.TestCase):
         self.assertEqual(result["executor"], "good")
         self.assertEqual(judge._PINNED_EXECUTOR[0], "https://good")
         self.assertEqual(len(calls), 2)
+
+    def test_exhausted_phase_budget_prevents_remote_request(self):
+        with mock.patch.object(judge, "TIMING_EXECUTOR_URLS", ["https://only"]), \
+             mock.patch.object(judge.urllib.request, "urlopen") as urlopen:
+            with self.assertRaises(judge.PerfBudgetExhausted):
+                judge._time_remote(self.export, 1, budget_s=0)
+        urlopen.assert_not_called()
+
+    def test_transport_outage_at_phase_deadline_remains_retryable(self):
+        outage = judge.urllib.error.URLError("offline")
+        with mock.patch.object(judge, "TIMING_EXECUTOR_URLS", ["https://only"]), \
+             mock.patch.object(judge, "_EXECUTOR_ATTEMPT_SLEEPS", [0, 0.05]), \
+             mock.patch.object(judge.urllib.request, "urlopen", side_effect=outage):
+            with self.assertRaises(judge.TimingRetry):
+                judge._time_remote(self.export, 1, budget_s=0.01)
+
+    def test_late_valid_kernel_failure_is_not_softened_to_budget_exhaustion(self):
+        failed = {
+            "status": "failed", "executor": "exec-a", "version": "v1",
+            "measurement_contract": judge.MEASUREMENT_CONTRACT,
+            "boundary": judge._measurement_boundary(None), "target": None,
+            "output_tail": "kernel rejected export",
+        }
+
+        class SlowResponse(_Response):
+            def read(self):
+                time.sleep(0.03)
+                return super().read()
+
+        with mock.patch.object(judge, "TIMING_EXECUTOR_URLS", ["https://only"]), \
+             mock.patch.object(judge, "_EXECUTOR_ATTEMPT_SLEEPS", [0]), \
+             mock.patch.object(
+                 judge.urllib.request, "urlopen", return_value=SlowResponse(failed)):
+            result = judge._time_remote(
+                self.export, 1, deadline=time.monotonic() + 0.01)
+        self.assertEqual(result["status"], "failed")
 
     def test_non_positive_or_non_integral_instruction_sample_is_rejected(self):
         for bad in (-1, 0, 1.5, True):
@@ -571,6 +636,9 @@ class EnvironmentBoundaryTests(unittest.TestCase):
             "TIMING_EXECUTOR_SECRET": "bearer",
             "OFFICIAL_EVAL": "1",
             "EVALUATION_COHORT": "round-x",
+            "EVALUATION_RUN_ID": "run-x",
+            "EVALUATION_IMAGE": "judge:test",
+            "EVALUATION_MEMORY": "4g",
         }):
             env = judge.tool_env()
 
@@ -578,13 +646,46 @@ class EnvironmentBoundaryTests(unittest.TestCase):
         self.assertNotIn("TIMING_EXECUTOR_SECRET", env)
         self.assertNotIn("OFFICIAL_EVAL", env)
         self.assertNotIn("EVALUATION_COHORT", env)
+        self.assertNotIn("EVALUATION_RUN_ID", env)
+        self.assertNotIn("EVALUATION_IMAGE", env)
+        self.assertNotIn("EVALUATION_MEMORY", env)
+        self.assertNotIn("EVALUATION_EXECUTOR_ID", env)
+        self.assertNotIn("EVALUATION_EXECUTOR_VERSION", env)
         self.assertEqual(env["LEAN_ABORT_ON_PANIC"], "1")
         self.assertIn("ELAN_HOME", env)
+
+    def test_official_evaluation_cannot_run_with_sandbox_disabled(self):
+        with mock.patch.object(judge, "OFFICIAL_EVAL", True), \
+             mock.patch.object(judge, "TIMING_METRIC", "perf_instructions"), \
+             mock.patch.object(judge, "SANDBOX_MODE", "none"), \
+             mock.patch.object(judge, "PERF_SEED", "secret"), \
+             mock.patch.object(judge, "_PERF_SEED_SOURCE", ["stdin"]), \
+             mock.patch.object(judge, "EVALUATION_COHORT", "round-x"), \
+             mock.patch.object(judge, "EVALUATION_RUN_ID", "run-x"), \
+             mock.patch.object(judge, "EVALUATION_EXECUTOR_ID", "pmu-host"), \
+             mock.patch.object(judge, "EVALUATION_EXECUTOR_VERSION", "pmu-v1"), \
+             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {
+                 "image": "sha256:" + "a" * 64,
+             }):
+            with self.assertRaisesRegex(judge.InfraError, "sandbox.mode=container"):
+                judge.judge(Path("/tmp/unused-job"), "fib", "/tmp/unused", 1, "test")
+
+    def test_official_evaluation_cannot_use_development_wall_time(self):
+        with mock.patch.object(judge, "OFFICIAL_EVAL", True), \
+             mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "SANDBOX_MODE", "container"), \
+             mock.patch.object(judge, "PERF_SEED", "secret"), \
+             mock.patch.object(judge, "_PERF_SEED_SOURCE", ["stdin"]), \
+             mock.patch.object(judge, "EVALUATION_COHORT", "round-x"), \
+             mock.patch.object(judge, "EVALUATION_RUN_ID", "run-x"):
+            with self.assertRaisesRegex(judge.InfraError, "TIMING_METRIC=perf_instructions"):
+                judge.judge(Path("/tmp/unused-job"), "fib", "/tmp/unused", 1, "test")
 
     def test_cohort_id_commits_to_schedule(self):
         cfg = {"perf": {"min": 1, "max": 10, "count": 2}}
         result = {"stages": {}}
-        with mock.patch.object(judge, "EVALUATION_COHORT", "round-x"):
+        with mock.patch.object(judge, "EVALUATION_COHORT", "round-x"), \
+             mock.patch.object(judge, "_problem_bundle_digest", return_value="a" * 64):
             first = judge._evaluation_cohort("demo", cfg, [1, 10], 3, result)
             same = judge._evaluation_cohort("demo", cfg, [1, 10], 3, result)
             changed = judge._evaluation_cohort("demo", cfg, [1, 9], 3, result)
@@ -598,6 +699,32 @@ class EnvironmentBoundaryTests(unittest.TestCase):
         self.assertNotEqual(first["id"], changed["id"])
         self.assertNotEqual(first["id"], changed_contract["id"])
         self.assertEqual(first["round"], "round-x")
+        self.assertEqual(first["id"], first["policy_sha256"][:24])
+
+    def test_cohort_id_commits_to_phase_budget_audit_budget_and_problem_bundle(self):
+        cfg = {"perf": {"min": 1, "max": 10, "count": 2}}
+        result = {"stages": {}}
+        common = [
+            mock.patch.object(judge, "EVALUATION_COHORT", "round-x"),
+            mock.patch.object(judge, "_problem_bundle_digest", return_value="a" * 64),
+        ]
+        with common[0], common[1]:
+            baseline = judge._evaluation_cohort("demo", cfg, [1, 10], 3, result)
+        with mock.patch.object(judge, "EVALUATION_COHORT", "round-x"), \
+             mock.patch.object(judge, "_problem_bundle_digest", return_value="a" * 64), \
+             mock.patch.object(judge, "PERF_PHASE_BUDGET", judge.PERF_PHASE_BUDGET + 1):
+            phase_changed = judge._evaluation_cohort("demo", cfg, [1, 10], 3, result)
+        with mock.patch.object(judge, "EVALUATION_COHORT", "round-x"), \
+             mock.patch.object(judge, "_problem_bundle_digest", return_value="a" * 64), \
+             mock.patch.object(judge, "AUDIT_TIMEOUT", judge.AUDIT_TIMEOUT + 1):
+            audit_changed = judge._evaluation_cohort("demo", cfg, [1, 10], 3, result)
+        with mock.patch.object(judge, "EVALUATION_COHORT", "round-x"), \
+             mock.patch.object(judge, "_problem_bundle_digest", return_value="b" * 64):
+            problem_changed = judge._evaluation_cohort("demo", cfg, [1, 10], 3, result)
+
+        self.assertNotEqual(baseline["id"], phase_changed["id"])
+        self.assertNotEqual(baseline["id"], audit_changed["id"])
+        self.assertNotEqual(baseline["id"], problem_changed["id"])
 
     def test_measurement_contract_record_names_both_boundaries_and_protocols(self):
         contract = judge._measurement_contract_record()
@@ -624,6 +751,9 @@ class EnvironmentBoundaryTests(unittest.TestCase):
         self.assertIn(f'"{judge.FULL_REPLAY_BOUNDARY}"', timer_source)
         self.assertIn(f'"{judge.TARGET_REPLAY_BOUNDARY}"', timer_source)
         self.assertIn("target theorem has an extracted proof helper", timer_source)
+        timer_lakefile = (ROOT / "judge" / "timer-kernel" / "lakefile.lean").read_text()
+        self.assertIn(judge._CFG["toolchain"]["lean4export_rev"], timer_lakefile)
+        self.assertIn(judge._CFG["toolchain"]["lean4checker_rev"], timer_lakefile)
 
 
 if __name__ == "__main__":

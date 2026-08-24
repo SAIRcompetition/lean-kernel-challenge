@@ -52,7 +52,8 @@ need_value() {
 
 valid_slug() {
   # Leading dash excluded so a slug can never be mistaken for an option in argv.
-  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ && "$1" != "." && "$1" != ".." ]]
+  [[ ${#1} -le 96 && "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ \
+    && "$1" != "." && "$1" != ".." ]]
 }
 
 canonical_dir() {
@@ -214,10 +215,72 @@ fi
 (( ${#PERF_SEED_VALUE} <= 1024 )) || die "PERF_SEED is unreasonably long"
 command -v -- "$DOCKER_BIN" >/dev/null 2>&1 || die "Docker executable not found: $DOCKER_BIN"
 
+# Bind every official cohort to the immutable image contents, not a mutable tag.
+IMAGE_ID="$($DOCKER_BIN image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null)" ||
+  die "cannot inspect Docker image: $IMAGE"
+[[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] ||
+  die "Docker returned an invalid immutable image ID for $IMAGE"
+
+# Bind local PMU results to one stable host/hardware contract. Operators may supply an explicit
+# pair for managed fleets; otherwise derive a privacy-preserving host id and a fingerprint of the
+# kernel/CPU properties that affect instruction counts. Both values enter the cohort hash.
+EXECUTOR_ID="${EVALUATION_EXECUTOR_ID:-}"
+EXECUTOR_VERSION="${EVALUATION_EXECUTOR_VERSION:-}"
+if [[ -n "$EXECUTOR_ID" || -n "$EXECUTOR_VERSION" ]]; then
+  [[ -n "$EXECUTOR_ID" && -n "$EXECUTOR_VERSION" ]] ||
+    die "EVALUATION_EXECUTOR_ID and EVALUATION_EXECUTOR_VERSION must be set together"
+else
+  EXECUTOR_RECORD="$(python3 - <<'PY'
+import hashlib
+import json
+import platform
+
+node = platform.node() or "unnamed-host"
+facts = {
+    "system": platform.system(),
+    "release": platform.release(),
+    "machine": platform.machine(),
+    "cpu": [],
+}
+try:
+    wanted = {"vendor_id", "cpu family", "model", "model name", "stepping", "microcode", "flags"}
+    records = set()
+    with open("/proc/cpuinfo", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if ":" not in line:
+                continue
+            key, value = (part.strip() for part in line.split(":", 1))
+            if key in wanted:
+                records.add((key, value))
+    facts["cpu"] = sorted(records)
+except OSError:
+    facts["cpu"] = [["processor", platform.processor()]]
+
+node_id = hashlib.sha256(node.encode()).hexdigest()[:16]
+contract = hashlib.sha256(json.dumps(
+    facts, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+print(f"local-pmu-{node_id}\tpmu-contract-sha256:{contract}")
+PY
+)"
+  IFS=$'\t' read -r EXECUTOR_ID EXECUTOR_VERSION <<<"$EXECUTOR_RECORD"
+fi
+[[ -n "$EXECUTOR_ID" && -n "$EXECUTOR_VERSION" \
+  && "$EXECUTOR_ID$EXECUTOR_VERSION" != *$'\n'* \
+  && ${#EXECUTOR_ID} -le 256 && ${#EXECUTOR_VERSION} -le 256 ]] ||
+  die "invalid local PMU executor identity"
+
 # The cohort is public. The secret seed is sent once on the evaluation container's
 # stdin below; it never enters Docker argv or the container/process environment.
+RUN_ID="run-$$-${RANDOM}-${RANDOM}"
 unset PERF_SEED
 export EVALUATION_COHORT="$COHORT"
+export EVALUATION_RUN_ID="$RUN_ID"
+export EVALUATION_IMAGE="$IMAGE_ID"
+export EVALUATION_MEMORY="$MEMORY"
+export EVALUATION_CPUS="$CPUS"
+export EVALUATION_PIDS_LIMIT="$PIDS_LIMIT"
+export EVALUATION_EXECUTOR_ID="$EXECUTOR_ID"
+export EVALUATION_EXECUTOR_VERSION="$EXECUTOR_VERSION"
 export OFFICIAL_EVAL=1
 
 CONTAINER_RESULTS="/work/lean-kernel-challenge/results"
@@ -236,6 +299,13 @@ DOCKER_ARGS=(
   --user judge
   --env OFFICIAL_EVAL
   --env EVALUATION_COHORT
+  --env EVALUATION_RUN_ID
+  --env EVALUATION_IMAGE
+  --env EVALUATION_MEMORY
+  --env EVALUATION_CPUS
+  --env EVALUATION_PIDS_LIMIT
+  --env EVALUATION_EXECUTOR_ID
+  --env EVALUATION_EXECUTOR_VERSION
   # Evidence that the full isolation envelope above was applied. The judge refuses an official
   # run without it, so a bare `docker run IMAGE judge.py ...` cannot masquerade as one.
   --env ISOLATION_ATTESTATION=run_isolated.sh
@@ -250,7 +320,7 @@ fi
 
 # Fail before elaborating untrusted code if UID 10001 cannot write through the
 # bind mount.  The preflight uses the exact same isolation/resource envelope.
-if ! "$DOCKER_BIN" "${DOCKER_ARGS[@]}" --entrypoint /usr/bin/test "$IMAGE" \
+if ! "$DOCKER_BIN" "${DOCKER_ARGS[@]}" --entrypoint /usr/bin/test "$IMAGE_ID" \
     -w "$CONTAINER_RESULTS"; then
   die "results mount is not writable by container user 'judge' (UID 10001)"
 fi
@@ -270,18 +340,57 @@ fi
 set +e
 printf '%s\n' "$PERF_SEED_VALUE" | \
   "$DOCKER_BIN" "${DOCKER_ARGS[@]}" --interactive --env PERF_SEED_STDIN=1 \
-    "$IMAGE" "${JUDGE_ARGS[@]}"
+    "$IMAGE_ID" "${JUDGE_ARGS[@]}"
 STATUS=${PIPESTATUS[1]}
 set -e
 
 VERDICT="$RESULTS_DIR/$PROBLEM/$VERDICT_NAME.json"
-if [[ -f "$VERDICT" ]]; then
-  echo "verdict preserved at: $VERDICT"
+ATTEMPT="$RESULTS_DIR/$PROBLEM/attempts/${VERDICT_NAME}__${RUN_ID}.json"
+MATCHED_VERDICT=""
+for CANDIDATE in "$VERDICT" "$ATTEMPT"; do
+  [[ -f "$CANDIDATE" ]] || continue
+  if python3 - "$CANDIDATE" "$PROBLEM" "$VERDICT_NAME" "$RUN_ID" "$STATUS" "$COHORT" <<'PY'
+import json
+import sys
+
+path, problem, submission, run_id, raw_status, cohort = sys.argv[1:]
+try:
+    with open(path, encoding="utf-8") as handle:
+        verdict = json.load(handle)
+except (OSError, UnicodeError, ValueError):
+    raise SystemExit(1)
+
+status = int(raw_status)
+allowed = {
+    0: {"accepted", "rejected"},
+    2: {"error"},
+    3: {"retry"},
+}.get(status, set())
+if not allowed:
+    raise SystemExit(1)
+if (verdict.get("problem") != problem
+        or verdict.get("submission") != submission
+        or verdict.get("run_id") != run_id
+        or verdict.get("status") not in allowed):
+    raise SystemExit(1)
+if verdict.get("status") == "accepted":
+    evaluation_cohort = verdict.get("evaluation_cohort")
+    if (verdict.get("evaluation_mode") != "official"
+            or not isinstance(evaluation_cohort, dict)
+            or evaluation_cohort.get("round") != cohort):
+        raise SystemExit(1)
+PY
+  then
+    MATCHED_VERDICT="$CANDIDATE"
+    break
+  fi
+done
+
+if [[ -n "$MATCHED_VERDICT" ]]; then
+  echo "verdict written at: $MATCHED_VERDICT"
 else
-  # No verdict means nothing was judged, so never report success: a caller written as
-  # `if run_isolated.sh; then mark_judged; fi` would otherwise record "nothing happened" as a
-  # completed judgement (e.g. DOCKER_BIN pointing at something that is not Docker and exits 0).
-  echo "ERROR: container exited $STATUS without writing the expected verdict: $VERDICT" >&2
+  # An old file with the same submission tag is not evidence that this run judged anything.
+  echo "ERROR: container exited $STATUS without a matching verdict for run $RUN_ID" >&2
   [[ "$STATUS" -ne 0 ]] || STATUS=1
 fi
 exit "$STATUS"

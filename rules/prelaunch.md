@@ -83,12 +83,9 @@ available at the official launch.
 
 ## Team Participation and Anti-Cheating Policy
 
-- Each individual may participate only once, either individually or as a member
-  of one team. Each organization may participate through only one team.
-- Teams must declare all members and any team sponsors through the registration
-  process before their first submission.
-- If coordinated cheating is detected, including through sockpuppet teams, all
-  related teams will be disqualified.
+- Each individual or organization can participate in only one team.
+- Teams must register members and sponsors in advance.
+- If coordinated cheating is detected (including sockpuppet teams), all related teams will be disqualified.
 
 ## Experimental Status
 

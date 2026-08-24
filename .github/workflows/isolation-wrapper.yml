@@ -3,7 +3,7 @@ name: Isolation wrapper
 on:
   pull_request:
   push:
-  workflow_dispatch:      # for the real-container job below
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,19 +17,14 @@ jobs:
         run: bash -n scripts/run_isolated.sh
       - name: Required Docker isolation envelope
         run: python3 tests/test_run_isolated.py
-      - name: Judge logic, scoring, and reporting/contract suites
-        run: |
-          python3 tests/test_judge_logic.py
-          python3 tests/test_scoring.py
-          python3 tests/test_reporting_and_contract.py
+      - name: Python test suite
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
 
   # The static job above validates the wrapper's argv construction with a fake Docker; it cannot
   # tell whether a submission is ACTUALLY sandboxed (a daemon silently ignoring --pids-limit, a
-  # runner defaulting to --privileged, or a broken image would all pass). This job builds the real
-  # image and asserts the envelope empirically. It is workflow_dispatch-only because the image
-  # build is slow; run it before launch and after any Dockerfile/wrapper change.
+  # runner defaulting to --privileged, or a broken image would all pass). This required job builds
+  # the real image (whose Dockerfile runs the full harness) and asserts the envelope empirically.
   real-container-isolation:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -82,10 +77,14 @@ jobs:
           # Supply EVERY other official precondition (seed on stdin, cohort) so the run can only
           # fail on the missing attestation — otherwise this test passes for the wrong reason and
           # would keep passing even if the attestation check were deleted.
+          image_id="$(docker image inspect --format '{{.Id}}' lean-kernel-judge)"
           set +e
           out=$(printf 'ci-secret-seed\n' | docker run --rm --interactive --network none \
                   --user judge -e OFFICIAL_EVAL=1 -e PERF_SEED_STDIN=1 \
-                  -e EVALUATION_COHORT=ci-cohort lean-kernel-judge \
+                  -e EVALUATION_COHORT=ci-cohort -e EVALUATION_RUN_ID=ci-missing-attest \
+                  -e EVALUATION_IMAGE="$image_id" -e EVALUATION_EXECUTOR_ID=ci-pmu \
+                  -e EVALUATION_EXECUTOR_VERSION=ci-pmu-v1 \
+                  -e TIMING_METRIC=perf_instructions lean-kernel-judge \
                   python3 judge/judge.py run --problem fib \
                   --submission examples/submissions/fib/baseline --tag ci-attest --reps 1 2>&1)
           status=$?
@@ -99,13 +98,22 @@ jobs:
             echo "FAIL: refused for an unrelated reason, not the missing attestation"; exit 1; }
           echo "ok: refused specifically for the missing attestation"
 
-      - name: Sanity — the same run succeeds once the wrapper attestation is present
+      - name: Sanity — the attested official path reaches judging
         run: |
           # Guards against the attestation check being trivially unsatisfiable (which would make
-          # the negative test above pass vacuously).
-          printf 'ci-secret-seed\n' | docker run --rm --interactive --network none \
+          # the negative test above pass vacuously). Use an intentionally invalid submission so
+          # this proves the official path reached the correctness gate without requiring PMU
+          # access from the hosted runner.
+          image_id="$(docker image inspect --format '{{.Id}}' lean-kernel-judge)"
+          out=$(printf 'ci-secret-seed\n' | docker run --rm --interactive --network none \
             --user judge -e OFFICIAL_EVAL=1 -e PERF_SEED_STDIN=1 \
-            -e EVALUATION_COHORT=ci-cohort -e ISOLATION_ATTESTATION=run_isolated.sh \
+            -e EVALUATION_COHORT=ci-cohort -e EVALUATION_RUN_ID=ci-attest-ok \
+            -e EVALUATION_IMAGE="$image_id" -e EVALUATION_EXECUTOR_ID=ci-pmu \
+            -e EVALUATION_EXECUTOR_VERSION=ci-pmu-v1 \
+            -e ISOLATION_ATTESTATION=run_isolated.sh -e TIMING_METRIC=perf_instructions \
             lean-kernel-judge python3 judge/judge.py run --problem fib \
-            --submission examples/submissions/fib/baseline --tag ci-attest-ok --reps 1
-          echo "ok: accepted with attestation"
+            --submission examples/submissions/fib/cheat-sorry --tag ci-attest-ok --reps 1)
+          echo "$out"
+          echo "$out" | grep -q "fib/ci-attest-ok: rejected" || {
+            echo "FAIL: attested invalid submission did not reach a judged rejection"; exit 1; }
+          echo "ok: attested official path reached the correctness gate"
