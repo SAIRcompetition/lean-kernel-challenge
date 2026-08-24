@@ -2,6 +2,23 @@
 
 *A competition on the performance of verified computation in the Lean 4 kernel.*
 
+## Co-organizers
+
+The Lean Kernel Challenge is co-organized by:
+
+- Joachim Breitner
+- Leonardo de Moura
+- Kim Morrison
+- Terence Tao
+- [Lean FRO](https://lean-fro.org/)
+- [SAIR Foundation](https://sair.foundation/)
+
+<p align="center">
+  <a href="https://lean-fro.org/"><img src="../assets/lean-fro-logo.svg" alt="Lean FRO" width="260"></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://sair.foundation/"><img src="../assets/sair-foundation-logo.png" alt="SAIR Foundation" width="260"></a>
+</p>
+
 ## Background
 
 The Lean 4 kernel is the small trusted core that type-checks every proof the
@@ -38,11 +55,12 @@ team needs to know to prepare.
 
 ## Registration & Teams
 
-Pre-registration is open on the [SAIR competition
-platform](https://competition.sair.foundation/) from August 26. You may
+Registration and team management take place on
+[SAIR](https://competition.sair.foundation/) beginning August 26. To register,
+create or sign in to your SAIR account, complete the required profile and
+participant information, and agree to SAIR's competition terms. You may
 participate individually or as a team; teams can be formed and named from
-pre-registration onward. Platform accounts are required for submission once
-the competition launches; team composition and size rules are stated on the
+registration onward. Team composition and size rules are stated on the
 competition page.
 
 ## What you can do now
@@ -64,17 +82,3 @@ To be announced before launch.
 The official repository — locked problem workspaces, the judge, worked
 examples, and the binding rule texts — will be published at the official
 launch on September 15, 2026.
-
-## Co-organizers
-
-The Lean Kernel Challenge is co-organized by (in alphabetical order by
-surname):
-
-- Joachim Breitner
-- Leonardo de Moura
-- Kim Morrison
-- Terence Tao
-
-The challenge is run in collaboration with the [Lean
-FRO](https://lean-fro.org/) and organized by the [SAIR
-Foundation](https://sair.foundation/).
