@@ -24,11 +24,21 @@ import sys
 from pathlib import Path
 
 args = sys.argv[1:]
+if args[:2] == ["image", "inspect"]:
+    print("sha256:" + "a" * 64)
+    raise SystemExit(0)
 record = {
     "args": args,
     "PERF_SEED": os.environ.get("PERF_SEED"),
     "OFFICIAL_EVAL": os.environ.get("OFFICIAL_EVAL"),
     "EVALUATION_COHORT": os.environ.get("EVALUATION_COHORT"),
+    "EVALUATION_RUN_ID": os.environ.get("EVALUATION_RUN_ID"),
+    "EVALUATION_IMAGE": os.environ.get("EVALUATION_IMAGE"),
+    "EVALUATION_MEMORY": os.environ.get("EVALUATION_MEMORY"),
+    "EVALUATION_CPUS": os.environ.get("EVALUATION_CPUS"),
+    "EVALUATION_PIDS_LIMIT": os.environ.get("EVALUATION_PIDS_LIMIT"),
+    "EVALUATION_EXECUTOR_ID": os.environ.get("EVALUATION_EXECUTOR_ID"),
+    "EVALUATION_EXECUTOR_VERSION": os.environ.get("EVALUATION_EXECUTOR_VERSION"),
     "seed_stdin": sys.stdin.read() if "PERF_SEED_STDIN=1" in args else None,
 }
 with Path(os.environ["DOCKER_CAPTURE"]).open("a") as out:
@@ -49,7 +59,14 @@ if "judge/judge.py" in args and os.environ.get("FAKE_WRITE_VERDICT") == "1":
         name = "submission"
     verdict = Path(result_src) / problem / f"{name}.json"
     verdict.parent.mkdir(parents=True, exist_ok=True)
-    verdict.write_text('{"status":"accepted"}\n')
+    verdict.write_text(json.dumps({
+        "problem": problem,
+        "submission": name,
+        "run_id": os.environ["EVALUATION_RUN_ID"],
+        "status": "accepted",
+        "evaluation_mode": "official",
+        "evaluation_cohort": {"round": os.environ["EVALUATION_COHORT"]},
+    }) + "\n")
 """
 
 
@@ -131,10 +148,33 @@ class RunIsolatedTests(unittest.TestCase):
         self.assertIn("EVALUATION_COHORT", passed_env)
         self.assertIn("TIMING_METRIC=perf_instructions", args)
         self.assertIn("SANDBOX_MODE=container", args)
+        self.assertIn("--cap-drop", args)
+        self.assert_pair(args, "--cap-drop", "ALL")
+        self.assertIn("ISOLATION_ATTESTATION=run_isolated.sh", args)
+        for name in (
+            "EVALUATION_RUN_ID",
+            "EVALUATION_IMAGE",
+            "EVALUATION_MEMORY",
+            "EVALUATION_CPUS",
+            "EVALUATION_PIDS_LIMIT",
+            "EVALUATION_EXECUTOR_ID",
+            "EVALUATION_EXECUTOR_VERSION",
+        ):
+            self.assertIn(name, passed_env)
         self.assertNotIn("hidden seed value", args)
         self.assertIsNone(record["PERF_SEED"])
         self.assertEqual(record["OFFICIAL_EVAL"], "1")
         self.assertEqual(record["EVALUATION_COHORT"], "round-2026-01")
+        self.assertRegex(record["EVALUATION_RUN_ID"], r"^run-[0-9]+-[0-9]+-[0-9]+$")
+        self.assertEqual(record["EVALUATION_MEMORY"], "768m")
+        self.assertEqual(record["EVALUATION_CPUS"], "1.5")
+        self.assertEqual(record["EVALUATION_PIDS_LIMIT"], "97")
+        self.assertRegex(record["EVALUATION_IMAGE"], r"^sha256:[0-9a-f]{64}$")
+        self.assertRegex(record["EVALUATION_EXECUTOR_ID"], r"^local-pmu-[0-9a-f]{16}$")
+        self.assertRegex(
+            record["EVALUATION_EXECUTOR_VERSION"],
+            r"^pmu-contract-sha256:[0-9a-f]{64}$",
+        )
 
         submission_mount = (
             f"type=bind,src={self.submission.resolve()},"
@@ -171,6 +211,8 @@ class RunIsolatedTests(unittest.TestCase):
         for record in records:
             self.assert_mandatory_envelope(record)
             self.assert_pair(record["args"], "--cap-add", "PERFMON")
+            self.assertIn("sha256:" + "a" * 64, record["args"])
+            self.assertNotIn("registry.example/judge:v1", record["args"])
 
         preflight = records[0]["args"]
         self.assert_pair(preflight, "--entrypoint", "/usr/bin/test")
@@ -215,6 +257,30 @@ class RunIsolatedTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("PERF_SEED", proc.stderr)
         self.assertFalse(self.capture.exists())
+
+    def test_rejects_slug_longer_than_judge_limit(self):
+        proc = self.run_wrapper("--tag", "a" * 97)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("invalid tag slug", proc.stderr)
+        self.assertFalse(self.capture.exists())
+
+    def test_stale_verdict_cannot_mask_a_run_that_wrote_nothing(self):
+        old = self.results / "fib" / "entry-dir.json"
+        old.parent.mkdir(parents=True, exist_ok=True)
+        old.write_text(json.dumps({
+            "problem": "fib",
+            "submission": "entry-dir",
+            "run_id": "old-run",
+            "status": "accepted",
+        }))
+        self.env["FAKE_WRITE_VERDICT"] = "0"
+
+        proc = self.run_wrapper(
+            "--memory", "768m", "--cpus", "1.5", "--pids-limit", "97")
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("without a matching verdict", proc.stderr)
+        self.assertEqual(json.loads(old.read_text())["run_id"], "old-run")
 
     def test_rejects_relative_mount_sources_before_invoking_docker(self):
         proc = subprocess.run(

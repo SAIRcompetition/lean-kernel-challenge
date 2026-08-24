@@ -1,6 +1,9 @@
 """Pure-Python regression tests for the canonical scoring contract."""
+import hashlib
 import importlib.util
+import json
 import pathlib
+import tempfile
 import unittest
 
 
@@ -12,7 +15,7 @@ SPEC.loader.exec_module(score)
 
 def verdict(name, costs, *, metric="perf_instructions", correctness=10,
             inputs=(10, 20, 40), problem="fib", protocol=score.LOCAL_PROTOCOL,
-            executor="local"):
+            executor="local", executor_kind=None, round_id="test-round"):
     field = score.METRICS[metric]["field"]
     scaling = []
     for slot, (n, cost) in enumerate(zip(inputs, costs)):
@@ -29,33 +32,85 @@ def verdict(name, costs, *, metric="perf_instructions", correctness=10,
             scaling.append({
                 "slot": slot, "n": n, "result": "ok", field: cost, **measurement,
             })
-    return {
+    result = {
         "problem": problem,
         "submission": name,
         "status": "accepted",
         "metric": metric,
+        "evaluation_mode": "development",
         "timing_protocol": protocol,
         "measurement_contract": dict(score.CURRENT_MEASUREMENT_RECORD),
-        "evaluation_cohort": {
-            "id": f"cohort-{metric}",
-            "round": "test-round",
-            "executor": {"executor": executor, "version": "test-v1"},
-        },
         "stages": {"perf_inputs": list(inputs)},
         "correctness_timing": {
-            "result": "ok",
+            "result": "ok", "reps": 3,
             "metric": metric,
+            "checker": "test-checker",
             "measurement_contract": score.MEASUREMENT_CONTRACT,
             "measurement_boundary": score.CORRECTNESS_BOUNDARY,
             "measurement_target": None,
             field: correctness,
         },
         "timing": {
-            "metric": metric,
+            "metric": metric, "reps": 3,
+            "checker": "test-checker",
             "measurement_contract": score.MEASUREMENT_CONTRACT,
             "measurement_boundary": score.PERFORMANCE_BOUNDARY,
             "scaling": scaling,
         },
+    }
+    _seal_cohort(
+        result, round_id=round_id, executor=executor, executor_kind=executor_kind)
+    return result
+
+
+def _seal_cohort(result, *, round_id="test-round", executor="local", executor_kind=None):
+    executor_record = {
+        "kind": executor_kind or ("local" if executor == "local" else "remote"),
+        "executor": executor,
+        "version": "test-v1",
+    }
+    policy = {
+        "schema": "evaluation-policy-v1",
+        "round": round_id,
+        "problem": result["problem"],
+        "problem_bundle_sha256": "0" * 64,
+        "evaluator_bundle_sha256": "1" * 64,
+        "evaluation_mode": result["evaluation_mode"],
+        "perf": {"min": min(result["stages"]["perf_inputs"]),
+                 "max": max(result["stages"]["perf_inputs"])},
+        "perf_defaults": {"count": len(result["stages"]["perf_inputs"]),
+                          "spacing": "linear", "jitter": 0.15},
+        "inputs": list(result["stages"]["perf_inputs"]),
+        "metric": result["metric"],
+        "reps": result["timing"]["reps"],
+        "budgets": {
+            "comparator_timeout_seconds": 100,
+            "audit_timeout_seconds": 10,
+            "timing_timeout_seconds": 10,
+            "perf_phase_budget_seconds": 100,
+        },
+        "resource_policy": {
+            "image": "local-unspecified", "memory": "local-unspecified",
+            "cpus": "local-unspecified", "pids_limit": "local-unspecified",
+            "sandbox_mode": "none",
+        },
+        "toolchain": {
+            "lean": "leanprover/lean4:test", "comparator_rev": "2" * 40,
+            "lean4export_rev": "3" * 40, "lean4checker_rev": "4" * 40,
+        },
+        "checker": "test-checker",
+        "timing_protocol": result["timing_protocol"],
+        "measurement_contract": dict(score.CURRENT_MEASUREMENT_RECORD),
+        "executor": executor_record,
+    }
+    encoded = json.dumps(policy, sort_keys=True, separators=(",", ":")).encode()
+    digest = hashlib.sha256(encoded).hexdigest()
+    result["evaluation_cohort"] = {
+        "id": digest[:24],
+        "round": round_id,
+        "executor": executor_record,
+        "policy_sha256": digest,
+        "policy": policy,
     }
 
 
@@ -111,21 +166,21 @@ class ScoringTests(unittest.TestCase):
 
         groups = score._groups([instructions, seconds])
 
-        self.assertEqual(set(groups), {
-            ("fib", "perf_instructions", "cohort-perf_instructions"),
-            ("fib", "wall_time", "cohort-wall_time"),
-        })
+        instruction_group = ("fib", "perf_instructions",
+                             instructions["evaluation_cohort"]["id"])
+        seconds_group = ("fib", "wall_time", seconds["evaluation_cohort"]["id"])
+        self.assertEqual(set(groups), {instruction_group, seconds_group})
         self.assertEqual(
             [r["sub"] for r in score._rows_for(
                 "fib",
-                groups[("fib", "perf_instructions", "cohort-perf_instructions")],
+                groups[instruction_group],
                 "perf_instructions",
             )],
             ["instructions"],
         )
         self.assertEqual(
             [r["sub"] for r in score._rows_for(
-                "fib", groups[("fib", "wall_time", "cohort-wall_time")], "wall_time"
+                "fib", groups[seconds_group], "wall_time"
             )],
             ["seconds"],
         )
@@ -150,18 +205,15 @@ class ScoringTests(unittest.TestCase):
 
     def test_evaluation_cohorts_are_never_mixed(self):
         first = verdict("first", [100, 200, 300])
-        second = verdict("second", [100, 200, 300])
-        second["evaluation_cohort"] = {
-            "id": "other-cohort",
-            "round": "other-round",
-            "executor": {"executor": "local", "version": "test-v1"},
-        }
+        second = verdict("second", [100, 200, 300], round_id="other-round")
 
         groups = score._groups([first, second])
 
         self.assertEqual(len(groups), 2)
-        self.assertIn(("fib", "perf_instructions", "cohort-perf_instructions"), groups)
-        self.assertIn(("fib", "perf_instructions", "other-cohort"), groups)
+        self.assertIn(
+            ("fib", "perf_instructions", first["evaluation_cohort"]["id"]), groups)
+        self.assertIn(
+            ("fib", "perf_instructions", second["evaluation_cohort"]["id"]), groups)
 
     def test_missing_cohort_is_unscored(self):
         legacy = verdict("legacy-cohort", [100, 200, 300])
@@ -248,6 +300,9 @@ class ScoringTests(unittest.TestCase):
         remote_current = verdict(
             "remote-current", [100, 200, 300],
             protocol=score.REMOTE_PROTOCOL, executor="exec-a")
+        pinned_local = verdict(
+            "pinned-local", [100, 200, 300], protocol=score.LOCAL_PROTOCOL,
+            executor="local-pmu-abcd", executor_kind="local")
 
         self.assertFalse(
             score._score_row(local_wrong, "perf_instructions")["scoreable"])
@@ -255,6 +310,8 @@ class ScoringTests(unittest.TestCase):
             score._score_row(remote_wrong, "perf_instructions")["scoreable"])
         self.assertTrue(
             score._score_row(remote_current, "perf_instructions")["scoreable"])
+        self.assertTrue(
+            score._score_row(pinned_local, "perf_instructions")["scoreable"])
 
     def test_same_cohort_id_does_not_make_legacy_verdict_scoreable(self):
         current = verdict("current", [100, 200, 300])
@@ -299,6 +356,150 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(row["completed_slots"], 3)
         self.assertEqual(row["curve_work"], 65)
         self.assertIsNotNone(row["alpha"])
+
+    def test_exact_performance_ties_share_rank_but_sort_by_name(self):
+        zeta = verdict("zeta", [100, 200, 300])
+        alpha = verdict("alpha", [100, 200, 300])
+        slower = verdict("slower", [100, 200, 301])
+
+        rows = score._rows_for("fib", [zeta, slower, alpha], "perf_instructions")
+
+        self.assertEqual([row["sub"] for row in rows], ["alpha", "zeta", "slower"])
+        self.assertEqual(score._competition_ranks(rows), [1, 1, 3])
+
+    def test_unknown_slot_result_and_fractional_instructions_are_unscored(self):
+        unknown = verdict("unknown", [100, 200, 300])
+        unknown["timing"]["scaling"][1]["result"] = "banana"
+        fractional = verdict("fractional", [100, 200, 300])
+        fractional["timing"]["scaling"][0]["median_instructions"] = 0.25
+
+        unknown_row = score._score_row(unknown, "perf_instructions")
+        fractional_row = score._score_row(fractional, "perf_instructions")
+
+        self.assertFalse(unknown_row["scoreable"])
+        self.assertIn("unknown result", unknown_row["reason"])
+        self.assertFalse(fractional_row["scoreable"])
+        self.assertIn("positive median_instructions", fractional_row["reason"])
+
+        unhashable = verdict("unhashable-result", [100, 200, 300])
+        unhashable["timing"]["scaling"][0]["result"] = []
+        unhashable_row = score._score_row(unhashable, "perf_instructions")
+        self.assertFalse(unhashable_row["scoreable"])
+        self.assertIn("unknown result", unhashable_row["reason"])
+
+    def test_malformed_metric_and_unbounded_integer_do_not_crash(self):
+        malformed_metric = verdict("bad-metric", [100, 200, 300])
+        malformed_metric["metric"] = []
+        huge = verdict("huge", [100, 200, 300])
+        huge["correctness_timing"]["median_instructions"] = 10 ** 309
+
+        self.assertEqual(score._groups([malformed_metric]), {})
+        huge_row = score._score_row(huge, "perf_instructions")
+        self.assertFalse(huge_row["scoreable"])
+        self.assertIn("positive median_instructions", huge_row["reason"])
+
+    def test_cohort_policy_must_bind_schedule_executor_and_hash(self):
+        wrong_schedule = verdict("wrong-schedule", [100, 200, 300])
+        wrong_schedule["stages"]["perf_inputs"] = [11, 22, 44]
+        wrong_executor = verdict("wrong-executor", [100, 200, 300])
+        wrong_executor["evaluation_cohort"]["executor"]["version"] = "other"
+        wrong_hash = verdict("wrong-hash", [100, 200, 300])
+        wrong_hash["evaluation_cohort"]["policy_sha256"] = "f" * 64
+
+        for item in (wrong_schedule, wrong_executor, wrong_hash):
+            with self.subTest(submission=item["submission"]):
+                self.assertFalse(
+                    score._score_row(item, "perf_instructions")["scoreable"])
+
+    def test_current_policy_schema_is_complete_and_checker_bound(self):
+        for missing in (
+                "evaluator_bundle_sha256", "perf", "perf_defaults", "budgets",
+                "resource_policy", "toolchain", "checker"):
+            with self.subTest(missing=missing):
+                item = verdict(f"missing-{missing}", [100, 200, 300])
+                policy = item["evaluation_cohort"]["policy"]
+                policy.pop(missing)
+                digest = hashlib.sha256(json.dumps(
+                    policy, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                item["evaluation_cohort"]["policy_sha256"] = digest
+                item["evaluation_cohort"]["id"] = digest[:24]
+                self.assertFalse(
+                    score._score_row(item, "perf_instructions")["scoreable"])
+
+        mismatch = verdict("checker-mismatch", [100, 200, 300])
+        mismatch["timing"]["checker"] = "different-checker"
+        row = score._score_row(mismatch, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("checker", row["reason"])
+
+        for field_path in ("perf.jitter", "perf_defaults.jitter", "metric"):
+            with self.subTest(malformed=field_path):
+                item = verdict(f"malformed-{field_path}", [100, 200, 300])
+                policy = item["evaluation_cohort"]["policy"]
+                if field_path == "metric":
+                    policy["metric"] = []
+                else:
+                    parent, field = field_path.split(".")
+                    policy[parent][field] = 10 ** 309
+                digest = hashlib.sha256(json.dumps(
+                    policy, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                item["evaluation_cohort"]["policy_sha256"] = digest
+                item["evaluation_cohort"]["id"] = digest[:24]
+                self.assertFalse(
+                    score._score_row(item, "perf_instructions")["scoreable"])
+
+        for label, mutate in (
+                ("float-policy-inputs", lambda v: v["evaluation_cohort"]["policy"].__setitem__(
+                    "inputs", [10.0, 20.0, 40.0])),
+                ("out-of-range-policy", lambda v: v["evaluation_cohort"]["policy"]["perf"].update(
+                    {"min": 100, "max": 200}))):
+            with self.subTest(malformed=label):
+                item = verdict(label, [100, 200, 300])
+                mutate(item)
+                policy = item["evaluation_cohort"]["policy"]
+                digest = hashlib.sha256(json.dumps(
+                    policy, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                item["evaluation_cohort"]["policy_sha256"] = digest
+                item["evaluation_cohort"]["id"] = digest[:24]
+                self.assertFalse(
+                    score._score_row(item, "perf_instructions")["scoreable"])
+
+        float_sample = verdict("float-sample", [100, 200, 300])
+        float_sample["timing"]["scaling"][0]["n"] = 10.0
+        self.assertFalse(score._score_row(
+            float_sample, "perf_instructions")["scoreable"])
+
+        float_reps = verdict("float-reps", [100, 200, 300])
+        float_reps["correctness_timing"]["reps"] = 3.0
+        float_reps["timing"]["reps"] = 3.0
+        self.assertFalse(score._score_row(
+            float_reps, "perf_instructions")["scoreable"])
+
+        zero_jitter = verdict("zero-jitter", [100, 200, 300])
+        policy = zero_jitter["evaluation_cohort"]["policy"]
+        policy["perf_defaults"]["jitter"] = 0
+        digest = hashlib.sha256(json.dumps(
+            policy, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        zero_jitter["evaluation_cohort"]["policy_sha256"] = digest
+        zero_jitter["evaluation_cohort"]["id"] = digest[:24]
+        self.assertFalse(score._score_row(
+            zero_jitter, "perf_instructions")["scoreable"])
+
+    def test_report_survives_aggregate_integer_overflow(self):
+        item = verdict("aggregate-overflow", [10 ** 308] * 3, correctness=10 ** 308)
+        old_results = score.RESULTS
+        with tempfile.TemporaryDirectory() as temp:
+            try:
+                score.RESULTS = temp
+                problem_dir = pathlib.Path(temp) / "fib"
+                problem_dir.mkdir()
+                (problem_dir / "overflow.json").write_text(json.dumps(item))
+                score.main()
+                report = (pathlib.Path(temp) / "scoring.md").read_text()
+            finally:
+                score.RESULTS = old_results
+        self.assertIn("aggregate-overflow", report)
+        self.assertIn("total measured work is not a finite positive cost", report)
 
 
 if __name__ == "__main__":

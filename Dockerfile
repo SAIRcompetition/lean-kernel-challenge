@@ -46,8 +46,10 @@ ENV COMPARATOR_BIN=/work/tools/comparator/.lake/build/bin/comparator \
     TIMING_METRIC=perf_instructions \
     SANDBOX_MODE=container
 
-# Green-gate on build so a broken image fails fast (needs PMU access at build time).
-# RUN TIMING_METRIC=wall_time python3 scripts/run_harness.py --quick
+# Green-gate every problem and example during the image build. Wall time avoids requiring PMU
+# access in the Docker build sandbox; official runs still use the metric configured above.
+RUN TIMING_METRIC=wall_time SANDBOX_MODE=none \
+    python3 scripts/run_harness.py --quick --count 2 --timeout 120
 
 # Non-root user for running untrusted submissions.  Verification tools, problem
 # templates, and the repository remain root-owned; only the generated-results tree is

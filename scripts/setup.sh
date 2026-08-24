@@ -14,7 +14,6 @@ TOOLS_DIR="${TOOLS_DIR:-$(cd "$HERE/.." && pwd)/repro}"
 jqget() { python3 -c "import json,sys;print(json.load(open('$CFG'))['toolchain']['$1'])"; }
 COMPARATOR_REV="$(jqget comparator_rev)"
 LEAN4EXPORT_REV="$(jqget lean4export_rev)"
-LEAN4CHECKER_REV="$(jqget lean4checker_rev)"
 
 command -v elan >/dev/null || { echo "ERROR: elan (Lean toolchain manager) not found. Install from https://github.com/leanprover/elan"; exit 1; }
 command -v gtimeout >/dev/null || echo "WARN: gtimeout not found (macOS: brew install coreutils). Needed by the landrun/timeout shim path."

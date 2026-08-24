@@ -22,6 +22,7 @@ verdicts are never silently compared with scoped-replay verdicts, even if they r
 
 Stdlib only.  See rules/evaluation.md for the binding scoring contract.
 """
+import hashlib
 import json
 import math
 import os
@@ -60,6 +61,16 @@ METRICS = {
     },
 }
 
+PERFORMANCE_RESULTS = {
+    "ok",
+    "timeout",
+    "value-eval-timeout",
+    "build-timeout",
+    "axiom-audit-timeout",
+    "budget-exhausted",
+    "not-run",
+}
+
 
 def _load_verdicts():
     rows = []
@@ -75,7 +86,7 @@ def _load_verdicts():
             try:
                 with open(os.path.join(pdir, fn)) as f:
                     r = json.load(f)
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError, UnicodeError, ValueError, RecursionError):
                 continue
             if not (isinstance(r, dict) and isinstance(r.get("problem"), str)
                     and isinstance(r.get("submission"), str)
@@ -85,9 +96,164 @@ def _load_verdicts():
     return rows
 
 
-def _is_cost(value):
-    return (isinstance(value, (int, float)) and not isinstance(value, bool)
-            and math.isfinite(float(value)) and value > 0)
+def _is_cost(value, integral=False):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        return False
+    if integral and type(value) is not int:
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
+def _policy_digest(policy):
+    try:
+        encoded = json.dumps(
+            policy, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    except (TypeError, ValueError, OverflowError, RecursionError):
+        return None
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _nonempty_string(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _sha256_string(value):
+    return (isinstance(value, str) and len(value) == 64
+            and all(ch in "0123456789abcdef" for ch in value))
+
+
+def _policy_integer(value):
+    if type(value) is int:
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        digits = text[1:] if text[:1] in ("+", "-") else text
+        if digits and all("0" <= ch <= "9" for ch in digits):
+            return int(text)
+    return None
+
+
+def _finite_number(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
+def _policy_shape_error(policy):
+    """Validate the complete schema emitted by the current judge, not just its hash."""
+    required = {
+        "schema", "round", "problem", "problem_bundle_sha256",
+        "evaluator_bundle_sha256", "evaluation_mode", "perf", "perf_defaults",
+        "inputs", "metric", "reps", "budgets", "resource_policy", "toolchain",
+        "checker", "timing_protocol", "measurement_contract", "executor",
+    }
+    if set(policy) != required:
+        return "evaluation cohort policy has an incomplete or unknown field set"
+    if not (_nonempty_string(policy["round"]) and _nonempty_string(policy["problem"])):
+        return "evaluation cohort policy has an invalid round/problem"
+    if not (_sha256_string(policy["problem_bundle_sha256"])
+            and _sha256_string(policy["evaluator_bundle_sha256"])):
+        return "evaluation cohort policy has an invalid bundle hash"
+    if policy["evaluation_mode"] not in ("official", "development"):
+        return "evaluation cohort policy has an invalid evaluation mode"
+
+    perf = policy["perf"]
+    if not (isinstance(perf, dict) and {"min", "max"} <= set(perf)
+            and set(perf) <= {"min", "max", "count", "spacing", "jitter"}):
+        return "evaluation cohort policy has an invalid perf policy"
+    lo, hi = _policy_integer(perf["min"]), _policy_integer(perf["max"])
+    if lo is None or hi is None or lo < 0 or hi < lo:
+        return "evaluation cohort policy has an invalid perf range"
+    inputs = policy["inputs"]
+    if not (isinstance(inputs, list) and inputs
+            and all(type(n) is int and lo <= n <= hi for n in inputs)
+            and inputs == sorted(set(inputs))):
+        return "evaluation cohort policy has invalid or out-of-range inputs"
+    if "count" in perf:
+        count = _policy_integer(perf["count"])
+        if count is None or count < 1:
+            return "evaluation cohort policy has an invalid perf count"
+    if "spacing" in perf and perf["spacing"] not in ("linear", "geometric"):
+        return "evaluation cohort policy has an invalid perf spacing"
+    if "jitter" in perf:
+        jitter = perf["jitter"]
+        if not _finite_number(jitter) or not 0 <= jitter < 1:
+            return "evaluation cohort policy has an invalid perf jitter"
+
+    defaults = policy["perf_defaults"]
+    if not (isinstance(defaults, dict)
+            and set(defaults) == {"count", "spacing", "jitter"}
+            and type(defaults["count"]) is int and defaults["count"] > 0
+            and defaults["spacing"] in ("linear", "geometric")
+            and _finite_number(defaults["jitter"])
+            and 0 <= defaults["jitter"] < 1):
+        return "evaluation cohort policy has invalid perf defaults"
+    effective_jitter = perf.get("jitter", defaults["jitter"])
+
+    budgets = policy["budgets"]
+    budget_fields = {
+        "comparator_timeout_seconds", "audit_timeout_seconds",
+        "timing_timeout_seconds", "perf_phase_budget_seconds",
+    }
+    if not (isinstance(budgets, dict) and set(budgets) == budget_fields
+            and all(type(budgets[field]) is int and budgets[field] > 0
+                    for field in budget_fields)):
+        return "evaluation cohort policy has invalid evaluation budgets"
+
+    resources = policy["resource_policy"]
+    resource_fields = {"image", "memory", "cpus", "pids_limit", "sandbox_mode"}
+    if not (isinstance(resources, dict) and set(resources) == resource_fields
+            and all(_nonempty_string(resources[field]) for field in resource_fields)
+            and resources["sandbox_mode"] in ("none", "container")):
+        return "evaluation cohort policy has an invalid resource policy"
+
+    toolchain = policy["toolchain"]
+    tool_fields = {"lean", "comparator_rev", "lean4export_rev", "lean4checker_rev"}
+    if not (isinstance(toolchain, dict) and set(toolchain) == tool_fields
+            and all(_nonempty_string(toolchain[field]) for field in tool_fields)
+            and all(len(toolchain[field]) == 40
+                    and all(ch in "0123456789abcdef" for ch in toolchain[field])
+                    for field in tool_fields - {"lean"})):
+        return "evaluation cohort policy has an invalid toolchain record"
+    if not _nonempty_string(policy["checker"]):
+        return "evaluation cohort policy has an invalid checker"
+    if (not isinstance(policy["metric"], str) or policy["metric"] not in METRICS
+            or type(policy["reps"]) is not int or policy["reps"] < 1):
+        return "evaluation cohort policy has an invalid metric/repetition count"
+    if policy["metric"] == "perf_instructions" and effective_jitter <= 0:
+        return "instruction-count evaluation policy requires positive schedule jitter"
+    if policy["measurement_contract"] != CURRENT_MEASUREMENT_RECORD:
+        return "evaluation cohort policy has an invalid measurement contract"
+    executor = policy["executor"]
+    if not (isinstance(executor, dict)
+            and set(executor) == {"kind", "executor", "version"}
+            and executor["kind"] in ("local", "remote")
+            and _nonempty_string(executor["executor"])
+            and _nonempty_string(executor["version"])):
+        return "evaluation cohort policy has an invalid executor"
+    if not _nonempty_string(policy["timing_protocol"]):
+        return "evaluation cohort policy has an invalid timing protocol"
+    if policy["evaluation_mode"] == "official":
+        if policy["metric"] != "perf_instructions":
+            return "official evaluation policy must use kernel instructions"
+        if resources["sandbox_mode"] != "container" or any(
+                resources[field] == "local-unspecified"
+                for field in resource_fields - {"sandbox_mode"}):
+            return "official evaluation policy lacks its container resource envelope"
+        image = resources["image"]
+        if not (image.startswith("sha256:") and _sha256_string(image[7:])):
+            return "official evaluation policy lacks an immutable image ID"
+        if (executor["kind"] == "local"
+                and (executor["executor"] == "local"
+                     or executor["version"] == "fixed-host")):
+            return "official evaluation policy lacks a pinned PMU executor identity"
+    return None
 
 
 def _fit(points):
@@ -122,19 +288,48 @@ def _measurement_contract_error(verdict):
         return "missing/invalid evaluation_cohort"
     executor = cohort.get("executor") if isinstance(cohort, dict) else None
     if not (isinstance(executor, dict)
+            and executor.get("kind") in ("local", "remote")
             and isinstance(executor.get("executor"), str)
-            and executor["executor"]):
+            and executor["executor"]
+            and isinstance(executor.get("version"), str)
+            and executor["version"]):
         return "missing/invalid evaluation cohort executor"
 
-    expected_protocol = (
-        LOCAL_PROTOCOL if executor["executor"] == "local" else REMOTE_PROTOCOL
-    )
+    policy = cohort.get("policy")
+    policy_sha256 = cohort.get("policy_sha256")
+    actual_policy_sha256 = _policy_digest(policy)
+    if not (isinstance(policy, dict)
+            and isinstance(policy_sha256, str) and len(policy_sha256) == 64
+            and actual_policy_sha256 == policy_sha256):
+        return "missing/invalid evaluation cohort policy"
+    if cohort["id"] != policy_sha256[:24]:
+        return "evaluation cohort id does not match its policy hash"
+    if policy.get("schema") != "evaluation-policy-v1":
+        return "unsupported evaluation cohort policy schema"
+    shape_error = _policy_shape_error(policy)
+    if shape_error is not None:
+        return shape_error
+    mode = verdict.get("evaluation_mode")
+    if mode not in ("official", "development") or policy.get("evaluation_mode") != mode:
+        return "missing/mismatched evaluation mode"
+    planned = verdict.get("stages", {}).get("perf_inputs")
+    if (policy.get("round") != cohort["round"]
+            or policy.get("problem") != verdict.get("problem")
+            or policy.get("inputs") != planned
+            or policy.get("metric") != verdict.get("metric")
+            or policy.get("measurement_contract") != CURRENT_MEASUREMENT_RECORD
+            or policy.get("executor") != executor):
+        return "evaluation cohort policy does not match the verdict"
+
+    expected_protocol = LOCAL_PROTOCOL if executor["kind"] == "local" else REMOTE_PROTOCOL
     protocol = verdict.get("timing_protocol")
     if protocol != expected_protocol:
         return (
             f"missing/mismatched timing protocol "
             f"(expected {expected_protocol}, got {protocol!r})"
         )
+    if policy.get("timing_protocol") != protocol:
+        return "evaluation cohort policy has a mismatched timing protocol"
 
     if verdict.get("measurement_contract") != CURRENT_MEASUREMENT_RECORD:
         return f"missing/mismatched measurement contract {MEASUREMENT_CONTRACT}"
@@ -144,6 +339,8 @@ def _measurement_contract_error(verdict):
         return "legacy verdict: missing correctness_timing"
     if correctness.get("measurement_contract") != MEASUREMENT_CONTRACT:
         return "missing/mismatched correctness measurement contract"
+    if correctness.get("checker") != policy.get("checker"):
+        return "correctness checker does not match the evaluation policy"
     if correctness.get("measurement_boundary") != CORRECTNESS_BOUNDARY:
         return "missing/mismatched correctness measurement boundary"
     if "measurement_target" not in correctness or correctness["measurement_target"] is not None:
@@ -154,8 +351,16 @@ def _measurement_contract_error(verdict):
         return "missing timing record"
     if timing.get("measurement_contract") != MEASUREMENT_CONTRACT:
         return "missing/mismatched performance measurement contract"
+    if timing.get("checker") != policy.get("checker"):
+        return "performance checker does not match the evaluation policy"
     if timing.get("measurement_boundary") != PERFORMANCE_BOUNDARY:
         return "missing/mismatched performance measurement boundary"
+    reps = policy.get("reps")
+    if (type(reps) is not int or reps < 1
+            or type(correctness.get("reps")) is not int
+            or type(timing.get("reps")) is not int
+            or correctness.get("reps") != reps or timing.get("reps") != reps):
+        return "missing/mismatched timing repetition count"
     return None
 
 
@@ -190,6 +395,12 @@ def _score_row(verdict, metric):
     coverage auditable rather than inferring it from the largest sampled input.
     """
     row = _base_row(verdict, metric, None)
+    if verdict.get("status") != "accepted":
+        row["reason"] = "verdict status is not accepted"
+        return row
+    if not isinstance(metric, str) or metric not in METRICS:
+        row["reason"] = "unknown metric"
+        return row
     cohort = verdict.get("evaluation_cohort")
     if not (isinstance(cohort, dict)
             and isinstance(cohort.get("id"), str) and cohort["id"]
@@ -203,7 +414,7 @@ def _score_row(verdict, metric):
         row["reason"] = contract_error
         return row
     row["measurement_contract"] = MEASUREMENT_CONTRACT
-    if metric not in METRICS or verdict.get("metric") != metric:
+    if verdict.get("metric") != metric:
         row["reason"] = "metric group mismatch"
         return row
 
@@ -219,7 +430,7 @@ def _score_row(verdict, metric):
 
     cost_field = METRICS[metric]["field"]
     correctness_work = correctness.get(cost_field)
-    if not _is_cost(correctness_work):
+    if not _is_cost(correctness_work, integral=(metric == "perf_instructions")):
         row["reason"] = f"correctness_timing lacks a positive {cost_field}"
         return row
 
@@ -254,10 +465,13 @@ def _score_row(verdict, metric):
     slot_profile = []
     for slot, planned_n in enumerate(planned):
         sample = by_slot[slot]
-        if sample.get("n") != planned_n:
+        if type(sample.get("n")) is not int or sample.get("n") != planned_n:
             row["reason"] = f"slot {slot} input does not match perf_inputs"
             return row
         sample_result = sample.get("result")
+        if not isinstance(sample_result, str) or sample_result not in PERFORMANCE_RESULTS:
+            row["reason"] = f"slot {slot} has an unknown result {sample_result!r}"
+            return row
         if sample_result in ("ok", "timeout"):
             if sample.get("measurement_contract") != MEASUREMENT_CONTRACT:
                 row["reason"] = (
@@ -274,7 +488,7 @@ def _score_row(verdict, metric):
                 return row
         if sample_result == "ok":
             value = sample.get(cost_field)
-            if not _is_cost(value):
+            if not _is_cost(value, integral=(metric == "perf_instructions")):
                 row["reason"] = f"successful slot {slot} lacks a positive {cost_field}"
                 return row
             points.append((planned_n, value))
@@ -297,18 +511,49 @@ def _score_row(verdict, metric):
         return row
 
     row["total_work"] = row["correctness_work"] + row["curve_work"]
+    if not _is_cost(row["total_work"], integral=(metric == "perf_instructions")):
+        row["reason"] = "total measured work is not a finite positive cost"
+        return row
     row["scoreable"] = True
     return row
 
 
-def _rank_key(row):
+def _placement_key(row):
+    """Competitive ranking values only; submission names never affect placement."""
     if not row["scoreable"]:
-        return (1, 0, 0, (), math.inf, row["sub"])
+        return None
     # Higher-index slots are nominally harder. Comparing the complete success bitmap before
     # work also guarantees that total_work is only compared over the same set of n values.
     harder_slots_first = tuple(-bit for bit in reversed(row["slot_profile"]))
-    return (0, -row["completed_slots"], -row["coverage"],
-            harder_slots_first, row["total_work"], row["sub"])
+    return (-row["completed_slots"], -row["coverage"],
+            harder_slots_first, row["total_work"])
+
+
+def _rank_key(row):
+    placement = _placement_key(row)
+    if placement is None:
+        return (1, 0, 0, (), math.inf, str(row["sub"]))
+    # Name is a deterministic display-order key only. `_competition_ranks` ignores it.
+    return (0, *placement, str(row["sub"]))
+
+
+def _competition_ranks(rows):
+    """Return standard competition ranks (1, 1, 3) for already sorted rows."""
+    ranks = []
+    previous = object()
+    current_rank = 0
+    scored_position = 0
+    for row in rows:
+        placement = _placement_key(row)
+        if placement is None:
+            ranks.append(None)
+            continue
+        scored_position += 1
+        if placement != previous:
+            current_rank = scored_position
+            previous = placement
+        ranks.append(current_rank)
+    return ranks
 
 
 def _rows_for(problem, verdicts, metric):
@@ -324,7 +569,8 @@ def _groups(verdicts):
     groups = {}
     for verdict in verdicts:
         metric = verdict.get("metric")
-        if verdict.get("status") != "accepted" or metric not in METRICS:
+        if (verdict.get("status") != "accepted"
+                or not isinstance(metric, str) or metric not in METRICS):
             continue
         cohort = verdict.get("evaluation_cohort")
         cohort_id = cohort.get("id") if isinstance(cohort, dict) else None
@@ -337,11 +583,15 @@ def _groups(verdicts):
 
 
 def _format_work(value, metric):
-    if value is None:
+    integral = metric == "perf_instructions"
+    if not _is_cost(value, integral=integral):
         return "—"
-    if metric == "perf_instructions":
-        return f"{value:.0f}"
-    return f"{value:.6g}"
+    try:
+        if integral:
+            return str(value)
+        return f"{value:.6g}"
+    except (OverflowError, TypeError, ValueError):
+        return "—"
 
 
 def main():
@@ -373,11 +623,10 @@ def main():
         md.append("| rank | submission | coverage | correctness work | "
                   "curve work | total work | α (report only) | β (report only) | status |")
         md.append("|---|---|---|---|---|---|---|---|---|")
-        scored_rank = 0
-        for row in _rows_for(problem, groups[(problem, metric, cohort_id)], metric):
+        rows = _rows_for(problem, groups[(problem, metric, cohort_id)], metric)
+        for row, placement in zip(rows, _competition_ranks(rows)):
             if row["scoreable"]:
-                scored_rank += 1
-                rank = str(scored_rank)
+                rank = str(placement)
                 status = "scored"
             else:
                 rank = "—"
