@@ -44,7 +44,7 @@ Participants submit:
 The judge first checks the proof of correctness for all inputs. Scoring
 measures the work performed by a pinned Lean kernel when replaying the complete
 verified correctness artifact and the generated checks for judge-selected
-inputs. Compiled execution, including `#eval`, is not scored.
+inputs.
 
 The problem set spans areas of computational mathematics including algebra,
 number theory, combinatorics, cryptography, and discrete mathematics. Specific
@@ -63,10 +63,6 @@ Registration and team management take place on
 account, complete the required profile information, and agree to the SAIR
 competition terms before registering. They may compete individually or form a
 team on SAIR.
-
-## Prizes
-
-Prize details will be announced before the official launch.
 
 ## Official Repository & Playground
 
