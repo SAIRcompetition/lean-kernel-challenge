@@ -1747,7 +1747,11 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if not Path(COMPARATOR).exists():
         raise InfraError(f"comparator binary not found at {COMPARATOR} (run scripts/setup.sh)")
     export_file = job_dir / "solution.export.ndjson"
-    cenv = dict(env, COMPARATOR_SOLUTION_EXPORT=str(export_file))
+    cenv = dict(
+        env,
+        COMPARATOR_SOLUTION_EXPORT=str(export_file),
+        COMPARATOR_LEAN4EXPORT=str(LEAN4EXPORT_BIN / "lean4export"),
+    )
     t0 = time.monotonic()
     rc, out = run(["lake", "env", str(COMPARATOR), "config.json"], work, cenv, COMPARATOR_TIMEOUT)
     result["stages"]["comparator"] = {"exit": rc, "seconds": round(time.monotonic() - t0, 1),

@@ -29,6 +29,9 @@ clone_build() {
       echo "   applying $patch"
       git apply --3way "$HERE/$patch" || { echo "ERROR: failed to apply $patch"; exit 1; }
     fi
+    # Tool tags may lag the challenge toolchain (e.g. v4.33.0 tools on v4.33.1).
+    # Build them with the challenge Lean so .olean headers match problem workspaces.
+    cp "$HERE/lean-toolchain" lean-toolchain
     lake build "$target" )
 }
 
