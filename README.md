@@ -247,7 +247,7 @@ lean-kernel-challenge/
 ## Toolchain
 
 Pinned and frozen for the stage: **Lean v4.33.1**, comparator `3927ad3`,
-lean4export `15f6055`, Lean4Checker `b73981`. `scripts/setup.sh` rebuilds the tools from
+lean4export `15f6055`, kernel replay via Lean's built-in `Lean.Replay`. `scripts/setup.sh` rebuilds the tools from
 these pins; the third-party checkouts are not committed.
 
 ## Status

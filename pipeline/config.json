@@ -46,7 +46,6 @@
   "toolchain": {
     "lean": "leanprover/lean4:v4.33.1",
     "comparator_rev": "3927ad383f208ae977c340a91c48ac9b497d2097",
-    "lean4export_rev": "15f6055e299ad5b89345e533cc2192f4cc00f659",
-    "lean4checker_rev": "b7398199245524275543dec6113229c9bb4902e5"
+    "lean4export_rev": "15f6055e299ad5b89345e533cc2192f4cc00f659"
   }
 }

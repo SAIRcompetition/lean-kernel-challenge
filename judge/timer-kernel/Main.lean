@@ -1,5 +1,5 @@
 import Export.Parse
-import Lean4Checker.Replay
+import Lean.Replay
 import Lean
 
 /-!
@@ -66,7 +66,7 @@ def measureReplay (boundary : String) (target : Option Lean.Name) (replay : IO �
 def runKernel (solution : Export.ExportedEnv) : IO Unit := do
   let env ← Lean.mkEmptyEnvironment
   let constMap := normalizedConstMap solution
-  discard <| measureReplay "full-closure-replay-v1" none (env.replay' constMap)
+  discard <| measureReplay "full-closure-replay-v1" none (env.replay constMap)
 
 def runTarget (solution : Export.ExportedEnv) (targetText : String) : IO Unit := do
   if targetText.isEmpty then
@@ -91,7 +91,7 @@ def runTarget (solution : Export.ExportedEnv) (targetText : String) : IO Unit :=
   -- Replay every dependency through the official kernel before opening the counter. Since
   -- lean4export emits a theorem's transitive closure, removing the root leaves precisely the
   -- environment in which that one declaration can be checked.
-  let preEnv ← (← Lean.mkEmptyEnvironment).replay' (constMap.erase target)
+  let preEnv ← (← Lean.mkEmptyEnvironment).replay (constMap.erase target)
   if (preEnv.toKernelEnv.find? target).isSome then
     throw <| .userError s!"target theorem unexpectedly exists in the prepared environment: {target}"
   let targetMap : Std.HashMap Lean.Name Lean.ConstantInfo :=
@@ -99,7 +99,7 @@ def runTarget (solution : Export.ExportedEnv) (targetText : String) : IO Unit :=
   let _ ← measureReplay
     "target-declaration-replay-v1"
     (some target)
-    (preEnv.replay' targetMap)
+    (preEnv.replay targetMap)
     (fun env => do
       unless (env.toKernelEnv.find? target).isSome do
         throw <| .userError s!"target theorem was not installed by kernel replay: {target}")
