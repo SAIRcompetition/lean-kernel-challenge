@@ -44,9 +44,9 @@
     "cpus": 2
   },
   "toolchain": {
-    "lean": "leanprover/lean4:v4.32.0-rc1",
-    "comparator_rev": "71b52ec29e06d4b7d882726553b1ceb99a2499e0",
-    "lean4export_rev": "3de59f10bc4b4a0f2de698597aeb1246caa0df0a",
+    "lean": "leanprover/lean4:v4.33.1",
+    "comparator_rev": "3927ad383f208ae977c340a91c48ac9b497d2097",
+    "lean4export_rev": "15f6055e299ad5b89345e533cc2192f4cc00f659",
     "lean4checker_rev": "b7398199245524275543dec6113229c9bb4902e5"
   }
 }

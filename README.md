@@ -246,8 +246,8 @@ lean-kernel-challenge/
 
 ## Toolchain
 
-Pinned and frozen for the stage: **Lean v4.32.0-rc1**, comparator `71b52ec`,
-lean4export `3de59f1`, Lean4Checker `b73981`. `scripts/setup.sh` rebuilds the tools from
+Pinned and frozen for the stage: **Lean v4.33.1**, comparator `3927ad3`,
+lean4export `15f6055`, Lean4Checker `b73981`. `scripts/setup.sh` rebuilds the tools from
 these pins; the third-party checkouts are not committed.
 
 ## Status

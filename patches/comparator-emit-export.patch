@@ -1,17 +1,16 @@
 diff --git a/Main.lean b/Main.lean
-index 3b29057..4919588 100644
 --- a/Main.lean
 +++ b/Main.lean
-@@ -119,7 +119,7 @@ def safeLakeBuild (target : Lean.Name) : M Unit := do
+@@ -125,7 +125,7 @@ def safeLakeBuild (target : Lean.Name) : M Unit := do
    runSandBoxed {
      cmd := "lake",
-     args := #["build", target.toString (escape := false)],
+     args := #["build", target.toString],
 -    envPass := #["PATH", "HOME", "LEAN_ABORT_ON_PANIC"]
 +    envPass := #["PATH", "HOME", "ELAN_HOME", "LEAN_ABORT_ON_PANIC"]
      envOverride := #[("LEAN_ABORT_ON_PANIC", some "1")]
      readablePaths := #[projectDir]
      writablePaths := #[dotLakeDir]
-@@ -261,6 +261,13 @@ def compareIt : M Unit := do
+@@ -280,6 +280,13 @@ def compareIt : M Unit := do
  
    verifyMatch challengeExport solutionExport
  

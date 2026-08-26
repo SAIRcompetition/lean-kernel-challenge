@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # --- elan + pinned Lean toolchain ---
 ENV ELAN_HOME=/opt/elan
 ENV PATH=/opt/elan/bin:$PATH
-ARG LEAN_TOOLCHAIN=leanprover/lean4:v4.32.0-rc1
+ARG LEAN_TOOLCHAIN=leanprover/lean4:v4.33.1
 RUN curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
       | sh -s -- -y --default-toolchain "$LEAN_TOOLCHAIN" \
     && elan toolchain install "$LEAN_TOOLCHAIN"
