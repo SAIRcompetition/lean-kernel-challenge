@@ -55,6 +55,15 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+# Some approved problems produce exact integer answers far beyond Python's
+# default int<->str digit cap (4300 on 3.11+). The polydisc reference
+# discriminant alone has ~24k digits, and the perf-phase theorem source
+# embeds the full value as a Lean nat literal. This judge only ever renders
+# oracle-verified values, so lift the cap instead of refusing legitimate
+# conversions (Python 3.11+; harmless no-op on older interpreters).
+if hasattr(sys, "set_int_max_str_digits"):
+    sys.set_int_max_str_digits(0)
+
 ROOT = Path(__file__).resolve().parent.parent            # lean-kernel-challenge/
 PROBLEMS = ROOT / "problems"
 RESULTS = ROOT / "results"
