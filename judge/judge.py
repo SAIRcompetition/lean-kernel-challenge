@@ -257,19 +257,32 @@ def _policy_int(value, problem, field):
     _perf_policy_error(problem, f"{field} must be an integer (got {value!r})")
 
 
-def _perf_jitter(x, lo, hi, frac, problem, idx):
-    """Deterministic per-point jitter in [1-frac, 1+frac].
+def _perf_jitter(x, lo, hi, frac, problem, idx, endpoint=None):
+    """Deterministic per-point jitter, directed inward at positive endpoints.
 
     One hidden rotation token yields one shared schedule per problem. Submission-specific
     jitter is deliberately forbidden: comparing raw work at different n is not a fair score,
-    especially for factorial/exponential problems.
+    especially for factorial/exponential problems.  Sampling the endpoint directions instead
+    of clamping outward samples avoids placing half of the hidden top slots exactly at `hi`.
+    Zero remains fixed because multiplicative jitter has no positive scale there.
     """
     if not PERF_SEED or frac <= 0:
         return x
     material = json.dumps([PERF_SEED, problem, idx],
                           ensure_ascii=True, separators=(",", ":")).encode()
     h = hashlib.sha256(material).digest()
-    u = int.from_bytes(h[:8], "big") / 2.0 ** 64          # uniform in [0, 1)
+    sample = int.from_bytes(h[:8], "big")
+    # Endpoint samples use an open unit interval, including for all-zero/all-one hash
+    # prefixes.  Interior points retain the established [0, 1) mapping and symmetric jitter.
+    endpoint_sample = sample >> 11
+    inward_u = (endpoint_sample + 1) / (2 ** 53 + 1)      # uniform in (0, 1)
+    if endpoint == "lower":
+        if lo == 0:
+            return x
+        return min(hi, x * (1.0 + inward_u * frac))
+    if endpoint == "upper":
+        return max(lo, x * (1.0 - inward_u * frac))
+    u = sample / 2.0 ** 64                                # uniform in [0, 1)
     return min(hi, max(lo, x * (1.0 + (2.0 * u - 1.0) * frac)))
 
 
@@ -344,7 +357,8 @@ def perf_inputs(cfg, problem):
     # produces `count` points without retry loops or silent set-based collapse.
     pts = []
     for idx, x in enumerate(raw):
-        target = int(round(_perf_jitter(x, lo, hi, frac, problem, idx)))
+        endpoint = "lower" if idx == 0 else "upper" if idx + 1 == count else None
+        target = int(round(_perf_jitter(x, lo, hi, frac, problem, idx, endpoint)))
         lower = lo + idx
         upper = hi - (count - 1 - idx)
         if pts:

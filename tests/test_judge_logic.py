@@ -55,6 +55,45 @@ class PerfInputTests(unittest.TestCase):
         self.assertTrue(all(x < y for x, y in zip(a1, a1[1:])))
         self.assertTrue(all(7 <= x <= 1000 for x in a1))
 
+    def test_positive_endpoints_jitter_inward_instead_of_clamping(self):
+        lo = 2 ** 18
+        hi = 2 ** 63
+        cfg = {
+            "perf": {
+                "min": lo, "max": hi, "count": 10,
+                "spacing": "geometric", "jitter": 0.15,
+            }
+        }
+        schedules = []
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            for seed in ("rotation-a", "rotation-b", "rotation-c"):
+                with mock.patch.object(judge, "PERF_SEED", seed):
+                    points = judge.perf_inputs(cfg, "demo")
+                self.assertGreater(points[0], lo)
+                self.assertLess(points[-1], hi)
+                self.assertTrue(all(a < b for a, b in zip(points, points[1:])))
+                schedules.append(points)
+        self.assertEqual(len({tuple(points) for points in schedules}), len(schedules))
+
+    def test_zero_lower_endpoint_stays_fixed_under_multiplicative_jitter(self):
+        cfg = {
+            "perf": {
+                "min": 0, "max": 1000, "count": 5,
+                "spacing": "geometric", "jitter": 0.5,
+            }
+        }
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "PERF_SEED", "operator-secret"), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            points = judge.perf_inputs(cfg, "zero")
+
+        self.assertEqual(points[0], 0)
+        self.assertLess(points[-1], 1000)
+        self.assertTrue(all(a < b for a, b in zip(points, points[1:])))
+
     def test_zero_min_geometric_and_linear_spacing(self):
         with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
              mock.patch.object(judge, "OFFICIAL_EVAL", False), \

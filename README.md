@@ -130,12 +130,12 @@ Every problem is parametric in `n : Nat`; the judge evaluates `impl` along that 
 | `saw` | count of self-avoiding walks of length n on ℤ² | exponential |
 | `ca-rule110` | a Rule 110 automaton's state after n steps | linear (list-based) |
 | `sha256` | the SHA-256 hash chain digest after n steps | linear (~0.3 s/step, word-per-Nat) |
-| `polydisc` | the discriminant of a monic degree-min(2+n/2,24) integer polynomial (Int; coefficient width grows past n=44) | factorial in the degree (Laplace) |
+| `polydisc` | the discriminant of a monic degree-24 integer polynomial across five coefficient-scale bands | normal subresultant PRS; reduced Bareiss fallback |
 | `conv` | the packed integer convolution of two length-n 16-bit sequences (a NN conv layer / polynomial product) | ~n^2.5 (naive double sum, list walks) |
 
-Each spec is intentionally naive: reducing it directly in the kernel blows up as `n`
-grows, so competitive submissions require both better algorithms and kernel-level
-encodings that reduce efficiently. The worked `fib` example ships two submissions — a
+Most specs intentionally leave substantial algorithmic or representation overhead, so
+competitive submissions require better algorithms, kernel-level encodings, or both. The worked
+`fib` example ships two submissions — a
 baseline (`impl := spec`) and fast doubling with a full `∀ n` proof.
 
 ## How judging works

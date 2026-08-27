@@ -14,7 +14,10 @@
   ],
   "enable_nanoda": false,
   "perf": {
-    "min": 0,
-    "max": 5
+    "min": 262144,
+    "max": 9223372036854775808,
+    "count": 10,
+    "spacing": "geometric",
+    "jitter": 0.15
   }
 }

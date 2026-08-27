@@ -20,7 +20,7 @@ Measured on this tree (naive `baseline` submission, value oracle at each problem
 | `primecount` | 100 – 600 | 8.2 s — completes |
 | `ca-rule110` | 50 – 300 | 10.1 s — completes |
 | `sha256` | 1 – 8 | ~2.6 s — completes |
-| `polydisc` | 0 – 5 | 5.7 s — completes |
+| `polydisc` | 10 slots over 2^18 – 2^63 | ~3.5 s — completes |
 | `conv` | 4 – 64 | 2.6 s — completes |
 
 Two consequences, both of which void the competition if launched as-is:
@@ -52,10 +52,9 @@ grows ~250–300 MB per second of reduction); `sha256` re-derive with the others
 truncates n≈7000 at ~0.26 s/step); `conv` [32, ~10^4] — naive truncates n≈600–800, but the
 Kronecker apex runs at noise floor at any length, so the max is bounded by oracle/literal size
 rather than replay cost (re-derive on the host); `ca-rule110` — NO range works until item 1c is resolved;
-`polydisc` — the raise-max rule does NOT apply (naive Laplace dies at degree 5–6, n≈7–9,
-far below any competitive range): anchor the range to the optimized rung instead — Bareiss
-floors at ~5.5 s per 47×47 instance from n=45 (list-op bound, ±2x), so [8, 300–1000] with the
-closure-priced table economics doing the anti-table work; re-derive on the host.
+`polydisc` — fixed degree 24 with five coefficient-scale bands and two hidden seeds per band.
+The current geometric schedule uses 10 slots over [2^18, 2^63]; re-derive official Linux PMU
+instruction counts on the evaluation host before launch.
 
 ## 1b. Kernel memory growth can OOM-kill perf builds — judge scores it as a fatal fault
 
