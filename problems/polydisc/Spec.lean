@@ -220,12 +220,6 @@ def monicReducedSylvester (p q : List Int) : List (List Int) :=
   | 1 :: pTail => monicRemainderRowsGo (p.length - 1) pTail q []
   | _ => []
 
-def bareissDiscriminantFromPoly (p : List Int) : Int :=
-  let degree := p.length - 1
-  let sign : Int :=
-    if degree * (degree - 1) / 2 % 2 = 0 then 1 else -1
-  sign * bareissDet (monicReducedSylvester p (derivHL p))
-
 /-! ## Normal subresultant PRS with a Bareiss fallback -/
 
 def trimLeading : List Int → List Int
