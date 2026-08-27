@@ -104,9 +104,13 @@ def sha256step (d : Digest) : Digest :=
   compress iv [d.a, d.b, d.c, d.d, d.e, d.f, d.g, d.h,
                0x80000000, 0, 0, 0, 0, 0, 0, 256]
 
-def iterSha : Nat → Digest → Digest
+/-- Iterate a digest step.  Keeping the step explicit preserves the hash-chain
+semantics while allowing a proved-equal step to reuse the same iteration. -/
+def iterDigest (step : Digest → Digest) : Nat → Digest → Digest
   | 0, d => d
-  | t + 1, d => iterSha t (sha256step d)
+  | t + 1, d => iterDigest step t (step d)
+
+def iterSha : Nat → Digest → Digest := iterDigest sha256step
 
 /-- The digest as a big-endian natural number. -/
 def encodeDigest (d : Digest) : Nat :=
