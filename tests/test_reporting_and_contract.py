@@ -86,10 +86,7 @@ def _verdict(**over):
             "cpus": "local-unspecified", "pids_limit": "local-unspecified",
             "sandbox_mode": "none",
         },
-        "toolchain": {
-            "lean": "leanprover/lean4:test", "comparator_rev": "2" * 40,
-            "lean4export_rev": "3" * 40,
-        },
+        "toolchain": dict(JUDGE._CFG["toolchain"]),
         "checker": "test-checker",
         "timing_protocol": "local-v2",
         "measurement_contract": contract,

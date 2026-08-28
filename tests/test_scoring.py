@@ -11,6 +11,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("challenge_score", ROOT / "scripts" / "score.py")
 score = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(score)
+CONFIGURED_TOOLCHAIN = json.loads(
+    (ROOT / "pipeline" / "config.json").read_text())["toolchain"]
 
 
 def verdict(name, costs, *, metric="perf_instructions", correctness=10,
@@ -94,10 +96,7 @@ def _seal_cohort(result, *, round_id="test-round", executor="local", executor_ki
             "cpus": "local-unspecified", "pids_limit": "local-unspecified",
             "sandbox_mode": "none",
         },
-        "toolchain": {
-            "lean": "leanprover/lean4:test", "comparator_rev": "2" * 40,
-            "lean4export_rev": "3" * 40,
-        },
+        "toolchain": dict(CONFIGURED_TOOLCHAIN),
         "checker": "test-checker",
         "timing_protocol": result["timing_protocol"],
         "measurement_contract": dict(score.CURRENT_MEASUREMENT_RECORD),
@@ -115,6 +114,11 @@ def _seal_cohort(result, *, round_id="test-round", executor="local", executor_ki
 
 
 class ScoringTests(unittest.TestCase):
+    def test_configured_toolchain_matches_current_policy_schema(self):
+        policy = verdict("configured-toolchain", [100, 200, 300])[
+            "evaluation_cohort"]["policy"]
+        self.assertIsNone(score._policy_shape_error(policy))
+
     def test_low_end_padding_cannot_improve_rank(self):
         flat = verdict("flat", [100, 100, 100])
         padded = verdict("padded", [10000, 1000, 100])
