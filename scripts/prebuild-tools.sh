@@ -10,7 +10,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # lean-kernel-challenge/
-OUT="$HERE/prebuilt-tools"
+OUT="${1:-$HERE/prebuilt-tools}"
 mkdir -p "$OUT"
 
 # comparator + lean4export land in prebuilt-tools/tools (setup.sh honors
