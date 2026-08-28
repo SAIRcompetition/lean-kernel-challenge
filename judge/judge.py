@@ -136,7 +136,7 @@ TIMER = Path(os.environ.get("TIMER_BIN", ROOT / "judge/timer-kernel/.lake/build/
 MEASUREMENT_CONTRACT = "kernel-replay-v2"
 FULL_REPLAY_BOUNDARY = "full-closure-replay-v1"
 TARGET_REPLAY_BOUNDARY = "target-declaration-replay-v1"
-TARGET_PROOF_ENCODING = "direct-of-decide-eq-true-rfl-v1"
+TARGET_PROOF_ENCODING = "direct-rfl-v1-experimental"
 CHECKER_ID = f"official-kernel-replay v4.33.1 ({MEASUREMENT_CONTRACT})"
 _TIMER_TIMING_PREFIX = "KERNEL_TIMING="
 # There is no READY/ACK channel in v2. The process watchdog therefore bounds untimed
