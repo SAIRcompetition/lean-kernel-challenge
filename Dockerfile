@@ -43,8 +43,18 @@ COPY . /work/lean-kernel-challenge
 WORKDIR /work/lean-kernel-challenge
 
 # --- build the pinned verification tools into fixed image paths ---
+# Prefer host-prebuilt tools (staged by scripts/prebuild-tools.sh, gitignored);
+# fall back to compiling them inside the image.  Both paths produce the same
+# pinned tool binaries; the runtime image content is identical either way.
 ENV TOOLS_DIR=/work/tools
-RUN bash scripts/setup.sh
+RUN if [ -d prebuilt-tools/tools ]; then \
+      mkdir -p /work/tools judge/timer-kernel/.lake/build \
+      && cp -a prebuilt-tools/tools/. /work/tools/ \
+      && cp -a prebuilt-tools/timer-kernel/.lake/build/bin judge/timer-kernel/.lake/build/ \
+      && echo "using host-prebuilt verification tools"; \
+    else \
+      bash scripts/setup.sh; \
+    fi
 
 # Drop build-time-only content: every cloned git repository (tool repos and lake
 # package checkouts) keeps only its working tree.  Nothing at runtime reads .git;
