@@ -3,3 +3,8 @@ results/
 **/*.export.ndjson
 __pycache__/
 .git/
+
+# Host-prebuilt verification tools (staged by scripts/prebuild-tools.sh) are
+# the one exception to the .lake exclusion: they must reach the image build.
+!prebuilt-tools/
+!prebuilt-tools/**
