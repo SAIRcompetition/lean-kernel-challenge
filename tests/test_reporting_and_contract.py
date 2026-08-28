@@ -88,7 +88,7 @@ def _verdict(**over):
         },
         "toolchain": {
             "lean": "leanprover/lean4:test", "comparator_rev": "2" * 40,
-            "lean4export_rev": "3" * 40, "lean4checker_rev": "4" * 40,
+            "lean4export_rev": "3" * 40,
         },
         "checker": "test-checker",
         "timing_protocol": "local-v2",

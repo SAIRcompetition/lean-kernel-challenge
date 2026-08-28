@@ -96,7 +96,7 @@ def _seal_cohort(result, *, round_id="test-round", executor="local", executor_ki
         },
         "toolchain": {
             "lean": "leanprover/lean4:test", "comparator_rev": "2" * 40,
-            "lean4export_rev": "3" * 40, "lean4checker_rev": "4" * 40,
+            "lean4export_rev": "3" * 40,
         },
         "checker": "test-checker",
         "timing_protocol": result["timing_protocol"],

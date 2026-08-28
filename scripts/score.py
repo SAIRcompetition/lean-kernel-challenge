@@ -214,7 +214,7 @@ def _policy_shape_error(policy):
         return "evaluation cohort policy has an invalid resource policy"
 
     toolchain = policy["toolchain"]
-    tool_fields = {"lean", "comparator_rev", "lean4export_rev", "lean4checker_rev"}
+    tool_fields = {"lean", "comparator_rev", "lean4export_rev"}
     if not (isinstance(toolchain, dict) and set(toolchain) == tool_fields
             and all(_nonempty_string(toolchain[field]) for field in tool_fields)
             and all(len(toolchain[field]) == 40
