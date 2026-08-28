@@ -136,8 +136,8 @@ TIMER = Path(os.environ.get("TIMER_BIN", ROOT / "judge/timer-kernel/.lake/build/
 MEASUREMENT_CONTRACT = "kernel-replay-v2"
 FULL_REPLAY_BOUNDARY = "full-closure-replay-v1"
 TARGET_REPLAY_BOUNDARY = "target-declaration-replay-v1"
-TARGET_PROOF_ENCODING = "direct-rfl-v1-experimental"
-CHECKER_ID = f"official-kernel-replay v4.32.0-rc1 ({MEASUREMENT_CONTRACT})"
+TARGET_PROOF_ENCODING = "direct-of-decide-eq-true-rfl-v1"
+CHECKER_ID = f"official-kernel-replay v4.33.1 ({MEASUREMENT_CONTRACT})"
 _TIMER_TIMING_PREFIX = "KERNEL_TIMING="
 # There is no READY/ACK channel in v2. The process watchdog therefore bounds untimed
 # parse/dependency preparation plus the measured replay. Record that limitation explicitly
@@ -1747,7 +1747,11 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if not Path(COMPARATOR).exists():
         raise InfraError(f"comparator binary not found at {COMPARATOR} (run scripts/setup.sh)")
     export_file = job_dir / "solution.export.ndjson"
-    cenv = dict(env, COMPARATOR_SOLUTION_EXPORT=str(export_file))
+    cenv = dict(
+        env,
+        COMPARATOR_SOLUTION_EXPORT=str(export_file),
+        COMPARATOR_LEAN4EXPORT=str(LEAN4EXPORT_BIN / "lean4export"),
+    )
     t0 = time.monotonic()
     rc, out = run(["lake", "env", str(COMPARATOR), "config.json"], work, cenv, COMPARATOR_TIMEOUT)
     result["stages"]["comparator"] = {"exit": rc, "seconds": round(time.monotonic() - t0, 1),

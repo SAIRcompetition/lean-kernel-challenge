@@ -113,8 +113,8 @@ official launch.
 - Kernel replay runs either in the pinned local PMU environment or, when remote KTP/2 timing is
   configured, on a remote executor. In the remote case, only immutable exported artifacts are sent
   to that executor.
-- The stage uses Lean **v4.32.0-rc1**, comparator `71b52ec`, lean4export `3de59f1`, and
-  Lean4Checker `b73981`.
+- The stage uses Lean **v4.33.1**, comparator `3927ad3`, lean4export `15f6055`, and
+  kernel replay via Lean's built-in `Lean.Replay`.
 - Attempts to escape the evaluation environment or exploit the judge result in disqualification.
 
 The production measurement and container paths are implemented but still require final validation

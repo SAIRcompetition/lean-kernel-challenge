@@ -7,11 +7,7 @@ package kernel where
 
 require lean4export from git
   "https://github.com/leanprover/lean4export" @
-    "3de59f10bc4b4a0f2de698597aeb1246caa0df0a"
-
-require Lean4Checker from git
-  "https://github.com/leanprover/lean4checker" @
-    "b7398199245524275543dec6113229c9bb4902e5"
+    "15f6055e299ad5b89345e533cc2192f4cc00f659"
 
 target timerControlO pkg : FilePath := do
   let objectFile := pkg.buildDir / "c" / "timer_control.o"
