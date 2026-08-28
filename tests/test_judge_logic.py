@@ -792,7 +792,7 @@ class EnvironmentBoundaryTests(unittest.TestCase):
         self.assertIn("target theorem has an extracted proof helper", timer_source)
         timer_lakefile = (ROOT / "judge" / "timer-kernel" / "lakefile.lean").read_text()
         self.assertIn(judge._CFG["toolchain"]["lean4export_rev"], timer_lakefile)
-        self.assertIn(judge._CFG["toolchain"]["lean4checker_rev"], timer_lakefile)
+        self.assertNotIn("Lean4Checker", timer_lakefile)  # 4.33.1 uses built-in Lean.Replay
 
 
 if __name__ == "__main__":
