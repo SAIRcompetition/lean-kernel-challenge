@@ -28,9 +28,8 @@ def lcgNext (state : Nat) : Nat := (lcgA * state + lcgC) % lcgM
 
 def lcgSeed (n : Nat) : Nat := (lcgA * (n + 1) + lcgC) % lcgM
 
-/-- Coefficient-scale bands are deliberately much wider than the judge's relative
-jitter.  A geometric schedule from `2^18` through `2^63` with ten points puts
-two independently seeded inputs in each band. -/
+/-- Public evaluation ranges stay strictly inside these thresholds, so each
+hidden input selects exactly one advertised coefficient-width band. -/
 def difficultyLevel (n : Nat) : Nat :=
   if n < 67108864 then 0                  -- 2^26
   else if n < 68719476736 then 1          -- 2^36

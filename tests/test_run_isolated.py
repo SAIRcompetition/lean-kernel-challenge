@@ -16,6 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 WRAPPER = ROOT / "scripts" / "run_isolated.sh"
+LANDRUN_SHIM = ROOT / "scripts" / "shims" / "landrun"
 
 FAKE_DOCKER = r"""#!/usr/bin/env python3
 import json
@@ -133,9 +134,9 @@ class RunIsolatedTests(unittest.TestCase):
         args = record["args"]
         self.assertEqual(args[:2], ["run", "--rm"])
         self.assert_pair(args, "--network", "none")
-        self.assert_pair(args, "--memory", "768m")
-        self.assert_pair(args, "--cpus", "1.5")
-        self.assert_pair(args, "--pids-limit", "97")
+        self.assert_pair(args, "--memory", "4g")
+        self.assert_pair(args, "--cpus", "2")
+        self.assert_pair(args, "--pids-limit", "512")
         self.assert_pair(args, "--security-opt", "no-new-privileges:true")
         self.assert_pair(args, "--user", "judge")
         passed_env = [
@@ -166,9 +167,9 @@ class RunIsolatedTests(unittest.TestCase):
         self.assertEqual(record["OFFICIAL_EVAL"], "1")
         self.assertEqual(record["EVALUATION_COHORT"], "round-2026-01")
         self.assertRegex(record["EVALUATION_RUN_ID"], r"^run-[0-9]+-[0-9]+-[0-9]+$")
-        self.assertEqual(record["EVALUATION_MEMORY"], "768m")
-        self.assertEqual(record["EVALUATION_CPUS"], "1.5")
-        self.assertEqual(record["EVALUATION_PIDS_LIMIT"], "97")
+        self.assertEqual(record["EVALUATION_MEMORY"], "4g")
+        self.assertEqual(record["EVALUATION_CPUS"], "2")
+        self.assertEqual(record["EVALUATION_PIDS_LIMIT"], "512")
         self.assertRegex(record["EVALUATION_IMAGE"], r"^sha256:[0-9a-f]{64}$")
         self.assertRegex(record["EVALUATION_EXECUTOR_ID"], r"^local-pmu-[0-9a-f]{16}$")
         self.assertRegex(
@@ -197,11 +198,11 @@ class RunIsolatedTests(unittest.TestCase):
             "--image",
             "registry.example/judge:v1",
             "--memory",
-            "768m",
+            "4g",
             "--cpus",
-            "1.5",
+            "2",
             "--pids-limit",
-            "97",
+            "512",
             "--perfmon",
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -238,11 +239,7 @@ class RunIsolatedTests(unittest.TestCase):
         self.assertIn(str(verdict), proc.stdout)
 
     def test_perfmon_is_optional_but_isolation_is_not(self):
-        proc = self.run_wrapper(
-            "--memory", "768m",
-            "--cpus", "1.5",
-            "--pids-limit", "97",
-        )
+        proc = self.run_wrapper()
         self.assertEqual(proc.returncode, 0, proc.stderr)
         for record in self.records():
             self.assert_mandatory_envelope(record)
@@ -257,6 +254,23 @@ class RunIsolatedTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("PERF_SEED", proc.stderr)
         self.assertFalse(self.capture.exists())
+
+    def test_rejects_noncanonical_official_repetition_count(self):
+        proc = self.run_wrapper("--reps", "1")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("requires --reps 3", proc.stderr)
+        self.assertFalse(self.capture.exists())
+
+    def test_rejects_noncanonical_official_resource_envelope(self):
+        for option, value, expected in (
+                ("--memory", "768m", "requires --memory 4g"),
+                ("--cpus", "1.5", "requires --cpus 2"),
+                ("--pids-limit", "97", "requires --pids-limit 512")):
+            with self.subTest(option=option):
+                proc = self.run_wrapper(option, value)
+                self.assertEqual(proc.returncode, 2)
+                self.assertIn(expected, proc.stderr)
+                self.assertFalse(self.capture.exists())
 
     def test_rejects_slug_longer_than_judge_limit(self):
         proc = self.run_wrapper("--tag", "a" * 97)
@@ -275,8 +289,7 @@ class RunIsolatedTests(unittest.TestCase):
         }))
         self.env["FAKE_WRITE_VERDICT"] = "0"
 
-        proc = self.run_wrapper(
-            "--memory", "768m", "--cpus", "1.5", "--pids-limit", "97")
+        proc = self.run_wrapper()
 
         self.assertEqual(proc.returncode, 1)
         self.assertIn("without a matching verdict", proc.stderr)
@@ -300,6 +313,23 @@ class RunIsolatedTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("absolute path", proc.stderr)
         self.assertFalse(self.capture.exists())
+
+
+class LandrunShimTests(unittest.TestCase):
+    def test_double_dash_preserves_the_wrapped_command(self):
+        proc = subprocess.run(
+            [
+                str(LANDRUN_SHIM),
+                "--best-effort", "--ro", "/", "--rw", "/dev",
+                "-ldd", "-add-exec", "--env", "PATH",
+                "--", "/usr/bin/printf", "shim-ok",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout, "shim-ok")
 
 
 if __name__ == "__main__":

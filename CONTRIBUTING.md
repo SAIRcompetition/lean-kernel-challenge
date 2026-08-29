@@ -13,13 +13,15 @@ for the layout). A good kernel-computation problem has:
 - a long optimization ladder (mathematical shortcuts *and* kernel-fu), not just
   a representation tweak;
 - a `baseline` submission `impl := spec` with `impl_correct := fun _ => rfl`;
-- a `perf {min, max}` block in `config.json` — the scaling range the judge samples (a naive
-  baseline should truncate before `max`, a good algorithm should reach it; see the ranges in
-  the existing problems). `count`/`spacing`/`jitter` fall back to `perf_defaults`.
+- an `evaluation` block in `config.json` that defines the difficulty axis, ordered groups,
+  reproducible sampler, case count, milestone points, resource limits, and per-problem tie-break.
+  The groups must total 100 points and span a useful optimization ladder; see
+  `rules/problem-scoring.md` and the existing scored problems.
 
 Add the workspace (Spec / Challenge / Solution / config with `definition_names = ["impl"]`,
-`theorem_names = ["impl_correct"]`, and a `perf` range) and at least the `baseline` example
-submission. Wire it into `tests/harness_manifest.json`.
+`theorem_names = ["impl_correct"]`, and a grouped `evaluation` policy) and at least the
+`baseline` example submission. Wire it into `tests/harness_manifest.json` and add the public
+group table to `rules/problem-scoring.md`.
 
 ## Adversarial test submissions
 New ways a submission might cheat are especially valuable. Add the submission

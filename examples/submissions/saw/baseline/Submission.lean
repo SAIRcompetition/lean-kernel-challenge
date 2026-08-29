@@ -1,6 +1,6 @@
 import Spec
 
-/-! Baseline: naive spec as impl. -/
+/-! Baseline: the trusted depth-first walk counter. -/
 
 namespace Submission
 

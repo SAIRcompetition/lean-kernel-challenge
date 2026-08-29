@@ -97,11 +97,13 @@ theorem fastStep_fun : fastStep = sha256step :=
   funext fastStep_correct
 
 def impl (n : Nat) : Nat :=
-  encodeDigest (iterDigest fastStep n ⟨0, 0, 0, 0, 0, 0, 0, 0⟩)
+  encodeDigest
+    (iterDigest fastStep (sha256Steps n) (seedDigest (sha256Seed n)))
 
 theorem impl_correct : ∀ n, impl n = sha256Spec n := fun n =>
   congrArg
-    (fun step => encodeDigest (iterDigest step n ⟨0, 0, 0, 0, 0, 0, 0, 0⟩))
+    (fun step => encodeDigest
+      (iterDigest step (sha256Steps n) (seedDigest (sha256Seed n))))
     fastStep_fun
 
 end Submission

@@ -64,16 +64,17 @@ Each problem gives you a **trusted spec** — a deliberately naive but correct d
 2. a **proof** `impl_correct : ∀ n, impl n = spec n` — that it agrees with the spec on
    *every* input.
 
-What is timed is **not how fast your compiled code runs**. The official Lean kernel charges one
-complete replay of the verified correctness closure and, at each sampling slot, only replay of
-the generated target declaration that reduces `impl n`. Process startup, export parsing, and
-per-input dependency preloading are outside the counter. Lower is better after slot coverage is
-compared.
+What is timed is **not how fast your compiled code runs**. The official Lean kernel measures three
+complete replays of the verified correctness closure and three replays of each hidden case's
+generated target declaration, recording each median. Process startup, export parsing, and
+per-input dependency preloading are outside the counter. Each problem defines how these
+measurements break ties after its published group points are compared.
 
 Correctness for all `n` lets the judge rotate hidden inputs, but it does not make literal
 tables logically impossible: a contestant can derive constants through another verified
-algorithm. The scoring contract therefore charges the full correctness-closure replay as well as
-each successful target-declaration replay. The simplest submission is `impl := spec` with
+algorithm. The scoring contract therefore records both the correctness-closure replay and each
+successful target-declaration replay, and each problem specifies how they enter its tie-breaks.
+The simplest submission is `impl := spec` with
 `impl_correct := fun _ => rfl` — correct but slow because the kernel reduces the naïve spec.
 
 ## What you submit
@@ -98,8 +99,9 @@ fixed; the judge supplies its own copies. For the timeline, registration,
 participation policies, and co-organizers see
 **[`rules/prelaunch.md`](rules/prelaunch.md)**. See
 **[`rules/overview.md`](rules/overview.md)**
-for the binding rules and **[`rules/evaluation.md`](rules/evaluation.md)** for how judging
-and scoring work.
+for the binding rules, **[`rules/evaluation.md`](rules/evaluation.md)** for the common judging
+contract, and **[`rules/problem-scoring.md`](rules/problem-scoring.md)** for every problem's
+groups, cases, points, limits, and tie-breaks.
 
 ## Rules in brief
 
@@ -112,13 +114,15 @@ follow that shape (full text in [`rules/overview.md`](rules/overview.md)):
 - **R3** `impl_correct` proves `∀ n, impl n = spec n` — correctness for *all* inputs.
 - **R4** The proof may depend only on the standard axioms `propext`, `Quot.sound`,
   `Classical.choice`; `sorry` and `native_decide` are rejected.
-- **R5** Kernel replay is scored: one full correctness-closure median plus the successful
-  per-input target-declaration medians. Parsing, dependency preload, and process startup are
-  excluded; exact output-literal checking remains included.
+- **R5** Kernel replay is measured: one full correctness-closure median and the successful
+  per-case target-declaration medians. Each problem awards points through published group
+  milestones and applies its own measured-work tie-break. Parsing, dependency preload, and
+  process startup are excluded; exact output-literal checking remains included.
 
 ## Problems (Stage 1)
 
-Every problem is parametric in `n : Nat`; the judge evaluates `impl` along that axis.
+Each scored problem still exposes `impl : Nat → Output`. Some problems pack a public scale and a
+hidden 32-bit seed into that `Nat`; their generators and encodings are part of the trusted spec.
 
 | Problem | `impl n` computes | Naive spec cost |
 |---|---|---|
@@ -126,12 +130,14 @@ Every problem is parametric in `n : Nat`; the judge evaluates `impl` along that 
 | `partition` | the partition function p(n) | ~p(n)·n |
 | `mertens` | the Mertens function M(n) | quadratic |
 | `primecount` | the prime-counting function π(n) | quadratic |
-| `permanent` | the permanent of a deterministic n×n 0/1 matrix | n! |
-| `saw` | count of self-avoiding walks of length n on ℤ² | exponential |
-| `ca-rule110` | a Rule 110 automaton's state after n steps | linear (list-based) |
-| `sha256` | the SHA-256 hash chain digest after n steps | linear (~0.3 s/step, word-per-Nat) |
+| `permanent` | the permanent of a seeded fixed-row-degree 0/1 matrix; input packs dimension and seed | exponential in dimension (pruned DFS) |
+| `saw` | seeded-obstacle self-avoiding walks; input packs walk length and seed | exponential in the walk length |
+| `ca-rule110` | a seeded 256-cell Rule 110 evolution; input packs step count and seed | linear in steps, list-based |
+| `sha256` | a seed-specific SHA-256 digest chain; input packs step count and seed | linear in steps, word-per-`Nat` |
 | `polydisc` | the discriminant of a monic degree-24 integer polynomial across five coefficient-scale bands | normal subresultant PRS; reduced Bareiss fallback |
-| `conv` | the packed integer convolution of two length-n 16-bit sequences (a NN conv layer / polynomial product) | ~n^2.5 (naive double sum, list walks) |
+
+These nine problems have independent Stage 1 leaderboards. The repository also retains `conv` as
+an experimental development task; it is not part of the nine scored leaderboards.
 
 Most specs intentionally leave substantial algorithmic or representation overhead, so
 competitive submissions require better algorithms, kernel-level encodings, or both. The worked
@@ -143,9 +149,9 @@ baseline (`impl := spec`) and fast doubling with a full `∀ n` proof.
 ```
 Submission.lean
   → validate (slugs, symlinks, size caps)
-  → correctness : parse outside the counter, then time the full verified-closure replay once
-  → performance : for each n, parse/preload outside, then time only the target-declaration replay
-  → correctness timing + complete slot record + verdict
+  → correctness : parse outside the counter, then replay the full verified closure three times
+  → performance : replay each grouped case's target declaration three times
+  → correctness timing + complete group/case record + verdict
 ```
 
 This is measurement contract `kernel-replay-v2`, with boundaries
@@ -155,39 +161,45 @@ compares the exact result, so checking a large `Nat`/`Int` literal remains input
 work. The verdict also pins the direct target-proof encoding
 `direct-rfl-v1-experimental`, preventing extracted-proof wrapper timings from mixing in.
 
-For official evaluation, `PERF_SEED` is a secret rotation token. The judge hashes it with
-the problem id and slot index, so every submission in one public evaluation cohort receives
-the same hidden schedule. Operators rotate the token and cohort id for a new round or
-deliberate rescore; an unset seed is deterministic local development only. The production
-wrapper injects the seed once over stdin, never into the submission's elaboration environment.
-Raw verdicts and exact inputs remain private throughout the evaluation phase. After that phase,
-all results and benchmark data are released publicly under an open-source license.
+For official evaluation, `PERF_SEED` is a secret rotation token. The judge derives the hidden
+cases from it and the published problem, group, and case coordinates, so every submission in one
+evaluation cohort receives the same plan. The sealed cohort records the complete plan and a seed
+commitment. Operators rotate the token and cohort id for a new round or deliberate rescore; an
+unset seed is allowed only for deterministic local development. The production wrapper injects
+the seed once over stdin, never into the submission's elaboration environment. Raw verdicts and
+exact inputs remain private throughout the evaluation phase. After the cohort closes, its
+resolution seed, exact input plan, results, and benchmark data are released publicly under an
+open-source license.
 
 ## Scoring
 
-Within each problem, submissions are ranked by:
+Stage 1 has **nine independent 100-point problem leaderboards**. There is no cross-problem total
+or relative-placement aggregation, and `conv` is excluded. Each problem publishes five ordered
+difficulty groups. Passing cases reaches that group's milestones and awards points.
 
-1. more completed sampling slots;
-2. then higher `completed / planned` coverage if schedule sizes differ;
-3. then success at harder (higher-index) slots;
-4. then, for an identical success profile, lower total measured kernel work: the full
-   correctness-closure replay median plus the sum of successful target-declaration medians.
+Within one problem, submissions are ranked by:
 
-The official metric is **kernel instructions** on the Linux evaluation host
-(`perf -e instructions`, median of N reps). Wall time is a separate local-development
-leaderboard and is never compared with instruction counts. Fitted α and β values and the
-log-log curves are report-only diagnostics; they never affect rank, so padding a cheap end
-of the curve can only add work. Legacy verdicts without a same-metric `correctness_timing`
-record are accepted evidence but unscored by the current contract. Remote scoped timing uses
-**KTP/2**. Verdicts commit to the protocol, `kernel-replay-v2`, both boundary versions, and the
-target-proof encoding; KTP/1 whole-process results never mix with them. Any change to those
-measurement fields creates a new cohort and requires a full rescore. Cohorts also commit to the
-exact schedule, toolchain, timing policy, and executor. Run `python3 scripts/score.py` to generate
-the canonical tables.
+1. total points;
+2. points in harder groups, compared from hardest to easiest;
+3. the problem's declared ordered-case profile or per-group pass counts;
+4. when eligible, the problem's declared measured-kernel-work tie-break; and
+5. where declared, correctness-closure work as the final tie-break.
 
-Each problem has its own leaderboard. Your overall standing aggregates your best problems
-with a relative-placement component. The exact formula will be published in the scoring
-appendix before the official launch.
+For packed or uniformly seeded groups, seed indices are interchangeable: equal
+partial pass counts tie, and measured work is compared after the complete plan
+passes. This prevents an arbitrary hidden seed number from deciding rank.
+
+The official metric is **kernel instructions** on the pinned Linux evaluation host
+(`perf -e instructions`, median of three repetitions). Stage 1 official cohorts use the local PMU
+inside the network-disabled evaluation container. Wall time and resource-bound remote **KTP/3**
+timing are non-official validation modes and are never mixed with official scores. Verdicts commit to
+the protocol, `kernel-replay-v2`, both boundary versions, target-proof encoding, exact grouped
+plan, toolchain, timing policy, and executor. A change to any of these fields creates a new cohort
+and requires a full rescore. Run `python3 scripts/score.py` to generate the canonical tables.
+
+See **[`rules/problem-scoring.md`](rules/problem-scoring.md)** for the published input ranges or
+generators, case counts, milestone points, resource limits, prerequisites, and tie-break policy
+for each problem.
 
 ## Quick start
 
@@ -233,15 +245,15 @@ the wrapper checks this before it starts elaborating the submission.
 
 ```
 lean-kernel-challenge/
-├─ rules/           overview.md (binding rules) · evaluation.md (judging + I/O contract)
-├─ problems/<id>/   10 locked problem workspaces (Spec / Challenge / Solution / config)
+├─ rules/           overview.md (rules) · evaluation.md (judge) · problem-scoring.md (leaderboards)
+├─ problems/<id>/   10 locked workspaces: 9 scored problems + experimental conv
 ├─ examples/submissions/<problem>/<name>/   worked + adversarial example submissions
 ├─ judge/           judge.py (the judge) · timer-kernel/ (kernel replay + axiom audit)
 ├─ pipeline/        config.json (budgets, sandbox mode, toolchain pins)
 ├─ tests/           harness_manifest.json (expected verdicts — the green gate)
 ├─ scripts/         setup.sh · run_harness.py · run_isolated.sh · perf_eval.py · score.py · shims/
 ├─ Dockerfile       Linux evaluation image (pinned toolchain, perf, landrun sandbox)
-└─ results/         verdict JSONs + scoring.md / leaderboard.md (generated)
+└─ results/         verdict JSONs + scoring index + one generated leaderboard per problem
 ```
 
 ## Toolchain
@@ -252,26 +264,17 @@ these pins; the third-party checkouts are not committed.
 
 ## Status
 
-> **The sampling ranges in `problems/*/config.json` are development/smoke values, not competition
-> values.** At the current ranges even the naive baseline completes every slot, so `reach` stops
-> discriminating and hardcoded answer tables become provable. They must be re-derived on the
-> evaluation host before launch — see **[`docs/pre-launch-checklist.md`](docs/pre-launch-checklist.md)**
-> for the measurements and the other open pre-launch items.
+The nine per-problem group schedules and scoring rules are published in
+**[`rules/problem-scoring.md`](rules/problem-scoring.md)** and encoded in each problem's
+`config.json`. Before launch, the production PMU measurements and container path still require
+end-to-end validation; see **[`docs/pre-launch-checklist.md`](docs/pre-launch-checklist.md)**.
 
-**Prototype / pre-launch.** All 10 problems are functionalized and compile; the correctness
-gate (comparator + axiom audit) and the green-gate harness are in place (10 baselines +
-3 proven optimized submissions — `fib/doubling`, `ca-rule110/bitpacked`, `primecount/sqrt` —
-accepted; three fib cheat classes — `sorry`, illegal axiom, Mathlib — rejected). The main
-judge (`judge/judge.py`) times both the comparator-verified correctness closure and every
-planned input slot (local replay or the remote KTP/2 executor) under measurement contract
-`kernel-replay-v2`. The performance phase imports
-the byte-pinned `.olean` graph produced by comparator instead of re-elaborating contestant
-source. `scripts/perf_eval.py` is a local-wall-time, one-repetition wrapper around that same
-canonical judge path, so it cannot drift back to whole-process timing or expose an official
-seed/cohort. Inputs are config-driven
-and shared within a cohort through a rotating official `PERF_SEED`; the seed is never exposed
-to elaboration. `scripts/score.py` applies the coverage-then-total-work contract within each
-cohort, with α/β as report-only diagnostics. Not yet finalized: a PMU-hardware
-run; the cross-problem scoring aggregation (best-N + relative placement); the four remaining
-optimized example submissions. Rule text may still change before launch (see
-`rules/overview.md`).
+**Prototype / pre-launch.** All 10 workspaces compile, while nine are included in the Stage 1
+scoring contract. The correctness gate, axiom audit, grouped judge, canonical per-problem scorer,
+and green-gate harness are in place. The performance phase imports the byte-pinned `.olean` graph
+produced by the comparator instead of re-elaborating contestant source. Hidden cases are
+config-driven and shared within a cohort through a rotating official `PERF_SEED`; the seed is
+never exposed to elaboration. `scripts/score.py` applies the sealed group milestones and
+per-problem tie-break policy. The remaining launch blockers are the production PMU sweep and
+real-container isolation validation. Additional optimized examples are useful but not part of
+the scoring contract. Rule text may still change before launch (see `rules/overview.md`).

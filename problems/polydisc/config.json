@@ -13,11 +13,41 @@
     "Classical.choice"
   ],
   "enable_nanoda": false,
-  "perf": {
-    "min": 262144,
-    "max": 9223372036854775808,
-    "count": 10,
-    "spacing": "geometric",
-    "jitter": 0.15
+  "evaluation": {
+    "schema": "grouped-evaluation-v1",
+    "axis": {"label": "maximum coefficient width", "unit": "bits", "input_encoding": "the Nat selects a degree-24 polynomial seed within a fixed width band"},
+    "groups": [
+      {
+        "id": "D1", "label": "15-bit coefficients", "order": 1,
+        "sampling": {"kind": "uniform_int", "min": 262144, "max": 33554432, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 10}, {"passed": 2, "points": 20}]},
+        "limits": {"timeout_seconds": 120}
+      },
+      {
+        "id": "D2", "label": "36-bit coefficients", "order": 2,
+        "sampling": {"kind": "uniform_int", "min": 134217728, "max": 34359738368, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 10}, {"passed": 2, "points": 20}]},
+        "limits": {"timeout_seconds": 180}
+      },
+      {
+        "id": "D3", "label": "205-bit coefficients", "order": 3,
+        "sampling": {"kind": "uniform_int", "min": 137438953472, "max": 35184372088832, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 10}, {"passed": 2, "points": 20}]},
+        "limits": {"timeout_seconds": 300}
+      },
+      {
+        "id": "D4", "label": "1001-bit coefficients", "order": 4,
+        "sampling": {"kind": "uniform_int", "min": 140737488355328, "max": 36028797018963968, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 10}, {"passed": 2, "points": 20}]},
+        "limits": {"timeout_seconds": 600}
+      },
+      {
+        "id": "D5", "label": "3484-bit coefficients", "order": 5,
+        "sampling": {"kind": "uniform_int", "min": 144115188075855872, "max": 9223372036854775808, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 10}, {"passed": 2, "points": 20}]},
+        "limits": {"timeout_seconds": 900}
+      }
+    ],
+    "ranking": {"contract": "group-points-v1", "work": "curve", "proof": "last_tiebreak", "profile": "hardest_group_then_count"}
   }
 }

@@ -113,11 +113,140 @@ def _seal_cohort(result, *, round_id="test-round", executor="local", executor_ki
     }
 
 
+def _reseal_policy(result):
+    policy = result["evaluation_cohort"]["policy"]
+    encoded = json.dumps(
+        policy, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    digest = hashlib.sha256(encoded).hexdigest()
+    result["evaluation_cohort"]["id"] = digest[:24]
+    result["evaluation_cohort"]["policy_sha256"] = digest
+
+
+def make_official_grouped(result):
+    """Promote a grouped fixture to the canonical public Stage 1 environment."""
+    executor = {"kind": "local", "executor": "pmu-test", "version": "pmu-v1"}
+    policy = result["evaluation_cohort"]["policy"]
+    result["evaluation_mode"] = "official"
+    result["timing_protocol"] = score.LOCAL_PROTOCOL
+    policy["evaluation_mode"] = "official"
+    policy["timing_protocol"] = score.LOCAL_PROTOCOL
+    policy["executor"] = executor
+    policy["seed_commitment"] = "a" * 64
+    policy["resource_policy"] = {
+        "image": "sha256:" + "b" * 64,
+        "memory": "4g",
+        "cpus": "2",
+        "pids_limit": "512",
+        "sandbox_mode": "container",
+    }
+    result["evaluation_cohort"]["executor"] = executor
+    _reseal_policy(result)
+    return result
+
+
+def _replace_grouped_input(result, slot, n):
+    """Keep every sealed/staged copy of one planned input in sync for mutation tests."""
+    policy = result["evaluation_cohort"]["policy"]
+    policy["performance_plan"][slot]["n"] = n
+    policy["inputs"][slot] = n
+    result["stages"]["performance_plan"][slot]["n"] = n
+    result["stages"]["perf_inputs"][slot] = n
+    result["timing"]["scaling"][slot]["n"] = n
+    policy["performance_plan_sha256"] = hashlib.sha256(json.dumps(
+        policy["performance_plan"], sort_keys=True,
+        separators=(",", ":")).encode()).hexdigest()
+    _reseal_policy(result)
+
+
+def grouped_verdict(name, costs, *, correctness=10, groups=None,
+                    ranking=None, inputs=(10, 20, 100, 200), round_id="test-round"):
+    """Construct a sealed evaluation-policy-v2 verdict for scorer tests."""
+    result = verdict(
+        name, costs, correctness=correctness, inputs=inputs, round_id=round_id)
+    if groups is None:
+        groups = [
+            {
+                "id": "L1", "label": "Level 1", "order": 1,
+                "sampling": {"kind": "fixed", "values": list(inputs[:2]), "count": 2},
+                "award": {"mode": "milestones", "table": [
+                    {"passed": 0, "points": 0},
+                    {"passed": 1, "points": 10},
+                    {"passed": 2, "points": 25},
+                ]},
+                "limits": {"kernel_instructions": 1000, "timeout_seconds": 10},
+            },
+            {
+                "id": "L2", "label": "Level 2", "order": 2,
+                "sampling": {"kind": "fixed", "values": list(inputs[2:]), "count": 2},
+                "award": {"mode": "milestones", "table": [
+                    {"passed": 0, "points": 0},
+                    {"passed": 1, "points": 20},
+                    {"passed": 2, "points": 50},
+                ]},
+                "limits": {"kernel_instructions": 1000, "timeout_seconds": 10},
+            },
+        ]
+    if ranking is None:
+        ranking = {
+            "contract": "group-points-v1", "work": "curve",
+            "proof": "last_tiebreak", "profile": "hardest_group_then_slot",
+        }
+    plan = []
+    offset = 0
+    for group in groups:
+        count = group["sampling"]["count"]
+        for case in range(count):
+            n = inputs[offset + case]
+            plan.append({
+                "slot": len(plan), "group": group["id"], "case": case,
+                "n": n, "limits": dict(group["limits"]),
+            })
+        offset += count
+    if offset != len(inputs):
+        raise AssertionError("test groups must account for every input")
+
+    result["stages"]["performance_plan"] = json.loads(json.dumps(plan))
+    for sample, planned in zip(result["timing"]["scaling"], plan):
+        sample["group"] = planned["group"]
+        sample["case"] = planned["case"]
+    policy = result["evaluation_cohort"]["policy"]
+    policy["schema"] = "evaluation-policy-v2"
+    del policy["perf"]
+    del policy["perf_defaults"]
+    policy["budgets"]["perf_phase_budget_seconds"] = 0
+    policy["evaluation"] = {
+        "schema": "grouped-evaluation-v1",
+        "axis": {
+            "label": "test input size", "unit": "n", "input_encoding": "direct Nat input",
+        },
+        "groups": groups, "ranking": ranking,
+    }
+    policy["performance_plan"] = plan
+    plan_encoded = json.dumps(
+        plan, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    policy["performance_plan_sha256"] = hashlib.sha256(plan_encoded).hexdigest()
+    policy["seed_commitment"] = None
+    _reseal_policy(result)
+    return result
+
+
 class ScoringTests(unittest.TestCase):
     def test_configured_toolchain_matches_current_policy_schema(self):
         policy = verdict("configured-toolchain", [100, 200, 300])[
             "evaluation_cohort"]["policy"]
         self.assertIsNone(score._policy_shape_error(policy))
+
+    def test_public_stage1_reports_admit_only_official_local_pmu_verdicts(self):
+        development = grouped_verdict("development", [100] * 4)
+        self.assertTrue(score._is_grouped_verdict(development))
+        self.assertFalse(score._is_stage1_public_verdict(development))
+
+        official = make_official_grouped(
+            grouped_verdict("official", [100] * 4))
+        self.assertTrue(score._is_stage1_public_verdict(official))
+
+        official["timing_protocol"] = score.REMOTE_PROTOCOL
+        self.assertFalse(score._is_stage1_public_verdict(official))
 
     def test_low_end_padding_cannot_improve_rank(self):
         flat = verdict("flat", [100, 100, 100])
@@ -490,7 +619,19 @@ class ScoringTests(unittest.TestCase):
             zero_jitter, "perf_instructions")["scoreable"])
 
     def test_report_survives_aggregate_integer_overflow(self):
-        item = verdict("aggregate-overflow", [10 ** 308] * 3, correctness=10 ** 308)
+        item = grouped_verdict(
+            "aggregate-overflow", [10 ** 308] * 4, correctness=10 ** 308)
+        policy = item["evaluation_cohort"]["policy"]
+        for group in policy["evaluation"]["groups"]:
+            group["limits"].pop("kernel_instructions")
+        for case in policy["performance_plan"]:
+            case["limits"].pop("kernel_instructions")
+        for case in item["stages"]["performance_plan"]:
+            case["limits"].pop("kernel_instructions")
+        policy["performance_plan_sha256"] = hashlib.sha256(json.dumps(
+            policy["performance_plan"], sort_keys=True,
+            separators=(",", ":")).encode()).hexdigest()
+        make_official_grouped(item)
         old_results = score.RESULTS
         with tempfile.TemporaryDirectory() as temp:
             try:
@@ -504,6 +645,427 @@ class ScoringTests(unittest.TestCase):
                 score.RESULTS = old_results
         self.assertIn("aggregate-overflow", report)
         self.assertIn("total measured work is not a finite positive cost", report)
+
+    def test_grouped_milestones_are_primary_over_completed_case_count(self):
+        harder = grouped_verdict("harder", [100, None, 100, None])
+        easier = grouped_verdict("easier", [100, 100, None, None])
+
+        rows = score._rows_for("fib", [easier, harder], "perf_instructions")
+        by_name = {row["sub"]: row for row in rows}
+
+        self.assertEqual(rows[0]["sub"], "harder")
+        self.assertEqual(by_name["harder"]["points"], 30)
+        self.assertEqual(by_name["harder"]["group_points"], {"L1": 10, "L2": 20})
+        self.assertEqual(by_name["easier"]["points"], 25)
+
+    def test_grouped_ties_prefer_harder_group_then_harder_case(self):
+        groups = [
+            {
+                "id": "L1", "label": "Level 1", "order": 1,
+                "sampling": {"kind": "fixed", "values": [10, 20], "count": 2},
+                "award": {"mode": "milestones", "table": [
+                    {"passed": 0, "points": 0}, {"passed": 1, "points": 10},
+                    {"passed": 2, "points": 20},
+                ]},
+                "limits": {"kernel_instructions": 1000, "timeout_seconds": 10},
+            },
+            {
+                "id": "L2", "label": "Level 2", "order": 2,
+                "sampling": {"kind": "fixed", "values": [100, 200], "count": 2},
+                "award": {"mode": "milestones", "table": [
+                    {"passed": 0, "points": 0}, {"passed": 1, "points": 20},
+                    {"passed": 2, "points": 40},
+                ]},
+                "limits": {"kernel_instructions": 1000, "timeout_seconds": 10},
+            },
+        ]
+        low_group = grouped_verdict(
+            "low-group", [100, 100, None, None], groups=groups)
+        high_group = grouped_verdict(
+            "high-group", [None, None, 100, None], groups=groups)
+
+        rows = score._rows_for(
+            "fib", [low_group, high_group], "perf_instructions")
+        self.assertTrue(all(row["scoreable"] for row in rows))
+        self.assertEqual([row["sub"] for row in rows], ["high-group", "low-group"])
+
+        low_case = grouped_verdict("low-case", [100, None, None, None])
+        high_case = grouped_verdict("high-case", [None, 100, None, None])
+        rows = score._rows_for(
+            "fib", [low_case, high_case], "perf_instructions")
+        self.assertTrue(all(row["scoreable"] for row in rows))
+        self.assertEqual([row["sub"] for row in rows], ["high-case", "low-case"])
+
+    def test_grouped_sampling_schema_and_plan_membership_are_fail_closed(self):
+        unenforced_memory = grouped_verdict("unenforced-memory", [100] * 4)
+        unenforced_memory["evaluation_cohort"]["policy"]["evaluation"]["groups"][0][
+            "limits"]["memory_mb"] = 4096
+        _reseal_policy(unenforced_memory)
+        row = score._score_row(unenforced_memory, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("unsupported limits", row["reason"])
+
+        fixed = grouped_verdict("fixed-outside", [100] * 4)
+        _replace_grouped_input(fixed, 0, 999999)
+        row = score._score_row(fixed, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("fixed sampling", row["reason"])
+
+        extra_field = grouped_verdict("unknown-field", [100] * 4)
+        extra_field["evaluation_cohort"]["policy"]["evaluation"]["groups"][0][
+            "sampling"]["unexpected"] = True
+        _reseal_policy(extra_field)
+        row = score._score_row(extra_field, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("unknown field", row["reason"])
+
+        unknown_kind = grouped_verdict("unknown-kind", [100] * 4)
+        unknown_kind["evaluation_cohort"]["policy"]["evaluation"]["groups"][0][
+            "sampling"] = {"kind": "mystery", "count": 2}
+        _reseal_policy(unknown_kind)
+        row = score._score_row(unknown_kind, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("unknown sampling kind", row["reason"])
+
+        samplers = {
+            "geometric_range": {
+                "kind": "geometric_range", "min": 10, "max": 20,
+                "count": 2, "jitter": 0.15,
+            },
+            "linear_range": {
+                "kind": "linear_range", "min": 10, "max": 20,
+                "count": 2, "jitter": 0.15,
+            },
+            "range": {
+                "kind": "range", "min": 10, "max": 20, "count": 2,
+                "jitter": 0.15, "spacing": "linear",
+            },
+            "uniform_int": {
+                "kind": "uniform_int", "min": 10, "max": 20, "count": 2,
+            },
+        }
+        for kind, sampling in samplers.items():
+            with self.subTest(kind=kind):
+                item = grouped_verdict(kind, [100] * 4)
+                item["evaluation_cohort"]["policy"]["evaluation"]["groups"][0][
+                    "sampling"] = sampling
+                if kind == "uniform_int":
+                    evaluation = item["evaluation_cohort"]["policy"]["evaluation"]
+                    evaluation["ranking"]["profile"] = "hardest_group_then_count"
+                    for group in evaluation["groups"][1:]:
+                        values = group["sampling"]["values"]
+                        group["sampling"] = {
+                            "kind": "uniform_int", "min": min(values),
+                            "max": max(values), "count": len(values),
+                        }
+                _replace_grouped_input(item, 0, 9)
+                row = score._score_row(item, "perf_instructions")
+                self.assertFalse(row["scoreable"])
+                self.assertIn("outside", row["reason"])
+
+        packed = grouped_verdict("packed-mismatch", [100] * 4)
+        packed["evaluation_cohort"]["policy"]["evaluation"]["groups"][0][
+            "sampling"] = {
+                "kind": "packed", "scale": 7, "seed_bits": 32, "count": 2,
+            }
+        packed_evaluation = packed["evaluation_cohort"]["policy"]["evaluation"]
+        packed_evaluation["groups"][1]["sampling"] = {
+            "kind": "packed", "scale": 0, "seed_bits": 32, "count": 2,
+        }
+        packed_evaluation["ranking"]["profile"] = "hardest_group_then_count"
+        _reseal_policy(packed)
+        row = score._score_row(packed, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("packed sampling", row["reason"])
+
+    def test_grouped_range_plan_cases_must_increase(self):
+        item = grouped_verdict("range-order", [100] * 4)
+        item["evaluation_cohort"]["policy"]["evaluation"]["groups"][0][
+            "sampling"] = {
+                "kind": "linear_range", "min": 10, "max": 20,
+                "count": 2, "jitter": 0.15,
+            }
+        _replace_grouped_input(item, 0, 20)
+        _replace_grouped_input(item, 1, 10)
+        row = score._score_row(item, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("not increasing", row["reason"])
+
+    def test_grouped_zero_points_remains_scoreable(self):
+        item = grouped_verdict("zero-points", [None, None, None, None])
+        row = score._score_row(item, "perf_instructions")
+        self.assertTrue(row["scoreable"])
+        self.assertEqual(row["points"], 0)
+        self.assertEqual(row["completed_slots"], 0)
+        self.assertEqual(row["ranking_work"], 0)
+
+    def test_grouped_memory_exhaustion_is_an_explicit_failed_case(self):
+        item = grouped_verdict("memory-limit", [100, None, 100, 100])
+        limited = item["timing"]["scaling"][1]
+        limited.update({
+            "result": "resource-limit",
+            "resource": "memory",
+            "memory_mb": score.REPLAY_MEMORY_MB,
+            "resource_limit_source": "local-container-cgroup",
+            "resource_phase": "target-replay",
+        })
+        row = score._score_row(item, "perf_instructions")
+        self.assertTrue(row["scoreable"])
+        self.assertEqual(row["completed_slots"], 3)
+
+        limited["memory_mb"] += 1
+        row = score._score_row(item, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("canonical memory record", row["reason"])
+
+    def test_grouped_aggregate_budget_is_disabled_and_cannot_affect_a_case(self):
+        enabled = grouped_verdict("aggregate-enabled", [100] * 4)
+        enabled["evaluation_cohort"]["policy"]["budgets"][
+            "perf_phase_budget_seconds"] = 100
+        _reseal_policy(enabled)
+        row = score._score_row(enabled, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("disable the aggregate", row["reason"])
+
+        exhausted = grouped_verdict("aggregate-exhausted", [None] * 4)
+        exhausted["timing"]["scaling"][0]["result"] = "budget-exhausted"
+        row = score._score_row(exhausted, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("requires evaluation retry", row["reason"])
+
+        interrupted = grouped_verdict("interrupted", [100] * 4)
+        interrupted["timing"]["scaling"][3]["result"] = "not-run"
+        row = score._score_row(interrupted, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("requires evaluation retry", row["reason"])
+
+    def test_official_grouped_policy_requires_three_repetitions(self):
+        policy = grouped_verdict(
+            "official-reps", [100] * 4)["evaluation_cohort"]["policy"]
+        policy["evaluation_mode"] = "official"
+        policy["reps"] = 1
+        policy["seed_commitment"] = "a" * 64
+        policy["resource_policy"] = {
+            "image": "sha256:" + "b" * 64,
+            "memory": "4g",
+            "cpus": "2",
+            "pids_limit": "512",
+            "sandbox_mode": "container",
+        }
+        policy["executor"] = {
+            "kind": "local", "executor": "pmu-test", "version": "pmu-v1",
+        }
+        self.assertIn(
+            "exactly 3 repetitions",
+            score._policy_v2_shape_error(policy),
+        )
+        policy["reps"] = 3
+        policy["resource_policy"]["memory"] = "8g"
+        self.assertIn(
+            "noncanonical resource envelope",
+            score._policy_v2_shape_error(policy),
+        )
+        policy["resource_policy"]["memory"] = "4g"
+        policy["executor"] = {
+            "kind": "remote", "executor": "pmu-remote", "version": "pmu-v1",
+        }
+        policy["timing_protocol"] = score.REMOTE_PROTOCOL
+        self.assertIn(
+            "local PMU protocol",
+            score._policy_v2_shape_error(policy),
+        )
+
+    def test_grouped_work_and_proof_policies_are_explicit(self):
+        last = {
+            "contract": "group-points-v1", "work": "curve",
+            "proof": "last_tiebreak", "profile": "hardest_group_then_slot",
+        }
+        expensive_proof = grouped_verdict(
+            "expensive-proof", [100, 100, 100, 100], correctness=100, ranking=last)
+        cheap_proof = grouped_verdict(
+            "cheap-proof", [100, 100, 100, 100], correctness=10, ranking=last)
+        rows = score._rows_for(
+            "fib", [expensive_proof, cheap_proof], "perf_instructions")
+        self.assertEqual([row["sub"] for row in rows], ["cheap-proof", "expensive-proof"])
+
+        gate = dict(last, proof="gate")
+        expensive_proof = grouped_verdict(
+            "zeta", [100, 100, 100, 100], correctness=100, ranking=gate)
+        cheap_proof = grouped_verdict(
+            "alpha", [100, 100, 100, 100], correctness=10, ranking=gate)
+        rows = score._rows_for(
+            "fib", [expensive_proof, cheap_proof], "perf_instructions")
+        self.assertEqual(score._competition_ranks(rows), [1, 1])
+
+        include = dict(last, work="total", proof="include")
+        expensive_proof = grouped_verdict(
+            "expensive-proof", [100, 100, 100, 100], correctness=100,
+            ranking=include)
+        cheap_proof = grouped_verdict(
+            "cheap-proof", [100, 100, 100, 100], correctness=10,
+            ranking=include)
+        rows = score._rows_for(
+            "fib", [expensive_proof, cheap_proof], "perf_instructions")
+        self.assertEqual([row["sub"] for row in rows], ["cheap-proof", "expensive-proof"])
+
+    def test_interchangeable_seed_cases_use_counts_without_random_index_tiebreak(self):
+        def seeded(name, costs):
+            item = grouped_verdict(name, costs)
+            policy = item["evaluation_cohort"]["policy"]
+            policy["evaluation"]["ranking"]["profile"] = \
+                "hardest_group_then_count"
+            for group in policy["evaluation"]["groups"]:
+                values = group["sampling"]["values"]
+                group["sampling"] = {
+                    "kind": "uniform_int", "min": min(values),
+                    "max": max(values), "count": len(values),
+                }
+            _reseal_policy(item)
+            return item
+
+        left = seeded("left", [100, None, 100, None])
+        right = seeded("right", [None, 900, None, 900])
+        rows = score._rows_for(
+            "seeded", [left, right], "perf_instructions")
+
+        self.assertTrue(all(row["scoreable"] for row in rows))
+        self.assertEqual([row["case_profile"] for row in rows], [(1, 1), (1, 1)])
+        self.assertTrue(all(not row["work_tiebreak_active"] for row in rows))
+        self.assertEqual(score._competition_ranks(rows), [1, 1])
+
+        fast_full = seeded("fast-full", [100, 100, 100, 100])
+        slow_full = seeded("slow-full", [200, 200, 200, 200])
+        full_rows = score._rows_for(
+            "seeded", [slow_full, fast_full], "perf_instructions")
+        self.assertTrue(all(row["work_tiebreak_active"] for row in full_rows))
+        self.assertEqual(
+            [row["sub"] for row in full_rows], ["fast-full", "slow-full"])
+
+    def test_grouped_rejects_inconsistent_work_and_proof_combinations(self):
+        for work, proof in (
+                ("total", "gate"),
+                ("total", "last_tiebreak"),
+                ("curve", "include")):
+            with self.subTest(work=work, proof=proof):
+                ranking = {
+                    "contract": "group-points-v1", "work": work, "proof": proof,
+                    "profile": "hardest_group_then_slot",
+                }
+                item = grouped_verdict(
+                    f"{work}-{proof}", [100] * 4, ranking=ranking)
+                row = score._score_row(item, "perf_instructions")
+                self.assertFalse(row["scoreable"])
+                self.assertIn("inconsistent work/proof", row["reason"])
+
+    def test_grouped_instruction_limit_determines_case_pass(self):
+        item = grouped_verdict("over-cap", [100, 1001, None, None])
+
+        row = score._score_row(item, "perf_instructions")
+
+        self.assertTrue(row["scoreable"])
+        self.assertEqual(row["slot_profile"], (1, 0, 0, 0))
+        self.assertEqual(row["points"], 10)
+        self.assertEqual(row["curve_work"], 100)
+
+    def test_grouped_instruction_limit_is_optional_until_calibrated(self):
+        item = grouped_verdict("no-cap", [100, 1001, None, None])
+        policy = item["evaluation_cohort"]["policy"]
+        for group in policy["evaluation"]["groups"]:
+            group["limits"].pop("kernel_instructions")
+        for case in policy["performance_plan"]:
+            case["limits"].pop("kernel_instructions")
+        for case in item["stages"]["performance_plan"]:
+            case["limits"].pop("kernel_instructions")
+        policy["performance_plan_sha256"] = hashlib.sha256(json.dumps(
+            policy["performance_plan"], sort_keys=True,
+            separators=(",", ":")).encode()).hexdigest()
+        _reseal_policy(item)
+
+        row = score._score_row(item, "perf_instructions")
+
+        self.assertTrue(row["scoreable"])
+        self.assertEqual(row["slot_profile"], (1, 1, 0, 0))
+        self.assertEqual(row["points"], 25)
+
+    def test_development_grouped_plan_may_be_a_sampling_prefix(self):
+        item = grouped_verdict("local-prefix", [100, 100, 100, 100])
+        policy = item["evaluation_cohort"]["policy"]
+        for group in policy["evaluation"]["groups"]:
+            group["sampling"]["count"] = 3
+            group["sampling"]["values"].append(
+                group["sampling"]["values"][-1] + 1)
+            final = group["award"]["table"][-1]
+            group["award"]["table"].append({
+                "passed": 3, "points": final["points"] + 10,
+            })
+        _reseal_policy(item)
+
+        row = score._score_row(item, "perf_instructions")
+
+        self.assertTrue(row["scoreable"])
+        self.assertEqual(row["group_points"], {"L1": 25, "L2": 50})
+        self.assertIsNotNone(score._grouped_evaluation_shape_error(
+            policy["evaluation"], policy["performance_plan"], official=True))
+
+    def test_grouped_plan_and_scaling_identity_are_fail_closed(self):
+        stage_mismatch = grouped_verdict("stage-mismatch", [100] * 4)
+        stage_mismatch["stages"]["performance_plan"][0]["case"] = 99
+        row = score._score_row(stage_mismatch, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("performance_plan", row["reason"])
+
+        scaling_mismatch = grouped_verdict("scaling-mismatch", [100] * 4)
+        scaling_mismatch["timing"]["scaling"][0]["group"] = "L2"
+        row = score._score_row(scaling_mismatch, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("group/case", row["reason"])
+
+        hash_mismatch = grouped_verdict("hash-mismatch", [100] * 4)
+        policy = hash_mismatch["evaluation_cohort"]["policy"]
+        policy["performance_plan_sha256"] = "f" * 64
+        _reseal_policy(hash_mismatch)
+        row = score._score_row(hash_mismatch, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("performance-plan hash", row["reason"])
+
+    def test_grouped_points_cannot_be_injected_through_the_plan(self):
+        item = grouped_verdict("injected", [100] * 4)
+        item["evaluation_cohort"]["policy"]["performance_plan"][0]["points"] = 999
+        item["stages"]["performance_plan"][0]["points"] = 999
+        policy = item["evaluation_cohort"]["policy"]
+        policy["performance_plan_sha256"] = hashlib.sha256(json.dumps(
+            policy["performance_plan"], sort_keys=True,
+            separators=(",", ":")).encode()).hexdigest()
+        _reseal_policy(item)
+
+        row = score._score_row(item, "perf_instructions")
+
+        self.assertFalse(row["scoreable"])
+        self.assertIn("performance-plan row", row["reason"])
+
+    def test_group_prerequisite_gates_award_until_dependency_is_complete(self):
+        item = grouped_verdict("prerequisite", [100, None, 100, 100])
+        policy = item["evaluation_cohort"]["policy"]
+        policy["evaluation"]["groups"][1]["requires"] = ["L1"]
+        _reseal_policy(item)
+
+        row = score._score_row(item, "perf_instructions")
+
+        self.assertTrue(row["scoreable"])
+        self.assertEqual(row["group_points"], {"L1": 10, "L2": 0})
+        self.assertEqual(row["points"], 10)
+
+    def test_unsafe_normalized_work_contract_is_rejected(self):
+        ranking = {
+            "contract": "group-points-v1", "work": "worst_normalized",
+            "proof": "gate", "profile": "hardest_group_then_slot",
+        }
+        item = grouped_verdict("unsafe-normalization", [100] * 4, ranking=ranking)
+
+        row = score._score_row(item, "perf_instructions")
+
+        self.assertFalse(row["scoreable"])
+        self.assertIn("worst_normalized", row["reason"])
 
 
 if __name__ == "__main__":

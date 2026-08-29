@@ -57,7 +57,8 @@ hidden, judge-selected inputs.
 
 Because correctness holds for every input, the judge may select any input. Hardcoded tables and
 special cases are permitted, but their proof and replay costs count toward the score. See
-[`evaluation.md`](evaluation.md) for the complete measurement and ranking rules.
+[`evaluation.md`](evaluation.md) for the common measurement rules and
+[`problem-scoring.md`](problem-scoring.md) for the nine independent leaderboards.
 
 ## Submission
 
@@ -83,23 +84,26 @@ Participation is also subject to the team, anti-cheating, and participant-cost p
 - **R3 — Universal correctness.** `impl_correct` must prove `∀ n, impl n = spec n`.
 - **R4 — Standard axioms only.** The proof may depend only on `propext`, `Quot.sound`, and
   `Classical.choice`; `sorry` and `native_decide` are rejected.
-- **R5 — Kernel replay is scored.** Ranking uses completed input slots and measured kernel work.
-  Scored work includes the complete verified correctness artifact and the successful generated
-  checks at judge-selected inputs. Parsing, dependency loading, and process startup are not
-  counted. See [`evaluation.md`](evaluation.md) for the exact ranking contract.
+- **R5 — Kernel replay is scored.** Each problem awards points through its published difficulty
+  groups and milestones, then applies its own measured-kernel-work tie-break. The judge measures
+  the complete verified correctness artifact and successful generated checks at hidden inputs.
+  Parsing, dependency loading, and process startup are not counted. See
+  [`evaluation.md`](evaluation.md) and [`problem-scoring.md`](problem-scoring.md) for the exact
+  contracts.
 
 > `#eval` measures compiled execution and does not predict kernel-reduction performance. Use
 > `scripts/perf_eval.py` for local checks that follow the judge's measurement boundary.
 
 ## Stage 1 Problems
 
-Stage 1 begins with fundamental computational problems from algebra, number theory,
-combinatorics, cryptography, discrete mathematics, and related fields. The specific problems will
-be announced at the official launch.
+Stage 1 begins with nine computational problems from algebra, number theory, combinatorics,
+cryptography, discrete mathematics, and related fields. Their public definitions and scoring
+groups are listed in [`problem-scoring.md`](problem-scoring.md).
 
 ## Status
 
 Stage 1 is in pre-launch. All problem workspaces compile, and the judge runs the correctness and
-performance pipeline end to end. Before the official launch, the organizers will finalize the
-official input ranges, evaluation method, and cross-problem scoring formula, validate the
-official evaluation hardware, and publish the final rules.
+grouped performance pipeline end to end. The nine per-problem group schedules and scoring rules
+are published in [`problem-scoring.md`](problem-scoring.md); there is no cross-problem total.
+Before the official launch, the organizers will validate the complete production evaluation on
+the pinned PMU hardware and isolated container environment.

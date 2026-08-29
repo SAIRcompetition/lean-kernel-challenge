@@ -13,8 +13,41 @@
     "Classical.choice"
   ],
   "enable_nanoda": false,
-  "perf": {
-    "min": 1,
-    "max": 5
+  "evaluation": {
+    "schema": "grouped-evaluation-v1",
+    "axis": {"label": "seeded obstacle SAW length", "unit": "steps", "input_encoding": "packed-v1: (length << 32) | seed"},
+    "groups": [
+      {
+        "id": "S1", "label": "Length 6", "order": 1,
+        "sampling": {"kind": "packed", "scale": 6, "seed_bits": 32, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 5}]},
+        "limits": {"timeout_seconds": 10}
+      },
+      {
+        "id": "S2", "label": "Length 7", "order": 2, "requires": ["S1"],
+        "sampling": {"kind": "packed", "scale": 7, "seed_bits": 32, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 10}]},
+        "limits": {"timeout_seconds": 20}
+      },
+      {
+        "id": "S3", "label": "Length 8", "order": 3, "requires": ["S1", "S2"],
+        "sampling": {"kind": "packed", "scale": 8, "seed_bits": 32, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 15}]},
+        "limits": {"timeout_seconds": 25}
+      },
+      {
+        "id": "S4", "label": "Length 9", "order": 4, "requires": ["S1", "S2", "S3"],
+        "sampling": {"kind": "packed", "scale": 9, "seed_bits": 32, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 25}]},
+        "limits": {"timeout_seconds": 60}
+      },
+      {
+        "id": "S5", "label": "Length 10", "order": 5, "requires": ["S1", "S2", "S3", "S4"],
+        "sampling": {"kind": "packed", "scale": 10, "seed_bits": 32, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 45}]},
+        "limits": {"timeout_seconds": 120}
+      }
+    ],
+    "ranking": {"contract": "group-points-v1", "work": "total", "proof": "include", "profile": "hardest_group_then_count"}
   }
 }

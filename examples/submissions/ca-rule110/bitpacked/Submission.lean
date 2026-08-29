@@ -35,71 +35,72 @@ theorem getD_stepRow (row : List Bool) (i : Nat) :
   · have hlen : (stepRow row).length ≤ i := by rw [length_stepRow]; omega
     rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none hlen, Option.getD_none, if_neg h]
 
-def M : Nat := 4294967295
-theorem M_eq : M = 2 ^ 32 - 1 := by decide
-theorem testBit_M (i : Nat) : M.testBit i = decide (i < 32) := by
+def M : Nat := 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+theorem M_eq : M = 2 ^ 256 - 1 := by decide
+theorem testBit_M (i : Nat) : M.testBit i = decide (i < 256) := by
   rw [M_eq, Nat.testBit_two_pow_sub_one]
-theorem testBit_high {m : Nat} (hm : m < 2 ^ 32) {j : Nat} (hj : 32 ≤ j) : m.testBit j = false := by
+theorem testBit_high {m : Nat} (hm : m < 2 ^ 256) {j : Nat} (hj : 256 ≤ j) : m.testBit j = false := by
   have hlt : m < 2 ^ j := Nat.lt_of_lt_of_le hm (Nat.pow_le_pow_right (by omega) hj)
   simp [Nat.testBit, Nat.shiftRight_eq_div_pow, Nat.div_eq_of_lt hlt]
 
-theorem testBit_rotL {m : Nat} (hm : m < 2 ^ 32) {i : Nat} (hi : i < 32) :
-    (((m <<< 1) ||| (m >>> 31)) &&& M).testBit i = m.testBit ((i + 31) % 32) := by
+theorem testBit_rotL {m : Nat} (hm : m < 2 ^ 256) {i : Nat} (hi : i < 256) :
+    (((m <<< 1) ||| (m >>> 255)) &&& M).testBit i = m.testBit ((i + 255) % 256) := by
   rw [Nat.testBit_and, Nat.testBit_or, Nat.testBit_shiftLeft, Nat.testBit_shiftRight, testBit_M]
   simp only [hi, decide_true, Bool.and_true]
   rcases Nat.eq_zero_or_pos i with hi0 | hipos
   · subst hi0; simp [testBit_high hm]
   · have h1 : (1 ≤ i) := hipos
-    have hmod : (i + 31) % 32 = i - 1 := by omega
-    have hhi : m.testBit (31 + i) = false := testBit_high hm (by omega)
+    have hmod : (i + 255) % 256 = i - 1 := by omega
+    have hhi : m.testBit (255 + i) = false := testBit_high hm (by omega)
     simp [h1, hmod, hhi, Nat.testBit_shiftLeft]
 
-theorem testBit_rotR {m : Nat} (hm : m < 2 ^ 32) {i : Nat} (hi : i < 32) :
-    (((m >>> 1) ||| ((m &&& 1) <<< 31)) &&& M).testBit i = m.testBit ((i + 1) % 32) := by
+theorem testBit_rotR {m : Nat} (hm : m < 2 ^ 256) {i : Nat} (hi : i < 256) :
+    (((m >>> 1) ||| ((m &&& 1) <<< 255)) &&& M).testBit i = m.testBit ((i + 1) % 256) := by
   rw [Nat.testBit_and, Nat.testBit_or, Nat.testBit_shiftRight, Nat.testBit_shiftLeft, testBit_M]
   simp only [hi, decide_true, Bool.and_true]
-  by_cases h31 : i = 31
-  · subst h31
-    have hmod : (31 + 1) % 32 = 0 := by decide
-    have hhi : m.testBit (1 + 31) = false := testBit_high hm (by omega)
+  by_cases h255 : i = 255
+  · subst h255
+    have hmod : (255 + 1) % 256 = 0 := by decide
+    have hhi : m.testBit (1 + 255) = false := testBit_high hm (by omega)
     rw [hmod]; simp [hhi, Nat.testBit_and]
-  · have hmod : (i + 1) % 32 = i + 1 := by omega
-    have hnot : ¬ (31 ≤ i) := by omega
+  · have hmod : (i + 1) % 256 = i + 1 := by omega
+    have hnot : ¬ (255 ≤ i) := by omega
     simp [hmod, hnot, Nat.add_comm 1 i]
 
 namespace Submission
 
 def bstep (m : Nat) : Nat :=
-  (M ^^^ (((M ^^^ m) &&& (M ^^^ (((m >>> 1) ||| ((m &&& 1) <<< 31)) &&& M)))
-          ||| ((((m <<< 1) ||| (m >>> 31)) &&& M) &&& m &&& (((m >>> 1) ||| ((m &&& 1) <<< 31)) &&& M)))) &&& M
+  (M ^^^ (((M ^^^ m) &&& (M ^^^ (((m >>> 1) ||| ((m &&& 1) <<< 255)) &&& M)))
+          ||| ((((m <<< 1) ||| (m >>> 255)) &&& M) &&& m &&& (((m >>> 1) ||| ((m &&& 1) <<< 255)) &&& M)))) &&& M
 
 def biter : Nat → Nat → Nat
   | 0, m => m
   | t + 1, m => biter t (bstep m)
 
-def impl : Nat → Nat := fun n => biter n (encodeRow initRow)
+def impl : Nat → Nat := fun n =>
+  biter (caSteps n) (encodeRow (initRowFor (caSeed n)))
 
-theorem step_eq {row : List Bool} (hlen : row.length = 32) :
+theorem step_eq {row : List Bool} (hlen : row.length = 256) :
     encodeRow (stepRow row) = bstep (encodeRow row) := by
-  have hm : encodeRow row < 2 ^ 32 := hlen ▸ encodeRow_lt row
+  have hm : encodeRow row < 2 ^ 256 := hlen ▸ encodeRow_lt row
   apply Nat.eq_of_testBit_eq
   intro i
   rw [testBit_encodeRow, getD_stepRow, hlen]
-  by_cases hi : i < 32
+  by_cases hi : i < 256
   · rw [if_pos hi]
-    have he : i + 32 - 1 = i + 31 := by omega
+    have he : i + 256 - 1 = i + 255 := by omega
     rw [he]
     simp only [bstep, Nat.testBit_and, Nat.testBit_xor, Nat.testBit_or, testBit_M,
                testBit_rotL hm hi, testBit_rotR hm hi, testBit_encodeRow, hi, decide_true]
-    generalize row.getD ((i + 31) % 32) false = a
+    generalize row.getD ((i + 255) % 256) false = a
     generalize row.getD i false = b
-    generalize row.getD ((i + 1) % 32) false = c
+    generalize row.getD ((i + 1) % 256) false = c
     cases a <;> cases b <;> cases c <;> decide
   · rw [if_neg hi]
     unfold bstep
     rw [Nat.testBit_and, testBit_M, decide_eq_false hi, Bool.and_false]
 
-theorem iter_eq : ∀ (n : Nat) (row : List Bool), row.length = 32 →
+theorem iter_eq : ∀ (n : Nat) (row : List Bool), row.length = 256 →
     encodeRow (iterRow n row) = biter n (encodeRow row) := by
   intro n
   induction n with
@@ -111,7 +112,9 @@ theorem iter_eq : ∀ (n : Nat) (row : List Bool), row.length = 32 →
 
 theorem impl_correct : ∀ n, impl n = caSpecN n := by
   intro n
-  show biter n (encodeRow initRow) = encodeRow (iterRow n initRow)
-  exact (iter_eq n initRow (by decide)).symm
+  show biter (caSteps n) (encodeRow (initRowFor (caSeed n))) =
+    encodeRow (iterRow (caSteps n) (initRowFor (caSeed n)))
+  exact (iter_eq (caSteps n) (initRowFor (caSeed n))
+    (by simp [initRowFor, ruleWidth])).symm
 
 end Submission

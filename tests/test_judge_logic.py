@@ -140,6 +140,411 @@ class PerfInputTests(unittest.TestCase):
                         judge.perf_inputs({"perf": perf}, "bad")
 
 
+def _grouped_cfg(*groups):
+    profile = (
+        "hardest_group_then_count"
+        if groups and all(
+            group.get("sampling", {}).get("kind") in ("packed", "uniform_int")
+            for group in groups
+        )
+        else "hardest_group_then_slot"
+    )
+    return {
+        "evaluation": {
+            "schema": "grouped-evaluation-v1",
+            "axis": {"label": "encoded input", "unit": "case", "input_encoding": "packed-v1"},
+            "groups": list(groups),
+            "ranking": {
+                "contract": "group-points-v1", "work": "total",
+                "proof": "include", "profile": profile,
+            },
+        }
+    }
+
+
+def _packed_group(group, order, scale, count=2, limits=None):
+    return {
+        "id": group,
+        "label": group,
+        "order": order,
+        "sampling": {
+            "kind": "packed", "scale": scale, "seed_bits": 32, "count": count,
+        },
+        "award": {
+            "mode": "milestones",
+            "table": [
+                {"passed": 0, "points": 0},
+                {"passed": count, "points": 10 * (order + 1)},
+            ],
+        },
+        "limits": limits or {
+            "kernel_instructions": 1000000, "timeout_seconds": 17,
+        },
+    }
+
+
+class GroupedPerformancePlanTests(unittest.TestCase):
+    def test_official_repetition_count_is_fixed(self):
+        with mock.patch.object(judge, "OFFICIAL_EVAL", True), \
+             mock.patch.object(judge, "DEFAULT_REPS", 3):
+            judge._validate_repetition_count(3)
+            with self.assertRaisesRegex(judge.InfraError, "exactly 3"):
+                judge._validate_repetition_count(1)
+        with mock.patch.object(judge, "OFFICIAL_EVAL", False):
+            judge._validate_repetition_count(1)
+
+    def test_group_timeout_applies_only_to_target_replay(self):
+        plan = [{
+            "slot": 0, "group": "L1", "case": 0, "n": 10,
+            "limits": {
+                "kernel_instructions": 1000000,
+                "timeout_seconds": 17,
+            },
+        }]
+        with mock.patch.object(judge, "TIMING_TIMEOUT", 1800), \
+             mock.patch.object(judge, "AUDIT_TIMEOUT", 300):
+            caps = judge._performance_timeout_caps(plan, 10)
+
+        self.assertEqual(caps, {
+            "value_eval": 1800,
+            "build_export": 1800,
+            "axiom_audit": 300,
+            "target_replay": 17,
+        })
+
+    def test_legacy_slot_keeps_existing_infrastructure_timeouts(self):
+        with mock.patch.object(judge, "TIMING_TIMEOUT", 1800), \
+             mock.patch.object(judge, "AUDIT_TIMEOUT", 300):
+            caps = judge._performance_timeout_caps(None, 10)
+
+        self.assertEqual(caps, {
+            "value_eval": 1800,
+            "build_export": 1800,
+            "axiom_audit": 300,
+            "target_replay": 1800,
+        })
+
+    def test_complete_grouped_contract_is_validated_before_judging(self):
+        cfg = _grouped_cfg(_packed_group("L1", 0, 3))
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "PERF_SEED", ""), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            plan = judge._validated_performance_plan(cfg, "demo")
+            self.assertEqual(len(plan), 2)
+
+            bad_award = json.loads(json.dumps(cfg))
+            bad_award["evaluation"]["groups"][0]["award"] = {
+                "mode": "nonsense", "table": [],
+            }
+            with self.assertRaisesRegex(judge.InfraError, "invalid award"):
+                judge._validated_performance_plan(bad_award, "demo")
+
+            bad_ranking = json.loads(json.dumps(cfg))
+            bad_ranking["evaluation"]["ranking"]["contract"] = "broken"
+            with self.assertRaisesRegex(judge.InfraError, "ranking contract"):
+                judge._validated_performance_plan(bad_ranking, "demo")
+
+            bad_axis = json.loads(json.dumps(cfg))
+            bad_axis["evaluation"]["axis"] = {"label": "missing fields"}
+            with self.assertRaisesRegex(judge.InfraError, "difficulty axis"):
+                judge._validated_performance_plan(bad_axis, "demo")
+
+    def test_official_stage1_rejects_legacy_only_problem_policy(self):
+        with mock.patch.object(judge, "TIMING_METRIC", "perf_instructions"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", True), \
+             mock.patch.object(judge, "PERF_SEED", "cohort-secret"), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            with self.assertRaisesRegex(judge.InfraError, "requires a grouped policy"):
+                judge._validated_performance_plan(
+                    {"perf": {"min": 1, "max": 10}}, "conv")
+
+        with mock.patch.object(judge, "OFFICIAL_EVAL", False):
+            self.assertIsNone(judge._validated_performance_plan(
+                {"perf": {"min": 1, "max": 10}}, "conv"))
+
+    def test_grouped_official_plan_api_requires_seed(self):
+        cfg = _grouped_cfg(_packed_group("L1", 0, 3))
+        with mock.patch.object(judge, "TIMING_METRIC", "perf_instructions"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "PERF_SEED", ""), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            with self.assertRaisesRegex(judge.InfraError, "PERF_SEED"):
+                judge.performance_plan(cfg, "demo")
+
+    def test_packed_plan_is_shared_reproducible_and_seed_rotated(self):
+        cfg = _grouped_cfg(
+            _packed_group("L1", 0, 7),
+            _packed_group("L2", 1, 19, limits={
+                "kernel_instructions": 2000000, "timeout_seconds": 23,
+            }),
+        )
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "PERF_SEED", "cohort-secret"), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            first = judge.performance_plan(cfg, "demo")
+            same = judge.performance_plan(cfg, "demo")
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "PERF_SEED", "next-secret"), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            rotated = judge.performance_plan(cfg, "demo")
+
+        self.assertEqual(first, same)
+        self.assertNotEqual([row["n"] for row in first], [row["n"] for row in rotated])
+        self.assertEqual([row["slot"] for row in first], [0, 1, 2, 3])
+        self.assertEqual([row["group"] for row in first], ["L1", "L1", "L2", "L2"])
+        self.assertEqual([row["case"] for row in first], [0, 1, 0, 1])
+        self.assertEqual([row["scale"] for row in first], [7, 7, 19, 19])
+        self.assertEqual([row["n"] >> 32 for row in first], [7, 7, 19, 19])
+        self.assertEqual(first[0]["limits"], {
+            "kernel_instructions": 1000000, "timeout_seconds": 17,
+        })
+        self.assertEqual(first[2]["limits"], {
+            "kernel_instructions": 2000000, "timeout_seconds": 23,
+        })
+        self.assertEqual(len({row["n"] for row in first}), len(first))
+
+    def test_group_memory_limit_is_rejected_until_it_is_enforced(self):
+        cfg = _grouped_cfg(_packed_group("L1", 0, 7, limits={
+            "timeout_seconds": 17, "memory_mb": 4096,
+        }))
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "PERF_SEED", "cohort-secret"), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            with self.assertRaisesRegex(judge.InfraError, "memory_mb"):
+                judge.performance_plan(cfg, "demo")
+
+    def test_unseeded_local_packed_plan_is_deterministic_and_uncommitted(self):
+        cfg = _grouped_cfg(_packed_group("L1", 0, 3))
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "PERF_SEED", ""), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            self.assertEqual(
+                judge.performance_plan(cfg, "demo"),
+                judge.performance_plan(cfg, "demo"),
+            )
+            self.assertIsNone(judge._seed_commitment())
+
+    def test_official_grouped_policy_forbids_perf_count_override(self):
+        cfg = _grouped_cfg(_packed_group("L1", 0, 3))
+        with mock.patch.object(judge, "TIMING_METRIC", "perf_instructions"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", True), \
+             mock.patch.object(judge, "PERF_SEED", "cohort-secret"), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": "1"}):
+            with self.assertRaisesRegex(judge.InfraError, "PERF_COUNT is forbidden"):
+                judge.performance_plan(cfg, "demo")
+
+    def test_local_perf_count_caps_each_group_to_a_stable_prefix(self):
+        cfg = _grouped_cfg(
+            _packed_group("L1", 0, 3, count=2),
+            _packed_group("L2", 1, 9, count=3),
+        )
+        common = [
+            mock.patch.object(judge, "TIMING_METRIC", "wall_time"),
+            mock.patch.object(judge, "OFFICIAL_EVAL", False),
+            mock.patch.object(judge, "PERF_SEED", "cohort-secret"),
+        ]
+        with common[0], common[1], common[2], \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            full = judge.performance_plan(cfg, "demo")
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "PERF_SEED", "cohort-secret"), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": "1"}):
+            quick = judge.performance_plan(cfg, "demo")
+
+        self.assertEqual(len(full), 5)
+        self.assertEqual([row["slot"] for row in quick], [0, 1])
+        self.assertEqual(
+            [(row["group"], row["case"]) for row in quick],
+            [("L1", 0), ("L2", 0)],
+        )
+        self.assertEqual(quick[0]["n"], full[0]["n"])
+        self.assertEqual(quick[1]["n"], full[2]["n"])
+
+    def test_nonpositive_or_malformed_local_group_count_is_ignored(self):
+        cfg = _grouped_cfg(_packed_group("L1", 0, 3, count=2))
+        plans = []
+        for override in ("0", "-1", "bogus"):
+            with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+                 mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+                 mock.patch.object(judge, "PERF_SEED", "cohort-secret"), \
+                 mock.patch.dict(os.environ, {"PERF_COUNT": override}):
+                plans.append(judge.performance_plan(cfg, "demo"))
+        self.assertTrue(all(len(plan) == 2 for plan in plans))
+        self.assertEqual(plans[0], plans[1])
+        self.assertEqual(plans[1], plans[2])
+
+    def test_range_fixed_and_invalid_mixed_legacy_policy(self):
+        cfg = _grouped_cfg(
+            {
+                "id": "small", "order": 0,
+                "sampling": {
+                    "kind": "linear_range", "min": 10, "max": 30,
+                    "count": 3, "jitter": 0,
+                },
+                "award": {"mode": "milestones", "table": [{"passed": 3, "points": 10}]},
+                "limits": {},
+            },
+            {
+                "id": "large", "order": 1,
+                "sampling": {"kind": "fixed", "values": [100, 101]},
+                "award": {"mode": "milestones", "table": [{"passed": 2, "points": 20}]},
+                "limits": {},
+            },
+        )
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "PERF_SEED", ""), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            plan = judge.performance_plan(cfg, "demo")
+        self.assertEqual([row["n"] for row in plan], [10, 20, 30, 100, 101])
+
+        cfg["perf"] = {"min": 1, "max": 2}
+        with self.assertRaisesRegex(judge.InfraError, "must not define both"):
+            judge.performance_plan(cfg, "demo")
+
+    def test_policy_v2_commits_to_plan_seed_and_full_evaluation_config(self):
+        cfg = _grouped_cfg(_packed_group("L1", 0, 5))
+        result = {"stages": {}, "timing_protocol": "local-v2"}
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "PERF_SEED", "cohort-secret"), \
+             mock.patch.object(judge, "EVALUATION_COHORT", "round-x"), \
+             mock.patch.object(judge, "_problem_bundle_digest", return_value="a" * 64), \
+             mock.patch.object(judge, "_evaluator_bundle_digest", return_value="b" * 64), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            plan = judge.performance_plan(cfg, "demo")
+            cohort = judge._evaluation_cohort(
+                "demo", cfg, [row["n"] for row in plan], 3, result,
+                performance_plan=plan,
+            )
+            changed_cfg = json.loads(json.dumps(cfg))
+            changed_cfg["evaluation"]["groups"][0]["award"]["table"][0]["points"] += 1
+            changed = judge._evaluation_cohort(
+                "demo", changed_cfg, [row["n"] for row in plan], 3, result,
+                performance_plan=plan,
+            )
+
+        policy = cohort["policy"]
+        self.assertEqual(policy["schema"], "evaluation-policy-v2")
+        self.assertEqual(policy["budgets"]["perf_phase_budget_seconds"], 0)
+        self.assertEqual(policy["evaluation"], cfg["evaluation"])
+        self.assertEqual(policy["performance_plan"], plan)
+        encoded = json.dumps(
+            plan, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        self.assertEqual(
+            policy["performance_plan_sha256"],
+            __import__("hashlib").sha256(encoded).hexdigest(),
+        )
+        self.assertRegex(policy["seed_commitment"], r"^[0-9a-f]{64}$")
+        self.assertEqual(cohort["id"], cohort["policy_sha256"][:24])
+        self.assertNotEqual(cohort["id"], changed["id"])
+
+    def test_grouped_cases_disable_the_legacy_aggregate_deadline(self):
+        with mock.patch.object(judge, "PERF_PHASE_BUDGET", 10800), \
+             mock.patch.object(judge.time, "monotonic", return_value=100.0):
+            self.assertIsNone(judge._performance_phase_deadline([{"slot": 0}]))
+            self.assertEqual(judge._performance_phase_deadline(None), 10900.0)
+
+    def test_scaling_rows_repeat_group_and_case_for_every_outcome(self):
+        plan = [
+            {"slot": 0, "group": "L1", "case": 0, "n": 10, "limits": {}},
+            {"slot": 1, "group": "L1", "case": 1, "n": 20, "limits": {}},
+            {"slot": 2, "group": "L2", "case": 0, "n": 30, "limits": {}},
+        ]
+
+        def probe(n):
+            if n == 10:
+                return {"n": n, "result": "timeout"}, None
+            if n == 20:
+                return {"n": n, "result": "build-error"}, "boom"
+            return {"n": n, "result": "ok"}, None
+
+        scaling, error = judge._collect_perf_slots(
+            [10, 20, 30], probe, performance_plan=plan)
+        self.assertEqual(error, "boom")
+        self.assertEqual(
+            [(row["group"], row["case"], row["result"]) for row in scaling],
+            [("L1", 0, "timeout"), ("L1", 1, "build-error"), ("L2", 0, "not-run")],
+        )
+
+        exhausted, error = judge._collect_perf_slots(
+            [10, 20, 30], probe, deadline=0.0, performance_plan=plan)
+        self.assertIsNone(error)
+        self.assertEqual(
+            [(row["group"], row["case"], row["result"]) for row in exhausted],
+            [("L1", 0, "budget-exhausted"),
+             ("L1", 1, "budget-exhausted"),
+             ("L2", 0, "budget-exhausted")],
+        )
+
+
+class GroupedJudgeReportingTests(unittest.TestCase):
+    def test_completed_grouped_verdict_scoring_failure_is_infrastructure(self):
+        from tests.test_scoring import grouped_verdict
+
+        malformed = grouped_verdict("malformed", [100, 100, 100, 100])
+        malformed["stages"]["performance_plan"][0]["case"] = 99
+        with self.assertRaisesRegex(judge.InfraError, "canonical grouped scoring rejected"):
+            judge._validated_grouped_score_view(malformed)
+
+        zero_points = grouped_verdict("zero", [None, None, None, None])
+        view = judge._validated_grouped_score_view(zero_points)
+        self.assertTrue(view["scoreable"])
+        self.assertEqual(view["points"], 0)
+
+    def test_grouped_score_summary_uses_canonical_points_and_instruction_caps(self):
+        from tests.test_scoring import grouped_verdict
+
+        item = grouped_verdict("grouped", [100, 1001, 100, None], correctness=10)
+        view = judge._score_view(item)
+
+        self.assertIsNotNone(view)
+        self.assertEqual(view["points"], 30)
+        self.assertEqual(view["completed_slots"], 2)
+        self.assertEqual(
+            judge._grouped_score_summary(item, view),
+            "30/75 points; 2/4 passed cases; 200 ranking instructions",
+        )
+
+    def test_grouped_leaderboard_uses_points_profile_not_legacy_coverage(self):
+        from tests.test_scoring import grouped_verdict, verdict, _reseal_policy
+
+        grouped = grouped_verdict("grouped", [100, 1001, 100, None], correctness=10)
+        legacy = verdict("legacy-conv", [100, 200, 300])
+        legacy["problem"] = "conv"
+        legacy["evaluation_cohort"]["policy"]["problem"] = "conv"
+        _reseal_policy(legacy)
+        old_results = judge.RESULTS
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                judge.RESULTS = Path(td)
+                for item in (grouped, legacy):
+                    directory = Path(td) / item["problem"]
+                    directory.mkdir(parents=True, exist_ok=True)
+                    (directory / f"{item['submission']}.json").write_text(json.dumps(item))
+                judge.leaderboard()
+                report = (Path(td) / "leaderboard.md").read_text()
+            finally:
+                judge.RESULTS = old_results
+
+        self.assertIn(
+            "| points | passed cases | group profile | case outcomes | ranking work |",
+            report,
+        )
+        self.assertIn("L2:20/50, L1:10/25", report)
+        self.assertIn("L2:01, L1:01", report)
+        self.assertIn("30/75 points; 2/4 passed cases", report)
+        self.assertNotIn("legacy-conv", report)
+        self.assertNotIn("## conv", report)
+        self.assertNotIn("| rank | submission | coverage | total work | score |", report)
+
+
 class DeferredTimingModeTests(unittest.TestCase):
     def test_deferred_timing_requires_retained_nonofficial_workspace(self):
         with mock.patch.object(judge, "DEFER_TIMING", True), \
@@ -277,6 +682,14 @@ class OracleAndGeneratedTheoremTests(unittest.TestCase):
         self.assertEqual(kind, "error")
         self.assertIn("heartbeats", detail)
 
+    def test_oracle_sigkill_is_a_resource_limit(self):
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(judge, "run", return_value=(-9, "")), \
+                 mock.patch.object(
+                     judge, "_attested_local_memory_kill", return_value=True):
+                kind, detail = judge._eval_impl_value(Path(td), {}, 10, 1)
+        self.assertEqual((kind, detail), ("resource-limit", None))
+
     def test_perf_export_returns_the_exact_fully_qualified_target(self):
         with tempfile.TemporaryDirectory() as td:
             work = Path(td)
@@ -298,16 +711,45 @@ class OracleAndGeneratedTheoremTests(unittest.TestCase):
         export_cmd = run_mock.call_args_list[-1].args[0]
         self.assertEqual(export_cmd[-1], target)
 
-    def test_perf_export_rechecks_shared_deadline_between_build_and_export(self):
+    def test_perf_export_build_and_export_share_one_stage_cap(self):
         with tempfile.TemporaryDirectory() as td:
             work = Path(td)
             artifact_lib = work / "lib"
             artifact_lib.mkdir()
             with mock.patch.object(judge, "run", return_value=(0, "")) as run_mock, \
-                 mock.patch.object(judge, "_remaining_timeout", side_effect=[1.0, 0.0]):
+                 mock.patch.object(
+                     judge.time, "monotonic", side_effect=[100.0, 100.0, 110.0]):
                 kind, detail, _ = judge._perf_export(
                     work, {}, 7, "13", work / "point.export", 9,
-                    artifact_lib, Path("lean"), deadline=123.0)
+                    artifact_lib, Path("lean"))
+
+        self.assertEqual((kind, detail), ("timeout", None))
+        self.assertEqual(run_mock.call_count, 1)
+
+    def test_perf_export_sigkill_is_a_resource_limit(self):
+        with tempfile.TemporaryDirectory() as td:
+            work = Path(td)
+            artifact_lib = work / "lib"
+            artifact_lib.mkdir()
+            with mock.patch.object(judge, "run", return_value=(137, "")), \
+                 mock.patch.object(
+                     judge, "_attested_local_memory_kill", return_value=True):
+                kind, detail, _ = judge._perf_export(
+                    work, {}, 7, "13", work / "point.export", 9,
+                    artifact_lib, Path("lean"))
+        self.assertEqual((kind, detail), ("resource-limit", None))
+
+    def test_perf_export_rechecks_legacy_deadline_between_steps(self):
+        with tempfile.TemporaryDirectory() as td:
+            work = Path(td)
+            artifact_lib = work / "lib"
+            artifact_lib.mkdir()
+            with mock.patch.object(judge, "run", return_value=(0, "")) as run_mock, \
+                 mock.patch.object(
+                     judge.time, "monotonic", side_effect=[100.0, 100.0, 106.0]):
+                kind, detail, _ = judge._perf_export(
+                    work, {}, 7, "13", work / "point.export", 9,
+                    artifact_lib, Path("lean"), deadline=105.0)
 
         self.assertEqual((kind, detail), ("budget-exhausted", None))
         self.assertEqual(run_mock.call_count, 1)
@@ -429,6 +871,7 @@ def _ok_response(executor="exec-a", version="v1", instructions=100, reps=1,
         "measurement_contract": judge.MEASUREMENT_CONTRACT,
         "boundary": judge._measurement_boundary(target),
         "target": target,
+        "memory_mb": judge.REPLAY_MEMORY_MB,
         "samples": [
             {"instructions": instructions, "task_clock_ms": 1.25, "wall_ns": 1250}
             for _ in range(reps)
@@ -489,6 +932,7 @@ class RemoteTimingTests(unittest.TestCase):
             "status": "failed", "executor": "exec-a", "version": "v1",
             "measurement_contract": judge.MEASUREMENT_CONTRACT,
             "boundary": judge._measurement_boundary(None), "target": None,
+            "memory_mb": judge.REPLAY_MEMORY_MB,
             "output_tail": "kernel rejected export",
         }
 
@@ -533,7 +977,7 @@ class RemoteTimingTests(unittest.TestCase):
 
         self.assertEqual(judge._PINNED_EXECUTOR_IDENTITY[0], ("exec-a", "v1"))
 
-    def test_target_and_v2_contract_are_bound_into_remote_request(self):
+    def test_target_and_v3_contract_are_bound_into_remote_request(self):
         target = "LeanKernelChallengeJudge.Generated_remote.check"
         captured = []
 
@@ -550,16 +994,90 @@ class RemoteTimingTests(unittest.TestCase):
         req, _ = captured[0]
         parsed = judge.urllib.parse.urlparse(req.full_url)
         query = judge.urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
-        self.assertEqual(parsed.path, "/ktp/v2/time")
+        self.assertEqual(parsed.path, "/ktp/v3/time")
         self.assertEqual(query["measurement_contract"], [judge.MEASUREMENT_CONTRACT])
         self.assertEqual(query["boundary"], [judge.TARGET_REPLAY_BOUNDARY])
         self.assertEqual(query["target"], [target])
+        self.assertEqual(query["memory_mb"], [str(judge.REPLAY_MEMORY_MB)])
         headers = {key.lower(): value for key, value in req.header_items()}
         self.assertEqual(
             headers["x-measurement-contract"], judge.MEASUREMENT_CONTRACT)
         self.assertEqual(
             headers["x-measurement-boundary"], judge.TARGET_REPLAY_BOUNDARY)
         self.assertEqual(headers["x-measurement-target"], target)
+        self.assertEqual(
+            headers["x-replay-memory-mb"], str(judge.REPLAY_MEMORY_MB))
+
+    def test_remote_resource_limit_is_valid_only_with_bound_memory(self):
+        limited = _ok_response()
+        limited["status"] = "resource-limit"
+        limited.pop("samples")
+        limited["resource"] = "memory"
+        limited["resource_phase"] = "replay"
+        self.assertIsNone(judge._remote_response_error(limited, 1))
+
+        limited["memory_mb"] += 1
+        self.assertIn(
+            "memory limit", judge._remote_response_error(limited, 1))
+
+        limited["memory_mb"] = judge.REPLAY_MEMORY_MB
+        limited["resource"] = "cpu"
+        self.assertIn(
+            "not identified as memory", judge._remote_response_error(limited, 1))
+
+    def test_sigkill_exit_forms_are_resource_limit_candidates(self):
+        self.assertTrue(judge._died_by_sigkill(-9))
+        self.assertTrue(judge._died_by_sigkill(137))
+        self.assertFalse(judge._died_by_sigkill(-11))
+        self.assertFalse(judge._attested_local_memory_kill(-9))
+        with mock.patch.object(judge, "SANDBOX_MODE", "container"), \
+             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "4g"}), \
+             mock.patch.object(judge, "_LAST_RUN_OOM_KILL", [True]), \
+             mock.patch.dict(os.environ, {"ISOLATION_ATTESTATION": "run_isolated.sh"}):
+            self.assertTrue(judge._attested_local_memory_kill(-9))
+
+        with mock.patch.object(judge, "SANDBOX_MODE", "container"), \
+             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "4g"}), \
+             mock.patch.object(judge, "_LAST_RUN_OOM_KILL", [False]), \
+             mock.patch.dict(os.environ, {"ISOLATION_ATTESTATION": "run_isolated.sh"}):
+            self.assertFalse(judge._attested_local_memory_kill(-9))
+
+    def test_run_binds_and_resets_cgroup_oom_evidence_per_command(self):
+        with tempfile.TemporaryDirectory() as td, \
+             mock.patch.object(judge, "_LAST_RUN_OOM_KILL", [True]) as evidence, \
+             mock.patch.object(judge, "_read_cgroup_oom_kills", side_effect=[7, 7]):
+            rc, _ = judge.run(["/usr/bin/true"], Path(td), os.environ.copy(), 2)
+            self.assertEqual(rc, 0)
+            self.assertFalse(evidence[0])
+
+        with tempfile.TemporaryDirectory() as td, \
+             mock.patch.object(judge, "_LAST_RUN_OOM_KILL", [False]) as evidence, \
+             mock.patch.object(judge, "_read_cgroup_oom_kills", side_effect=[7, 8]):
+            rc, _ = judge.run(["/usr/bin/true"], Path(td), os.environ.copy(), 2)
+            self.assertEqual(rc, 0)
+            self.assertTrue(evidence[0])
+
+        # Even a non-SIGKILL consumer clears the preceding command's evidence.
+        with mock.patch.object(judge, "_LAST_RUN_OOM_KILL", [True]) as evidence:
+            self.assertFalse(judge._attested_local_memory_kill(1))
+            self.assertFalse(evidence[0])
+
+    def test_group_timeout_caps_remote_per_replay_timeout(self):
+        captured = []
+
+        def urlopen(req, timeout):
+            captured.append((req, timeout))
+            return _Response(_ok_response())
+
+        with mock.patch.object(judge, "TIMING_EXECUTOR_URLS", ["https://exec"]), \
+             mock.patch.object(judge, "_EXECUTOR_ATTEMPT_SLEEPS", [0]), \
+             mock.patch.object(judge, "TIMING_TIMEOUT", 1800), \
+             mock.patch.object(judge.urllib.request, "urlopen", side_effect=urlopen):
+            judge._time_remote(self.export, 1, timeout_cap=17)
+
+        parsed = judge.urllib.parse.urlparse(captured[0][0].full_url)
+        query = judge.urllib.parse.parse_qs(parsed.query)
+        self.assertEqual(query["timeout_secs"], ["17"])
 
     def test_old_or_wrong_target_response_fails_closed_as_retry(self):
         target = "LeanKernelChallengeJudge.Generated_expected.check"
@@ -720,6 +1238,17 @@ class EnvironmentBoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(judge.InfraError, "TIMING_METRIC=perf_instructions"):
                 judge.judge(Path("/tmp/unused-job"), "fib", "/tmp/unused", 1, "test")
 
+    def test_official_evaluation_cannot_use_remote_timing(self):
+        with mock.patch.object(judge, "OFFICIAL_EVAL", True), \
+             mock.patch.object(judge, "TIMING_METRIC", "perf_instructions"), \
+             mock.patch.object(judge, "TIMING_EXECUTOR_URLS", ["https://executor"]), \
+             mock.patch.object(judge, "PERF_SEED", "secret"), \
+             mock.patch.object(judge, "_PERF_SEED_SOURCE", ["stdin"]), \
+             mock.patch.object(judge, "EVALUATION_COHORT", "round-x"), \
+             mock.patch.object(judge, "EVALUATION_RUN_ID", "run-x"):
+            with self.assertRaisesRegex(judge.InfraError, "local PMU timing"):
+                judge.judge(Path("/tmp/unused-job"), "fib", "/tmp/unused", 3, "test")
+
     def test_cohort_id_commits_to_schedule(self):
         cfg = {"perf": {"min": 1, "max": 10, "count": 2}}
         result = {"stages": {}}
@@ -776,7 +1305,7 @@ class EnvironmentBoundaryTests(unittest.TestCase):
         self.assertEqual(
             contract["target_proof_encoding"], judge.TARGET_PROOF_ENCODING)
         self.assertEqual(contract["local_protocol"], "local-v2")
-        self.assertEqual(contract["remote_protocol"], "KTP/2")
+        self.assertEqual(contract["remote_protocol"], "KTP/3")
         self.assertEqual(timing_policy["measurement_contract"], contract["id"])
         self.assertEqual(
             timing_policy["correctness_boundary"], contract["correctness_boundary"])

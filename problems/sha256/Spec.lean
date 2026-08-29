@@ -1,11 +1,12 @@
 /-!
 # Lean Kernel Challenge problem `sha256` — SPEC (trusted, locked)
 
-The SHA-256 hash chain: starting from the all-zero 256-bit digest, apply full
-SHA-256 (of the 32-byte previous digest, one padded block) `n` times
-(`sha256Spec : Nat → Nat`); the result is the final digest as a natural number
-(big-endian). Constants and structure follow FIPS 180-4 exactly; the reference
-values below were cross-checked against an independent implementation.
+The SHA-256 hash chain on packed inputs.  The high bits of `n` select the chain
+length and the low 32 bits select an initial digest, so independently seeded
+instances can be evaluated at each chain length.  Each step applies full
+SHA-256 to the 32-byte previous digest (one padded block); the result is the
+final digest as a big-endian natural number.  Constants and structure follow
+FIPS 180-4 exactly.
 
 The spec is deliberately naive: one 32-bit word per `Nat`, a `List Nat` message
 schedule grown one word at a time, and one structure update per round, so every
@@ -15,9 +16,8 @@ cheaper word representations (e.g. packing the state into a single `Nat` and
 exploiting the kernel's GMP-accelerated big-`Nat` bitwise ops), fused round
 functions, or a cheaper but provably equal schedule.
 
-Check: `sha256Spec 0 = 0`, and
-`sha256Spec 1 = 0x66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925`
-(the SHA-256 digest of 32 zero bytes).
+For an input `n`, `n >>> 32` is the number of chain steps and
+`n &&& 0xffffffff` is the instance seed.
 -/
 
 /-- All word values are kept `< 2^32` by masking with this constant. -/
@@ -117,6 +117,28 @@ def encodeDigest (d : Digest) : Nat :=
   [d.a, d.b, d.c, d.d, d.e, d.f, d.g, d.h].foldl
     (fun acc w => acc * 4294967296 + w) 0
 
-/-- Parametric spec: the SHA-256 hash chain after `n` steps, started from the
-all-zero digest. -/
-def sha256Spec (n : Nat) : Nat := encodeDigest (iterSha n ⟨0, 0, 0, 0, 0, 0, 0, 0⟩)
+/-- Decode the public scaling coordinate from a packed judge input. -/
+def sha256Steps (n : Nat) : Nat := n >>> 32
+
+/-- Decode the seed-specific 32-bit instance coordinate. -/
+def sha256Seed (n : Nat) : Nat := n &&& w32
+
+/-- A 32-bit linear-congruential step used only to expand an instance seed.
+It is not part of SHA-256 and is deliberately kept separate from `sha256step`. -/
+def seedStep32 (x : Nat) : Nat := (1664525 * x + 1013904223) &&& w32
+
+/-- Expand a 32-bit seed into the eight words of the initial hash-chain digest. -/
+def seedDigest (seed : Nat) : Digest :=
+  let a := seedStep32 (seed &&& w32)
+  let b := seedStep32 a
+  let c := seedStep32 b
+  let d := seedStep32 c
+  let e := seedStep32 d
+  let f := seedStep32 e
+  let g := seedStep32 f
+  let h := seedStep32 g
+  ⟨a, b, c, d, e, f, g, h⟩
+
+/-- Parametric spec: the seed-specific SHA-256 chain encoded by `n`. -/
+def sha256Spec (n : Nat) : Nat :=
+  encodeDigest (iterSha (sha256Steps n) (seedDigest (sha256Seed n)))

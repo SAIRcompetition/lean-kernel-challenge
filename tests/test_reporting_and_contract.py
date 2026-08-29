@@ -116,13 +116,19 @@ class MalformedVerdictReporting(unittest.TestCase):
     ]
 
     def setUp(self):
+        from tests.test_scoring import grouped_verdict, make_official_grouped
+
         self.tmp = Path(tempfile.mkdtemp(prefix="report_test_"))
         (self.tmp / "fib").mkdir(parents=True)
         for name, v in self.MALFORMED:
             (self.tmp / "fib" / f"{name}.json").write_text(json.dumps(v))
-        (self.tmp / "fib" / "good.json").write_text(json.dumps(_verdict(submission="good")))
+        (self.tmp / "fib" / "good.json").write_text(json.dumps(
+            make_official_grouped(grouped_verdict("good", [10, 20, 30, 40]))))
         (self.tmp / "fib" / "corrupt.json").write_text("{not json")
         (self.tmp / "fib" / "non_utf8.json").write_bytes(b"\xff\xfe")
+        (self.tmp / "conv").mkdir()
+        (self.tmp / "conv" / "legacy-conv.json").write_text(json.dumps(
+            _verdict(problem="conv", submission="legacy-conv")))
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -148,13 +154,25 @@ class MalformedVerdictReporting(unittest.TestCase):
         p = self._run("judge")
         self.assertEqual(p.returncode, 0, f"leaderboard crashed: {p.stderr[-400:]}")
         self.assertNotIn("Traceback", p.stderr)
-        self.assertIn("good", (self.tmp / "leaderboard.md").read_text())
+        report = (self.tmp / "leaderboard.md").read_text()
+        self.assertIn("good", report)
+        self.assertNotIn("legacy-conv", report)
+        self.assertNotIn("## conv", report)
+        standalone = (self.tmp / "fib" / "leaderboard-local.md").read_text()
+        self.assertIn("good", standalone)
+        self.assertIn("no cross-problem total", standalone)
 
     def test_score_survives_malformed_verdicts(self):
         p = self._run("score")
         self.assertEqual(p.returncode, 0, f"score.py crashed: {p.stderr[-400:]}")
         self.assertNotIn("Traceback", p.stderr)
-        self.assertIn("good", (self.tmp / "scoring.md").read_text())
+        report = (self.tmp / "scoring.md").read_text()
+        self.assertIn("good", report)
+        self.assertNotIn("legacy-conv", report)
+        self.assertNotIn("## conv", report)
+        standalone = (self.tmp / "fib" / "leaderboard.md").read_text()
+        self.assertIn("good", standalone)
+        self.assertIn("no cross-problem total", standalone)
 
 
 class SignalClassification(unittest.TestCase):

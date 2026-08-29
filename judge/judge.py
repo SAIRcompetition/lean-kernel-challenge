@@ -17,8 +17,8 @@ Pipeline per submission (each contestant job runs in a unique temp workspace):
      and time the official kernel replaying it, N reps. A too-slow input occupies
      its explicit slot and later slots are still attempted; a deterministic oracle/build/kernel
      fault errors with no score. metric=wall_time (dev) or perf_instructions (Linux host).
-     With TIMING_EXECUTOR_URLS set the replays run on a remote KTP/2 executor with real PMU
-     hardware; each per-input export is uploaded with its SHA-256. An unreachable executor is
+     In non-official validation, TIMING_EXECUTOR_URLS runs replays on a remote KTP/3 executor
+     with real PMU hardware; each per-input export is uploaded with its SHA-256. An unreachable executor is
      NOT a verdict: the run exits 3 with a "retry" verdict so the caller can requeue losslessly.
 
 Exit codes: 0 = judged (verdict JSON, accepted OR rejected); 2 = infrastructure error;
@@ -34,6 +34,7 @@ import argparse
 import collections
 import fcntl
 import hashlib
+import hmac
 import importlib.util
 import json
 import math
@@ -85,14 +86,16 @@ def _int_env(name, default):
 # Dev override so the green gate can shrink the budget WITHOUT editing pipeline/config.json —
 # hand-editing it risks committing a tiny debug budget into the official configuration.
 TIMING_TIMEOUT = _int_env("TIMING_TIMEOUT_SECONDS", _J["timing_timeout_seconds"])
-# Whole-performance-phase ceiling. Per-step timeouts do not bound a submission's total: with every
-# slot probed and each failure able to burn the full timing budget, one job could hold a judge for
-# hours. On exhaustion the remaining slots are marked and a normal verdict is still emitted.
+# Legacy-v1 whole-phase ceiling (currently only the experimental ``conv`` schedule).
+# Grouped-v2 cases are independently bounded and deliberately do not share this deadline.
+# On legacy exhaustion, remaining slots are marked and a normal verdict is emitted.
 PERF_PHASE_BUDGET = _J.get("perf_phase_budget_seconds", 10800)
 DEFAULT_REPS = _J["timing_reps"]
 MAX_SUBMISSION_BYTES = _J["max_submission_bytes"]
 MAX_SUBMISSION_FILES = _J["max_submission_files"]
 MAX_TOOL_OUTPUT_BYTES = _J.get("max_tool_output_bytes", 1_048_576)
+REPLAY_MEMORY_MB = _CFG["sandbox"]["memory_mb"]
+REMOTE_PROTOCOL = _CFG["timing"]["remote_protocol"]
 # Timing metric + sandbox mode; env overrides let the Docker host switch to perf.
 TIMING_METRIC = os.environ.get("TIMING_METRIC", _CFG.get("timing", {}).get("metric", "wall_time"))
 SANDBOX_MODE = os.environ.get("SANDBOX_MODE", _CFG.get("sandbox", {}).get("mode", "none"))
@@ -107,7 +110,7 @@ DEFER_TIMING = os.environ.get("DEFER_TIMING", "") == "1"
 # service pre-creates this file in the per-run results mount and tails it while
 # the container is alive. Official/offline invocations leave it unset.
 SAIR_PROGRESS_FILE = os.environ.get("SAIR_PROGRESS_FILE", "")
-# Remote timing executor (KTP/2, lean-timer-executor). Comma-separated URLs in
+# Remote timing executor (KTP/3, lean-timer-executor). Comma-separated URLs in
 # active-standby order; used only when metric=perf_instructions. The secret is
 # the executor's bearer token and never appears in verdicts or logs.
 TIMING_EXECUTOR_URLS = [u.strip().rstrip("/") for u in
@@ -130,7 +133,7 @@ REPRO = ROOT.parent / "repro"
 COMPARATOR = Path(os.environ.get("COMPARATOR_BIN", REPRO / "comparator/.lake/build/bin/comparator"))
 LEAN4EXPORT_BIN = Path(os.environ.get("LEAN4EXPORT_BIN", REPRO / "lean4export/.lake/build/bin"))
 TIMER = Path(os.environ.get("TIMER_BIN", ROOT / "judge/timer-kernel/.lake/build/bin/kernel"))
-# Versioned measurement protocol shared by this judge, timer-kernel, and KTP/2 executors.
+# Versioned measurement protocol shared by this judge, timer-kernel, and KTP/3 executors.
 # Changing any boundary semantics must change at least one of these strings so the cohort hash
 # prevents old and new samples from being ranked together.
 MEASUREMENT_CONTRACT = "kernel-replay-v2"
@@ -160,13 +163,11 @@ PRIMITIVES = [
 SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 MAX_SLUG_LENGTH = 96
 
-# The scaling-axis inputs are a CONFIGURED POLICY, never hardcoded: each problem's config.json
-# declares `perf` {min, max, count?, spacing?, jitter?}, with global fallbacks in
-# pipeline/config.json `perf_defaults`. The judge samples `count` geometrically-spaced inputs in
-# [min, max] (even coverage in log-space, for a stable log-log slope), clamped to distinct
-# integers. Every submission in one evaluation cohort receives the same seed-jittered schedule,
-# so raw kernel work remains comparable. The operator rotates the hidden seed between cohorts;
-# with no seed the points are deterministic (local dev). See rules/evaluation.md.
+# Scored problems declare a complete grouped evaluation policy in config.json. The legacy
+# `perf` range and these global defaults remain only for evaluation-policy-v1 tasks such as the
+# experimental `conv` workspace. Every submission in one cohort receives the same schedule; the
+# operator rotates its hidden seed between cohorts. An unseeded plan is deterministic local
+# development only. See rules/evaluation.md and rules/problem-scoring.md.
 _PERF_DEFAULTS = _CFG.get("perf_defaults", {"count": 10, "spacing": "geometric", "jitter": 0.15})
 PERF_SEED = os.environ.pop("PERF_SEED", "")
 _PERF_SEED_SOURCE = ["environment" if PERF_SEED else None]
@@ -376,6 +377,337 @@ def perf_inputs(cfg, problem):
     if len(pts) != count or any(a >= b for a, b in zip(pts, pts[1:])):
         _perf_policy_error(problem, "could not construct the requested distinct input slots")
     return pts
+
+
+_GROUPED_EVALUATION_SCHEMA = "grouped-evaluation-v1"
+_SEED_COMMITMENT_DOMAIN = b"lean-kernel-challenge/grouped-evaluation-seed-v1\0"
+_GROUP_SAMPLE_DOMAIN = b"lean-kernel-challenge/grouped-evaluation-sample-v1\0"
+_GROUP_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+
+
+def _seed_commitment():
+    """Commit to the hidden schedule seed without recording the seed itself.
+
+    The commitment and the fully resolved plan are both part of evaluation-policy-v2.  After a
+    cohort closes, publishing the seed lets anybody reproduce the plan and verify this value.
+    Local, deliberately unseeded development runs record null rather than a hash of an empty
+    string, so they cannot be mistaken for a hidden official schedule.
+    """
+    if not PERF_SEED:
+        return None
+    return hashlib.sha256(_SEED_COMMITMENT_DOMAIN + PERF_SEED.encode("utf-8")).hexdigest()
+
+
+def _group_sample_digest(problem, group, case, purpose, attempt=0):
+    """Domain-separated deterministic PRF output for one grouped schedule choice."""
+    key = PERF_SEED.encode("utf-8")
+    material = json.dumps(
+        [problem, group, case, purpose, attempt],
+        ensure_ascii=True, separators=(",", ":"),
+    ).encode("utf-8")
+    return hmac.new(key, _GROUP_SAMPLE_DOMAIN + material, hashlib.sha256).digest()
+
+
+def _group_jitter(x, lo, hi, frac, problem, group, case, endpoint=None):
+    """Grouped-policy counterpart of `_perf_jitter`, additionally separated by group id."""
+    if not PERF_SEED or frac <= 0:
+        return x
+    sample = int.from_bytes(
+        _group_sample_digest(problem, group, case, "jitter")[:8], "big")
+    endpoint_sample = sample >> 11
+    inward_u = (endpoint_sample + 1) / (2 ** 53 + 1)
+    if endpoint == "lower":
+        if lo == 0:
+            return x
+        return min(hi, x * (1.0 + inward_u * frac))
+    if endpoint == "upper":
+        return max(lo, x * (1.0 - inward_u * frac))
+    u = sample / 2.0 ** 64
+    return min(hi, max(lo, x * (1.0 + (2.0 * u - 1.0) * frac)))
+
+
+def _group_sampling_error(problem, group, detail):
+    raise InfraError(
+        f"invalid grouped evaluation policy for '{problem}' group '{group}': {detail}")
+
+
+def _group_int(value, problem, group, field):
+    if type(value) is int:
+        return value
+    if isinstance(value, str) and re.fullmatch(r"[+-]?[0-9]+", value.strip()):
+        return int(value)
+    _group_sampling_error(problem, group, f"{field} must be an integer (got {value!r})")
+
+
+def _group_sampling_count(sampling, problem, group):
+    count = _group_int(sampling.get("count"), problem, group, "sampling.count")
+    if count < 1:
+        _group_sampling_error(problem, group, f"count must be >= 1 (got {count})")
+    return count
+
+
+def _group_range_values(sampling, problem, group, spacing):
+    lo = _group_int(sampling.get("min"), problem, group, "sampling.min")
+    hi = _group_int(sampling.get("max"), problem, group, "sampling.max")
+    if lo < 0:
+        _group_sampling_error(problem, group, f"min must be >= 0 (got {lo})")
+    if hi < lo:
+        _group_sampling_error(problem, group, f"max ({hi}) is smaller than min ({lo})")
+    count = _group_sampling_count(sampling, problem, group)
+    capacity = hi - lo + 1
+    if count > capacity:
+        _group_sampling_error(
+            problem, group,
+            f"count {count} exceeds the {capacity} distinct integers in [{lo}, {hi}]")
+
+    jitter_value = sampling.get("jitter", _PERF_DEFAULTS.get("jitter", 0.15))
+    if isinstance(jitter_value, bool) or not isinstance(jitter_value, (int, float)):
+        _group_sampling_error(problem, group, f"jitter must be a finite number (got {jitter_value!r})")
+    jitter = float(jitter_value)
+    if not math.isfinite(jitter) or not 0 <= jitter < 1:
+        _group_sampling_error(
+            problem, group, f"jitter must satisfy 0 <= jitter < 1 (got {jitter_value!r})")
+    if _official_eval() and jitter == 0:
+        _group_sampling_error(problem, group, "official range sampling requires positive jitter")
+
+    if count == 1:
+        raw = [float(lo)]
+    elif spacing == "linear":
+        raw = [lo + (hi - lo) * i / (count - 1) for i in range(count)]
+    elif lo == 0:
+        if count == 2:
+            raw = [0.0, float(hi)]
+        else:
+            positive_count = count - 1
+            raw = [0.0] + [
+                hi ** (i / (positive_count - 1)) for i in range(positive_count)
+            ]
+    else:
+        raw = [lo * (hi / lo) ** (i / (count - 1)) for i in range(count)]
+
+    values = []
+    for case, x in enumerate(raw):
+        endpoint = "lower" if case == 0 else "upper" if case + 1 == count else None
+        target = int(round(
+            _group_jitter(x, lo, hi, jitter, problem, group, case, endpoint)))
+        lower = lo + case
+        upper = hi - (count - 1 - case)
+        if values:
+            lower = max(lower, values[-1] + 1)
+        values.append(min(upper, max(lower, target)))
+    if len(values) != count or any(a >= b for a, b in zip(values, values[1:])):
+        _group_sampling_error(problem, group, "could not construct distinct ordered range samples")
+    return values
+
+
+def _group_uniform_values(sampling, problem, group):
+    lo = _group_int(sampling.get("min"), problem, group, "sampling.min")
+    hi = _group_int(sampling.get("max"), problem, group, "sampling.max")
+    if lo < 0:
+        _group_sampling_error(problem, group, f"min must be >= 0 (got {lo})")
+    if hi < lo:
+        _group_sampling_error(problem, group, f"max ({hi}) is smaller than min ({lo})")
+    count = _group_sampling_count(sampling, problem, group)
+    capacity = hi - lo + 1
+    if count > capacity:
+        _group_sampling_error(
+            problem, group,
+            f"count {count} exceeds the {capacity} distinct integers in [{lo}, {hi}]")
+
+    # Rejection sampling avoids modulo bias and makes the exact integer schedule independently
+    # reproducible from the revealed seed. Collision retries are separately domain-separated.
+    modulus = 1 << 256
+    unbiased_limit = modulus - (modulus % capacity)
+    values = []
+    used = set()
+    for case in range(count):
+        attempt = 0
+        while True:
+            sample = int.from_bytes(
+                _group_sample_digest(problem, group, case, "uniform-int", attempt), "big")
+            attempt += 1
+            if sample >= unbiased_limit:
+                continue
+            value = lo + sample % capacity
+            if value not in used:
+                used.add(value)
+                values.append(value)
+                break
+    return values
+
+
+def _group_packed_values(sampling, problem, group):
+    """Encode one public scale and one hidden 32-bit instance seed into a Nat."""
+    scale = _group_int(sampling.get("scale"), problem, group, "sampling.scale")
+    seed_bits = _group_int(sampling.get("seed_bits"), problem, group, "sampling.seed_bits")
+    if scale < 0:
+        _group_sampling_error(problem, group, f"scale must be >= 0 (got {scale})")
+    if seed_bits != 32:
+        _group_sampling_error(
+            problem, group, f"packed seed_bits must be exactly 32 (got {seed_bits})")
+    count = _group_sampling_count(sampling, problem, group)
+    capacity = 1 << seed_bits
+    if count > capacity:
+        _group_sampling_error(problem, group, f"count {count} exceeds the packed seed space")
+
+    values = []
+    used_seeds = set()
+    for case in range(count):
+        attempt = 0
+        while True:
+            seed = int.from_bytes(
+                _group_sample_digest(problem, group, case, "packed-seed", attempt)[:4], "big")
+            attempt += 1
+            if seed not in used_seeds:
+                used_seeds.add(seed)
+                values.append((scale << seed_bits) | seed)
+                break
+    return scale, values
+
+
+def performance_plan(cfg, problem):
+    """Resolve a grouped evaluation policy into an explicit, flat slot plan.
+
+    `None` means the problem uses the legacy v1 `perf` policy.  Group order, case identity and
+    exact Nat inputs are explicit in every v2 row; no scorer has to infer difficulty from `n`.
+    """
+    evaluation = cfg.get("evaluation")
+    if evaluation is None:
+        return None
+    if "perf" in cfg:
+        raise InfraError(
+            f"problem '{problem}' config must not define both legacy perf and evaluation")
+    if not isinstance(evaluation, dict):
+        raise InfraError(f"invalid grouped evaluation policy for '{problem}': evaluation must be an object")
+    if evaluation.get("schema") != _GROUPED_EVALUATION_SCHEMA:
+        raise InfraError(
+            f"invalid grouped evaluation policy for '{problem}': unsupported schema "
+            f"{evaluation.get('schema')!r}")
+    groups = evaluation.get("groups")
+    if not isinstance(groups, list) or not groups:
+        raise InfraError(
+            f"invalid grouped evaluation policy for '{problem}': groups must be a nonempty list")
+    if _official_eval() and not PERF_SEED:
+        raise InfraError("official evaluation requires a nonempty PERF_SEED")
+    count_override_text = os.environ.get("PERF_COUNT")
+    if OFFICIAL_EVAL and count_override_text not in (None, ""):
+        raise InfraError("PERF_COUNT is forbidden for official grouped evaluation policies")
+    # Local smoke tests may cap EACH group independently.  Resolve the configured schedule first
+    # and then take its prefix, so quick mode is literally a prefix of the full local cohort (and
+    # packed case seeds keep the same case identities).  Malformed/non-positive development
+    # overrides retain the legacy forgiving behavior and are ignored.
+    group_case_cap = None
+    if (not OFFICIAL_EVAL and isinstance(count_override_text, str)
+            and re.fullmatch(r"[+]?[0-9]+", count_override_text.strip())):
+        parsed_override = int(count_override_text)
+        if parsed_override > 0:
+            group_case_cap = parsed_override
+
+    plan = []
+    seen_groups = set()
+    seen_orders = set()
+    seen_inputs = set()
+    previous_order = None
+    for group_cfg in groups:
+        if not isinstance(group_cfg, dict):
+            raise InfraError(
+                f"invalid grouped evaluation policy for '{problem}': every group must be an object")
+        group = group_cfg.get("id")
+        if not isinstance(group, str) or not _GROUP_ID.fullmatch(group):
+            raise InfraError(
+                f"invalid grouped evaluation policy for '{problem}': invalid group id {group!r}")
+        if group in seen_groups:
+            _group_sampling_error(problem, group, "duplicate group id")
+        seen_groups.add(group)
+        order = group_cfg.get("order")
+        if type(order) is not int or order < 0:
+            _group_sampling_error(problem, group, f"order must be a nonnegative integer (got {order!r})")
+        if order in seen_orders:
+            _group_sampling_error(problem, group, f"duplicate group order {order}")
+        if previous_order is not None and order <= previous_order:
+            _group_sampling_error(problem, group, "groups must be listed in strictly increasing order")
+        seen_orders.add(order)
+        previous_order = order
+
+        sampling = group_cfg.get("sampling")
+        if not isinstance(sampling, dict):
+            _group_sampling_error(problem, group, "sampling must be an object")
+        kind = sampling.get("kind")
+        plan_extras = {}
+        if kind in ("geometric_range", "linear_range", "range"):
+            spacing = (sampling.get("spacing", "geometric") if kind == "range"
+                       else "geometric" if kind == "geometric_range" else "linear")
+            if spacing not in ("geometric", "linear"):
+                _group_sampling_error(
+                    problem, group, f"spacing must be 'geometric' or 'linear' (got {spacing!r})")
+            values = _group_range_values(sampling, problem, group, spacing)
+        elif kind == "uniform_int":
+            values = _group_uniform_values(sampling, problem, group)
+        elif kind == "packed":
+            scale, values = _group_packed_values(sampling, problem, group)
+            plan_extras = {"scale": scale}
+        elif kind == "fixed":
+            values = sampling.get("values")
+            if not (isinstance(values, list) and values
+                    and all(type(n) is int and n >= 0 for n in values)
+                    and len(values) == len(set(values))):
+                _group_sampling_error(
+                    problem, group, "fixed values must be a nonempty list of distinct Nat inputs")
+            if "count" in sampling and _group_sampling_count(sampling, problem, group) != len(values):
+                _group_sampling_error(problem, group, "fixed count does not match values length")
+        else:
+            _group_sampling_error(problem, group, f"unknown sampling kind {kind!r}")
+
+        if group_case_cap is not None:
+            values = values[:group_case_cap]
+
+        limits = group_cfg.get("limits", {})
+        if not isinstance(limits, dict):
+            _group_sampling_error(problem, group, "limits must be an object")
+        unknown_limits = set(limits) - {
+            "timeout_seconds", "kernel_instructions",
+        }
+        if unknown_limits:
+            _group_sampling_error(
+                problem, group, f"unknown limit fields {sorted(unknown_limits)!r}")
+        for limit_name, limit_value in limits.items():
+            if type(limit_value) is not int or limit_value <= 0:
+                _group_sampling_error(
+                    problem, group,
+                    f"limits.{limit_name} must be a positive integer (got {limit_value!r})")
+
+        for case, n in enumerate(values):
+            if n in seen_inputs:
+                _group_sampling_error(problem, group, f"input {n} duplicates another plan slot")
+            seen_inputs.add(n)
+            plan.append({
+                "slot": len(plan), "group": group, "case": case, "n": n,
+                "limits": dict(limits), **plan_extras,
+            })
+
+    return plan
+
+
+def _validated_performance_plan(cfg, problem):
+    """Resolve and validate the complete grouped scoring contract before judging.
+
+    ``performance_plan`` owns deterministic schedule construction.  The canonical
+    scorer owns awards, prerequisites, ranking, and the sealed-plan shape.  Running
+    both here prevents a malformed organizer config from consuming contestant work
+    and later being promoted as accepted-but-unscored.
+    """
+    plan = performance_plan(cfg, problem)
+    if plan is None:
+        if OFFICIAL_EVAL:
+            raise InfraError(
+                f"official Stage 1 evaluation requires a grouped policy for '{problem}'")
+        return None
+    scorer = _canonical_scorer()
+    error = scorer._grouped_evaluation_shape_error(
+        cfg.get("evaluation"), plan, official=OFFICIAL_EVAL)
+    if error is not None:
+        raise InfraError(f"invalid grouped evaluation policy for '{problem}': {error}")
+    return plan
 
 
 class InfraError(Exception):
@@ -681,6 +1013,8 @@ def run(cmd, cwd, env, timeout, stdout_path=None):
     Tool output is continuously drained into a bounded in-memory tail, preventing verbose
     elaboration from consuming unbounded memory or disk. Returns
     (exit_code | 'timeout', output_tail)."""
+    oom_kills_before = _read_cgroup_oom_kills()
+    _LAST_RUN_OOM_KILL[0] = False
     popen_kw = dict(cwd=cwd, env=env, start_new_session=True, preexec_fn=_raise_stack)
     p = None
     pgid = None
@@ -735,6 +1069,12 @@ def run(cmd, cwd, env, timeout, stdout_path=None):
             output_file.close()
         if output_pipe is not None and not output_pipe.closed:
             output_pipe.close()
+        oom_kills_after = _read_cgroup_oom_kills()
+        _LAST_RUN_OOM_KILL[0] = (
+            oom_kills_before is not None
+            and oom_kills_after is not None
+            and oom_kills_after > oom_kills_before
+        )
 
 
 def last_line(out):
@@ -745,12 +1085,46 @@ def last_line(out):
 def _died_by_signal(rc):
     """True if a trusted tool was killed by a signal rather than exiting on its own verdict.
 
-    A SIGSEGV in the comparator or an OOM SIGKILL is an INFRASTRUCTURE fault; blaming it on the
-    contestant ("your proof is invalid") would put a false rejection on the leaderboard. Python
-    reports a raw negative code, while `lake env` launders it into the shell's 128+N convention."""
+    At correctness-gate stages every such death is an infrastructure fault, never evidence that
+    a proof is invalid. The target-replay path separately recognizes SIGKILL under the sealed
+    cgroup as a case resource-limit outcome. Python reports a raw negative code, while `lake env`
+    launders it into the shell's 128+N convention."""
     if not isinstance(rc, int):
         return False
     return rc < 0 or 128 < rc <= 192
+
+
+def _died_by_sigkill(rc):
+    """Recognize the exit forms produced when the cgroup OOM killer sends SIGKILL."""
+    return rc in (-signal.SIGKILL, 128 + signal.SIGKILL)
+
+
+def _read_cgroup_oom_kills():
+    """Read the cgroup-v2 OOM-kill counter, or ``None`` outside that environment."""
+    try:
+        fields = {}
+        for line in Path("/sys/fs/cgroup/memory.events").read_text().splitlines():
+            key, value = line.split()
+            fields[key] = int(value)
+        return fields.get("oom_kill")
+    except (OSError, ValueError):
+        return None
+
+
+_LAST_RUN_OOM_KILL = [False]
+
+
+def _attested_local_memory_kill(rc):
+    """Require the canonical wrapper and OOM evidence bound to the preceding command."""
+    evidenced = _LAST_RUN_OOM_KILL[0]
+    _LAST_RUN_OOM_KILL[0] = False
+    return bool(
+        evidenced
+        and _died_by_sigkill(rc)
+        and SANDBOX_MODE == "container"
+        and EVALUATION_RESOURCE_POLICY.get("memory") == "4g"
+        and os.environ.get("ISOLATION_ATTESTATION") == "run_isolated.sh"
+    )
 
 
 def _resolve_lean_runtime(work, env):
@@ -912,7 +1286,7 @@ def _measurement_contract_record():
         "wall_clock_source": "timer-internal-monotonic-ns",
         "perf_counter_control": "perf-delay-minus-one+timer-prctl",
         "local_protocol": "local-v2",
-        "remote_protocol": "KTP/2",
+        "remote_protocol": REMOTE_PROTOCOL,
         "timeout_scope": PROCESS_TIMEOUT_SCOPE,
     }
 
@@ -925,6 +1299,22 @@ def _timeout_measurement(target, source):
         "timeout_scope": PROCESS_TIMEOUT_SCOPE,
         "timeout_source": source,
     }
+
+
+def _resource_limit_measurement(target, source, phase):
+    record = {
+        "resource": "memory",
+        "memory_mb": REPLAY_MEMORY_MB,
+        "resource_limit_source": source,
+        "resource_phase": phase,
+    }
+    if phase in ("correctness-replay", "target-replay"):
+        record.update({
+            "measurement_contract": MEASUREMENT_CONTRACT,
+            "measurement_boundary": _measurement_boundary(target),
+            "measurement_target": target,
+        })
+    return record
 
 
 def _parse_timer_measurement(out, target):
@@ -1035,7 +1425,7 @@ def _time_replay(export_file, work, env, timeout, target=None):
 
 
 def _remote_response_error(data, reps, target=None):
-    """Return None for a usable KTP/2 response, otherwise a concise schema error."""
+    """Return None for a usable resource-bound KTP/3 response."""
     if not isinstance(data, dict):
         return "response is not a JSON object"
     expected_boundary = _measurement_boundary(target)
@@ -1046,7 +1436,7 @@ def _remote_response_error(data, reps, target=None):
     if "target" not in data or data["target"] != target:
         return "missing/mismatched measurement target"
     status = data.get("status")
-    if status not in ("ok", "timeout", "failed"):
+    if status not in ("ok", "timeout", "resource-limit", "failed"):
         return f"unrecognized status {status!r}"
     executor = data.get("executor")
     version = data.get("version")
@@ -1054,6 +1444,14 @@ def _remote_response_error(data, reps, target=None):
         return "missing/invalid executor identity"
     if not isinstance(version, str) or not version.strip():
         return "missing/invalid executor version"
+    if data.get("memory_mb") != REPLAY_MEMORY_MB:
+        return "missing/mismatched executor memory limit"
+    if status == "resource-limit":
+        if data.get("resource") != "memory":
+            return "remote resource limit is not identified as memory"
+        if data.get("resource_phase") not in {
+                "parse", "preload", "replay", "whole-process"}:
+            return "remote resource limit has an invalid phase"
     if status != "ok":
         return None
     samples = data.get("samples")
@@ -1078,12 +1476,13 @@ def _remote_response_error(data, reps, target=None):
     return None
 
 
-def _time_remote(export_file, reps, target=None, budget_s=None, deadline=None):
-    """Run all timing reps on a remote KTP/2 executor (lean-timer-executor).
+def _time_remote(export_file, reps, target=None, budget_s=None, deadline=None,
+                 timeout_cap=None):
+    """Run all timing reps on a remote resource-bound KTP/3 executor.
 
     Returns the executor's decoded 200 response: {"status": "ok", "samples":
     [{"instructions": …, "task_clock_ms": …}, …]} or a terminal
-    {"status": "timeout"|"failed", …}. Anything that prevents obtaining a 200
+    {"status": "timeout"|"resource-limit"|"failed", …}. Anything that prevents obtaining a 200
     (connection failure, 5xx, auth/param 4xx, undecodable body) is treated as
     "executor unavailable": every URL is tried per attempt, attempts are
     separated by short sleeps, and exhaustion raises TimingRetry — never an
@@ -1130,9 +1529,13 @@ def _time_remote(export_file, reps, target=None, budget_s=None, deadline=None):
             if rem is not None and rem <= 0:
                 raise TimingRetry(
                     f"timing executor unavailable until phase deadline (last: {last_err})")
-            per_replay_timeout = TIMING_TIMEOUT
+            per_replay_timeout = min(
+                TIMING_TIMEOUT,
+                timeout_cap if timeout_cap is not None else TIMING_TIMEOUT,
+            )
             if rem is not None:
-                per_replay_timeout = max(1, min(TIMING_TIMEOUT, int(rem / max(reps, 1))))
+                per_replay_timeout = max(
+                    1, min(per_replay_timeout, int(rem / max(reps, 1))))
             request_timeout = reps * per_replay_timeout + 120
             if rem is not None:
                 request_timeout = max(0.001, min(request_timeout, rem))
@@ -1143,8 +1546,9 @@ def _time_remote(export_file, reps, target=None, budget_s=None, deadline=None):
                 "measurement_contract": MEASUREMENT_CONTRACT,
                 "boundary": boundary,
                 "target": target or "",
+                "memory_mb": REPLAY_MEMORY_MB,
             })
-            url = f"{base}/ktp/v2/time?{query}"
+            url = f"{base}/ktp/v3/time?{query}"
             req = urllib.request.Request(url, data=export_bytes, method="POST", headers={
                 "Authorization": f"Bearer {TIMING_EXECUTOR_SECRET}",
                 "Content-Type": "application/octet-stream",
@@ -1152,6 +1556,7 @@ def _time_remote(export_file, reps, target=None, budget_s=None, deadline=None):
                 "X-Measurement-Contract": MEASUREMENT_CONTRACT,
                 "X-Measurement-Boundary": boundary,
                 "X-Measurement-Target": target or "",
+                "X-Replay-Memory-MB": str(REPLAY_MEMORY_MB),
             })
             try:
                 with urllib.request.urlopen(req, timeout=request_timeout) as resp:
@@ -1243,6 +1648,8 @@ def _eval_impl_value(work, env, n, timeout, lean_bin="lean"):
     rc, out = run([str(lean_bin), "EvalVal.lean"], work, env, timeout)
     if rc == "timeout":
         return "timeout", None
+    if _attested_local_memory_kill(rc):
+        return "resource-limit", None
     if rc != 0:
         return "error", last_line(out)
     try:
@@ -1314,14 +1721,28 @@ def _perf_export(work, env, n, v, out_path, timeout, artifact_lib, lean_bin, dea
     contains the computation instead of referring to an untimed extracted proof helper. Kernel
     replay therefore reduces `impl n` at this specific n. Returns
     (kind, error, fully_qualified_theorem): 'ok';
-    'timeout' when this slot's build/export is too slow; 'budget-exhausted' when the shared phase
-    deadline expires; or 'error' for a
+    'timeout' when this slot's build/export is too slow; 'resource-limit' when its process is
+    killed by the memory cgroup; 'budget-exhausted' when the shared phase deadline expires; or 'error' for a
     non-timeout build/export failure — which includes a wrong reference `v` (the direct proof
     then fails to prove `impl n = v` *deterministically*, so it is errored, not scored). The
     caller records only wall-clock timeouts as unsuccessful slots and continues with later
     slots; a wrong value fails deterministically far inside the timing budget, so it never
     reaches that timeout path in practice."""
     source, theorem = _perf_theorem_source(n, v, out_path)
+    # Compilation and export are one preparation stage and share this cap.  Giving
+    # each subprocess a fresh full timeout would silently double the published
+    # infrastructure allowance for every case.
+    build_export_deadline = time.monotonic() + timeout
+
+    def remaining_build_export():
+        now = time.monotonic()
+        if deadline is not None and now >= deadline:
+            return 0.0, "budget-exhausted"
+        remaining = build_export_deadline - now
+        if deadline is not None:
+            remaining = min(remaining, deadline - now)
+        return max(0.0, remaining), "timeout"
+
     (work / "Perf.lean").write_text(source)
     perf_olean = artifact_lib / "Perf.olean"
     if perf_olean.exists():
@@ -1332,27 +1753,31 @@ def _perf_export(work, env, n, v, out_path, timeout, artifact_lib, lean_bin, dea
             return "error", f"cannot replace generated Perf.olean at n={n}: {e}", theorem
     # Compile only the judge-owned theorem. `import Submission` resolves to the byte-pinned
     # comparator artifact; no contestant source is re-elaborated in the performance phase.
-    step_timeout = _remaining_timeout(deadline, timeout)
+    step_timeout, expired_kind = remaining_build_export()
     if step_timeout <= 0:
-        return "budget-exhausted", None, theorem
+        return expired_kind, None, theorem
     rc, out = run(
         [str(lean_bin), "-o", str(perf_olean), "Perf.lean"],
         work, env, step_timeout)
     if rc == "timeout":
         # This build timeout is distinct from the later timer process watchdog.
         return "timeout", None, theorem
+    if _attested_local_memory_kill(rc):
+        return "resource-limit", None, theorem
     if rc != 0:
         # The oracle already produced a value, so the build should succeed. Any DETERMINISTIC
         # failure is a fault, never a timeout. In particular, a wrong oracle value makes the
         # direct equality theorem fail kernel checking, so it can never be scored.
         return "error", f"perf build failed at n={n}: {last_line(out)}", theorem
-    step_timeout = _remaining_timeout(deadline, timeout)
+    step_timeout, expired_kind = remaining_build_export()
     if step_timeout <= 0:
-        return "budget-exhausted", None, theorem
+        return expired_kind, None, theorem
     rc, out = run([str(LEAN4EXPORT_BIN / "lean4export"), "Perf", "--", theorem],
                   work, env, step_timeout, stdout_path=out_path)
     if rc == "timeout":
         return "timeout", None, theorem
+    if _attested_local_memory_kill(rc):
+        return "resource-limit", None, theorem
     if rc != 0:
         return "error", f"perf export failed at n={n}: {last_line(out)}", theorem
     if not out_path.exists() or out_path.stat().st_size == 0:
@@ -1503,34 +1928,102 @@ def _headline_row(scaling):
     return max(completed, key=lambda row: row["n"]) if completed else None
 
 
-def _collect_perf_slots(inputs, probe, deadline=None):
+def _plan_slot_annotations(performance_plan, slot, n):
+    if performance_plan is None:
+        return {}
+    if not isinstance(performance_plan, list) or slot >= len(performance_plan):
+        raise InfraError("performance plan does not cover every input slot")
+    planned = performance_plan[slot]
+    if not (isinstance(planned, dict)
+            and planned.get("slot") == slot
+            and type(planned.get("n")) is int and planned["n"] == n
+            and isinstance(planned.get("group"), str)
+            and type(planned.get("case")) is int and planned["case"] >= 0):
+        raise InfraError(f"invalid performance plan row for slot {slot}")
+    return {"group": planned["group"], "case": planned["case"]}
+
+
+def _performance_timeout_caps(performance_plan, n):
+    """Return independent preparation and scored-replay caps for one slot.
+
+    A group's published ``timeout_seconds`` limits only the measured target
+    replay. The unscored value oracle and theorem build/export retain the
+    evaluator timing timeout, while the axiom audit retains its audit timeout.
+    Legacy callers may additionally intersect these caps with their aggregate
+    development deadline. Grouped-v2 cases deliberately do not share one.
+    """
+    point_limits = {}
+    if performance_plan is not None:
+        point_limits = next(
+            (row.get("limits", {}) for row in performance_plan
+             if isinstance(row, dict) and row.get("n") == n),
+            {},
+        )
+    replay_timeout = min(
+        TIMING_TIMEOUT,
+        point_limits.get("timeout_seconds", TIMING_TIMEOUT),
+    )
+    return {
+        "value_eval": TIMING_TIMEOUT,
+        "build_export": TIMING_TIMEOUT,
+        "axiom_audit": AUDIT_TIMEOUT,
+        "target_replay": replay_timeout,
+    }
+
+
+def _collect_perf_slots(inputs, probe, deadline=None, performance_plan=None):
     """Probe every configured slot unless a deterministic fatal error is returned.
 
     `probe(n)` returns `(row, error)`. Timeout rows carry no error and therefore never suppress
     later inputs; a deterministic fault returns an error and terminates the curve.
 
-    `deadline` (monotonic seconds) bounds the WHOLE performance phase. Per-step timeouts alone let
-    one submission hold a judge slot for hours, because every failing slot may burn the full timing
-    budget and every slot is probed. On exhaustion the remaining slots are recorded as
-    `budget-exhausted` and the verdict is still emitted normally (a partial curve, not an error).
+    When supplied for a legacy-v1 schedule, `deadline` (monotonic seconds) bounds the whole
+    performance phase. On exhaustion the remaining legacy slots are recorded as
+    `budget-exhausted`. Grouped-v2 schedules always pass ``None`` because their cases are
+    independently bounded and an aggregate cutoff would make scores depend on case order.
     """
     scaling = []
     for slot, n in enumerate(inputs):
+        annotations = _plan_slot_annotations(performance_plan, slot, n)
         if deadline is not None and time.monotonic() >= deadline:
             for later_slot, later_n in enumerate(inputs[slot:], start=slot):
-                scaling.append({"slot": later_slot, "n": later_n, "result": "budget-exhausted"})
+                later_annotations = _plan_slot_annotations(
+                    performance_plan, later_slot, later_n)
+                scaling.append({
+                    "slot": later_slot, **later_annotations,
+                    "n": later_n, "result": "budget-exhausted",
+                })
             return scaling, None
-        # Pass the deadline down: capping only BETWEEN slots lets one slot chain several
-        # per-step timeouts and overshoot the whole-phase budget.
+        # Pass a legacy deadline down: capping only BETWEEN slots would let one slot chain
+        # several per-step timeouts and overshoot that development budget.
         row, error = probe(n, deadline) if deadline is not None else probe(n)
         if row is not None:
-            row = {"slot": slot, **row}
+            # Judge-owned identity fields win even if a future probe accidentally returns one.
+            row = {**row, "slot": slot, **annotations}
             scaling.append(row)
         if error is not None:
             for later_slot, later_n in enumerate(inputs[slot + 1:], start=slot + 1):
-                scaling.append({"slot": later_slot, "n": later_n, "result": "not-run"})
+                later_annotations = _plan_slot_annotations(
+                    performance_plan, later_slot, later_n)
+                scaling.append({
+                    "slot": later_slot, **later_annotations,
+                    "n": later_n, "result": "not-run",
+                })
             return scaling, error
     return scaling, None
+
+
+def _performance_phase_deadline(performance_plan):
+    """Return the legacy aggregate deadline, or ``None`` for grouped cases.
+
+    Every grouped-v2 case has its own sealed preparation and replay limits.  An
+    aggregate deadline would make later case outcomes depend on the work spent by
+    earlier cases, so it is intentionally retained only for legacy-v1 development
+    schedules (currently ``conv``).
+    """
+    if performance_plan is not None or not PERF_PHASE_BUDGET:
+        return None
+    return time.monotonic() + PERF_PHASE_BUDGET
 
 
 def _canonical_work(correctness_timing, scaling, metric=None):
@@ -1607,7 +2100,7 @@ def _evaluator_bundle_digest():
     return digest.hexdigest()
 
 
-def _evaluation_cohort(problem, cfg, inputs, reps, result):
+def _evaluation_cohort(problem, cfg, inputs, reps, result, performance_plan=None):
     """Return the public comparison cohort recorded in every current verdict.
 
     The round label is operator supplied. The derived id commits to the exact schedule, problem
@@ -1619,17 +2112,12 @@ def _evaluation_cohort(problem, cfg, inputs, reps, result):
         "executor": EVALUATION_EXECUTOR_ID,
         "version": EVALUATION_EXECUTOR_VERSION,
     }
-    policy = {
-        "schema": "evaluation-policy-v1",
+    common = {
         "round": round_id,
         "problem": problem,
         "problem_bundle_sha256": _problem_bundle_digest(problem),
         "evaluator_bundle_sha256": _evaluator_bundle_digest(),
         "evaluation_mode": "official" if OFFICIAL_EVAL else "development",
-        "perf": cfg.get("perf"),
-        "perf_defaults": {
-            key: _PERF_DEFAULTS.get(key) for key in ("count", "spacing", "jitter")
-        },
         "inputs": inputs,
         "metric": TIMING_METRIC,
         "reps": reps,
@@ -1646,6 +2134,40 @@ def _evaluation_cohort(problem, cfg, inputs, reps, result):
         "measurement_contract": _measurement_contract_record(),
         "executor": executor,
     }
+    evaluation = cfg.get("evaluation")
+    if evaluation is None:
+        if performance_plan is not None:
+            raise InfraError("legacy evaluation policy cannot carry a grouped performance plan")
+        policy = {
+            "schema": "evaluation-policy-v1",
+            **common,
+            "perf": cfg.get("perf"),
+            "perf_defaults": {
+                key: _PERF_DEFAULTS.get(key) for key in ("count", "spacing", "jitter")
+            },
+        }
+    else:
+        if not isinstance(performance_plan, list) or not performance_plan:
+            raise InfraError("grouped evaluation policy requires a resolved performance plan")
+        if [row.get("n") for row in performance_plan if isinstance(row, dict)] != inputs:
+            raise InfraError("resolved performance plan does not match evaluation inputs")
+        plan_encoded = json.dumps(
+            performance_plan, sort_keys=True, separators=(",", ":"),
+            allow_nan=False).encode()
+        policy = {
+            "schema": "evaluation-policy-v2",
+            **common,
+            "budgets": {
+                **common["budgets"],
+                # Grouped cases are independently bounded.  Zero is an explicit,
+                # sealed statement that no order-dependent aggregate deadline applies.
+                "perf_phase_budget_seconds": 0,
+            },
+            "evaluation": evaluation,
+            "performance_plan": performance_plan,
+            "performance_plan_sha256": hashlib.sha256(plan_encoded).hexdigest(),
+            "seed_commitment": _seed_commitment(),
+        }
     encoded = json.dumps(
         policy, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     return {
@@ -1660,7 +2182,7 @@ def _evaluation_cohort(problem, cfg, inputs, reps, result):
 def judge(job_dir: Path, problem, submission_dir, reps, tag):
     sub_name = tag or Path(submission_dir).name
     timing_protocol = (
-        "KTP/2"
+        REMOTE_PROTOCOL
         if TIMING_METRIC == "perf_instructions" and TIMING_EXECUTOR_URLS
         else "local-v2"
     )
@@ -1699,7 +2221,9 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         raise InfraError("official evaluation requires a valid EVALUATION_RUN_ID")
     if OFFICIAL_EVAL and TIMING_METRIC != "perf_instructions":
         raise InfraError("official evaluation requires TIMING_METRIC=perf_instructions")
-    if OFFICIAL_EVAL and not TIMING_EXECUTOR_URLS and (
+    if OFFICIAL_EVAL and TIMING_EXECUTOR_URLS:
+        raise InfraError("Stage 1 official evaluation requires in-container local PMU timing")
+    if OFFICIAL_EVAL and (
             not EVALUATION_EXECUTOR_ID or EVALUATION_EXECUTOR_ID == "local"
             or not EVALUATION_EXECUTOR_VERSION
             or EVALUATION_EXECUTOR_VERSION == "fixed-host"):
@@ -1712,6 +2236,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if OFFICIAL_EVAL and os.environ.get("ISOLATION_ATTESTATION") != "run_isolated.sh":
         raise InfraError("official evaluation must be launched via scripts/run_isolated.sh "
                          "(missing or invalid ISOLATION_ATTESTATION)")
+    if OFFICIAL_EVAL and _read_cgroup_oom_kills() is None:
+        raise InfraError("official evaluation requires cgroup-v2 memory.events OOM accounting")
 
     # Fail-closed sandbox policy: production must have a real sandbox.
     env = tool_env()
@@ -1728,8 +2254,9 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                              "was started without --network none (refusing to run unsandboxed)")
         result["stages"]["sandbox"] = {"mode": SANDBOX_MODE, "network_reachable": reachable}
 
-    work = assemble(job_dir, problem, submission_dir)
     cfg = json.loads((PROBLEMS / problem / "config.json").read_text())
+    resolved_plan = _validated_performance_plan(cfg, problem)
+    work = assemble(job_dir, problem, submission_dir)
     axioms = cfg["permitted_axioms"]
     lean_bin, lean_prefix, core_lib = _resolve_lean_runtime(work, env)
 
@@ -1759,6 +2286,11 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if rc == "timeout":
         _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "rejected", f"comparator timed out (> {COMPARATOR_TIMEOUT}s)"
+        return finish()
+    if _attested_local_memory_kill(rc):
+        _emit_stage_progress("comparator", "failed", t0)
+        result["status"], result["reason"] = "rejected", \
+            "correctness gate exceeded the 4 GiB memory envelope"
         return finish()
     if _died_by_signal(rc):
         _emit_stage_progress("comparator", "failed", t0)
@@ -1812,6 +2344,11 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "error", "axiom re-audit timed out"
         return finish()
+    if _attested_local_memory_kill(rc):
+        _emit_stage_progress("axiom_audit", "failed", axiom_started)
+        result["status"], result["reason"] = "rejected", \
+            "correctness axiom audit exceeded the 4 GiB memory envelope"
+        return finish()
     if _died_by_signal(rc):
         _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "error", \
@@ -1823,13 +2360,19 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         return finish()
     _emit_stage_progress("axiom_audit", "done", axiom_started)
 
-    def time_export(export_path, target=None, deadline=None):
+    def time_export(export_path, target=None, deadline=None, timeout_cap=None):
         """Replay one export through the authoritative full or target-only boundary."""
+        replay_timeout = min(
+            TIMING_TIMEOUT,
+            timeout_cap if timeout_cap is not None else TIMING_TIMEOUT,
+        )
         if TIMING_METRIC == "perf_instructions" and TIMING_EXECUTOR_URLS:
             if deadline is not None and _remaining_timeout(deadline, float("inf")) <= 0:
                 return "budget-exhausted", None
             try:
-                remote = _time_remote(export_path, reps, target, deadline=deadline)
+                remote = _time_remote(
+                    export_path, reps, target, deadline=deadline,
+                    timeout_cap=replay_timeout)
             except PerfBudgetExhausted:
                 return "budget-exhausted", None
             result["stages"].setdefault("timing_executor", {
@@ -1840,6 +2383,13 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                 if isinstance(remote.get("timeout_phase"), str):
                     timeout_meta["executor_timeout_phase"] = remote["timeout_phase"]
                 return "timeout", timeout_meta
+            if remote["status"] == "resource-limit":
+                resource_meta = _resource_limit_measurement(
+                    target, "remote-executor-cgroup",
+                    "correctness-replay" if target is None else "target-replay")
+                if isinstance(remote.get("resource_phase"), str):
+                    resource_meta["executor_resource_phase"] = remote["resource_phase"]
+                return "resource-limit", resource_meta
             if remote["status"] == "failed":
                 return "failed", last_line(remote.get("output_tail", ""))
             samples = []
@@ -1856,13 +2406,17 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
 
         samples = []
         for i in range(reps):
-            step_timeout = _remaining_timeout(deadline, TIMING_TIMEOUT)
+            step_timeout = _remaining_timeout(deadline, replay_timeout)
             if step_timeout <= 0:
                 return "budget-exhausted", None
             trc, tout, sample = _time_replay(
                 export_path, work, env, step_timeout, target=target)
             if trc == "timeout":
                 return "timeout", sample
+            if _attested_local_memory_kill(trc):
+                return "resource-limit", _resource_limit_measurement(
+                    target, "local-container-cgroup",
+                    "correctness-replay" if target is None else "target-replay")
             if trc != 0:
                 return "failed", f"rep {i}: {last_line(tout)}"
             samples.append(sample)
@@ -1892,7 +2446,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     }
     if correctness_status == "ok":
         correctness_timing.update(_summarize_samples(correctness_payload))
-    elif correctness_status == "timeout" and isinstance(correctness_payload, dict):
+    elif correctness_status in ("timeout", "resource-limit") and isinstance(
+            correctness_payload, dict):
         correctness_timing.update(correctness_payload)
     elif correctness_status == "failed":
         result["correctness_timing"] = correctness_timing
@@ -1901,21 +2456,33 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         return finish()
     result["correctness_timing"] = correctness_timing
 
-    inputs = perf_inputs(cfg, problem)
+    inputs = ([row["n"] for row in resolved_plan]
+              if resolved_plan is not None else perf_inputs(cfg, problem))
     if not inputs:
-        result["status"], result["reason"] = "error", f"no perf policy configured for '{problem}'"
+        result["status"], result["reason"] = "error", \
+            f"no performance policy configured for '{problem}'"
         return finish()
     result["stages"]["perf_inputs"] = inputs
-    result["evaluation_cohort"] = _evaluation_cohort(problem, cfg, inputs, reps, result)
+    if resolved_plan is not None:
+        result["stages"]["performance_plan"] = resolved_plan
+    result["evaluation_cohort"] = _evaluation_cohort(
+        problem, cfg, inputs, reps, result, performance_plan=resolved_plan)
 
     # A timed correctness replay is required for every score. Once it times out, running the
     # performance curve cannot change scoreability, so record the complete schedule and stop.
-    if correctness_status == "timeout":
-        scaling = [
-            {"slot": slot, "n": n, "result": "not-run",
-             "reason": "correctness-timing-timeout"}
-            for slot, n in enumerate(inputs)
-        ]
+    if correctness_status in ("timeout", "resource-limit"):
+        incomplete_reason = (
+            "correctness-timing-resource-limit"
+            if correctness_status == "resource-limit"
+            else "correctness-timing-timeout"
+        )
+        scaling = []
+        for slot, n in enumerate(inputs):
+            scaling.append({
+                "slot": slot, **_plan_slot_annotations(resolved_plan, slot, n),
+                "n": n, "result": "not-run",
+                "reason": incomplete_reason,
+            })
         result["timing"] = {
             "metric": TIMING_METRIC,
             "reps": reps,
@@ -1926,7 +2493,11 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
             **_coverage_fields(inputs, scaling),
         }
         result["status"] = "accepted"
-        result["reason"] = "unscored: correctness export did not complete in time"
+        result["reason"] = (
+            "unscored: correctness export exceeded the memory limit"
+            if correctness_status == "resource-limit"
+            else "unscored: correctness export did not complete in time"
+        )
         return finish()
 
     # ---- Performance: time the kernel reducing `impl n` at judge-chosen inputs ----
@@ -1943,16 +2514,18 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     # valid implementation's reduction cost need not be monotone in n. Deterministic failures
     # remain fatal and can never be misread as a slow-but-valid point.
     def probe_point(n, deadline=None):
-        # Every sub-step is capped by the REMAINING global budget, not just its own timeout:
-        # a single slot chains value-eval + build + export + audit + timing, so per-step limits
-        # alone let one slot overshoot the whole-phase budget by thousands of seconds.
+        # Preparation keeps its infrastructure timeout; only the target timing process uses
+        # the group's published watchdog. Legacy schedules may also supply an aggregate
+        # development deadline; grouped cases pass no shared deadline.
+        timeout_caps = _performance_timeout_caps(resolved_plan, n)
+
         def budget(step_timeout):
             return _remaining_timeout(deadline, step_timeout)
 
         if not _artifacts_match(artifact_lib, verified_artifacts):
             return {"n": n, "result": "identity-error"}, \
                 f"comparator-verified build artifacts changed before n={n}"
-        step_timeout = budget(TIMING_TIMEOUT)
+        step_timeout = budget(timeout_caps["value_eval"])
         if step_timeout <= 0:
             return {"n": n, "result": "budget-exhausted"}, None
         vkind, v = _eval_impl_value(work, verified_env, n, step_timeout, lean_bin)
@@ -1961,6 +2534,12 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                 f"comparator-verified build artifacts changed during value evaluation at n={n}"
         if vkind == "timeout":
             return {"n": n, "result": "value-eval-timeout"}, None
+        if vkind == "resource-limit":
+            return {
+                "n": n, "result": "resource-limit",
+                **_resource_limit_measurement(
+                    None, "value-eval-container-cgroup", "value-eval"),
+            }, None
         if vkind == "error":
             return {"n": n, "result": "value-eval-error"}, f"value oracle failed at n={n}: {v}"
         # Identity binding: the impl we are about to build/time must be byte-identical to the
@@ -1971,13 +2550,20 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                 f"submission changed after correctness verification (at n={n})"
         perf_export = job_dir / f"perf_{n}.export.ndjson"
         pkind, err, perf_target = _perf_export(
-            work, verified_env, n, v, perf_export, TIMING_TIMEOUT, artifact_lib, lean_bin,
+            work, verified_env, n, v, perf_export, timeout_caps["build_export"],
+            artifact_lib, lean_bin,
             deadline=deadline)
         if not _artifacts_match(artifact_lib, verified_artifacts):
             return {"n": n, "result": "identity-error"}, \
                 f"comparator-verified build artifacts changed during perf build at n={n}"
         if pkind == "timeout":
             return {"n": n, "result": "build-timeout"}, None
+        if pkind == "resource-limit":
+            return {
+                "n": n, "result": "resource-limit",
+                **_resource_limit_measurement(
+                    perf_target, "build-export-container-cgroup", "build-export"),
+            }, None
         if pkind == "budget-exhausted":
             return {"n": n, "result": "budget-exhausted"}, None
         if pkind == "error":
@@ -1990,7 +2576,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         # Pin the exact export bytes and freeze the file, so the axiom audit and the (separate)
         # timing process provably run identical bytes — not different ones swapped in between.
         perf_bytes = _pin_export_bytes(perf_export)
-        step_timeout = budget(AUDIT_TIMEOUT)
+        step_timeout = budget(timeout_caps["axiom_audit"])
         if step_timeout <= 0:
             return {"n": n, "result": "budget-exhausted"}, None
         arc, aout = run([str(TIMER), "--check-axioms", ",".join(axioms), str(perf_export)],
@@ -2003,6 +2589,12 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                 f"comparator-verified build artifacts changed during perf audit at n={n}"
         if arc == "timeout":
             return {"n": n, "result": "axiom-audit-timeout"}, None
+        if _attested_local_memory_kill(arc):
+            return {
+                "n": n, "result": "resource-limit",
+                **_resource_limit_measurement(
+                    perf_target, "axiom-audit-container-cgroup", "axiom-audit"),
+            }, None
         if arc != 0:
             return {"n": n, "result": "axiom-audit-error"}, \
                 f"perf export axiom audit failed at n={n}: {last_line(aout)}"
@@ -2011,6 +2603,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                 perf_export,
                 target=perf_target,
                 deadline=deadline,
+                timeout_cap=timeout_caps["target_replay"],
             ))
         if status == "deferred":
             return {
@@ -2028,6 +2621,12 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                 f"official kernel rejected perf export at n={n}: {payload}"
         if status == "budget-exhausted":
             return {"n": n, "result": "budget-exhausted"}, None
+        if status == "resource-limit":
+            return {
+                "n": n,
+                "result": "resource-limit",
+                **(payload if isinstance(payload, dict) else {}),
+            }, None
         if status == "timeout":
             return {
                 "n": n,
@@ -2045,8 +2644,9 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
             **_summarize_samples(payload),
         }, None
 
-    perf_deadline = (time.monotonic() + PERF_PHASE_BUDGET) if PERF_PHASE_BUDGET else None
-    scaling, perf_error = _collect_perf_slots(inputs, probe_point, perf_deadline)
+    perf_deadline = _performance_phase_deadline(resolved_plan)
+    scaling, perf_error = _collect_perf_slots(
+        inputs, probe_point, perf_deadline, performance_plan=resolved_plan)
 
     timing = {"metric": TIMING_METRIC, "reps": reps, "scaling": scaling,
               "checker": CHECKER_ID,
@@ -2067,27 +2667,42 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         result["reason"] = "timing deferred to the trusted host executor"
         return finish()
 
-    # Correctness already passed, so the submission is ACCEPTED regardless of speed; the
-    # scaling curve only determines the score. A submission too slow to complete even the
-    # smallest input is accepted-but-unscored — slow is not a rejection (only incorrect,
-    # illegal-axiom, or kernel-rejected exports are rejected, above).
+    # Correctness already passed, so the submission is ACCEPTED regardless of speed; performance
+    # only determines its score. Grouped-v2 awards a valid zero-point score when no case passes.
+    # Legacy v1 remains accepted-but-unscored when no input completes. Slowness is not a
+    # rejection (only incorrect, illegal-axiom, or kernel-rejected exports are rejected, above).
     result["timing"] = timing
     result["status"] = "accepted"
     ok_rows = [r for r in scaling if r.get("result") == "ok"]
+    if ok_rows:
+        top = _headline_row(scaling)
+        result["timing"]["headline_n"] = top["n"]
+        if TIMING_METRIC == "perf_instructions":
+            result["timing"]["median_instructions"] = top.get("median_instructions")
+        else:
+            result["timing"]["median_s"] = top.get("median_s")
+
+    # Grouped policies are scored by the one canonical scorer, including instruction caps and
+    # per-group milestones.  Reusing that view here prevents the immediate verdict summary from
+    # claiming raw slot coverage that the actual leaderboard does not award.
+    if resolved_plan is not None:
+        if correctness_timing["result"] != "ok":
+            result["reason"] = "unscored: correctness export did not complete in time"
+        else:
+            view = _validated_grouped_score_view(result)
+            result["score"] = _grouped_score_summary(result, view)
+        return finish()
+
     if correctness_timing["result"] != "ok":
         result["reason"] = "unscored: correctness export did not complete in time"
     elif not ok_rows:
         result["reason"] = "unscored: did not complete any judge input in time"
     else:
-        top = _headline_row(scaling)
-        result["timing"]["headline_n"] = top["n"]
         if TIMING_METRIC == "perf_instructions":
-            result["timing"]["median_instructions"] = top.get("median_instructions")
             result["score"] = (
                 f"{len(ok_rows)}/{len(inputs)} slots; "
                 f"{canonical_work['total']} total instructions")
         else:
-            result["timing"]["median_s"] = top.get("median_s")
             result["score"] = (
                 f"{len(ok_rows)}/{len(inputs)} slots; "
                 f"{canonical_work['total']:.3f}s total replay")
@@ -2132,9 +2747,57 @@ def _score_view(r):
     return view if view["scoreable"] else None
 
 
+def _validated_grouped_score_view(result):
+    """Return a canonical grouped view or fail this judge run as infrastructure."""
+    scorer = _canonical_scorer()
+    metric = result.get("metric")
+    if metric not in scorer.METRICS:
+        raise InfraError(f"canonical grouped scoring received invalid metric {metric!r}")
+    view = scorer._score_row(result, metric)
+    if not view["scoreable"]:
+        raise InfraError(
+            "canonical grouped scoring rejected the completed verdict: "
+            + str(view.get("reason") or "unknown scoring error"))
+    return view
+
+
 def _score_key(r):
     view = _score_view(r)
     return _canonical_scorer()._rank_key(view) if view is not None else None
+
+
+def _grouped_max_points(result):
+    try:
+        groups = result["evaluation_cohort"]["policy"]["evaluation"]["groups"]
+        return sum(group["award"]["table"][-1]["points"] for group in groups)
+    except (KeyError, TypeError, IndexError):
+        return None
+
+
+def _grouped_score_summary(result, view):
+    """Short verdict text derived from an already validated canonical grouped view."""
+    maximum = _grouped_max_points(result)
+    base = (
+        f"{view['points']}/{maximum} points; "
+        f"{view['completed_slots']}/{view['planned_slots']} passed cases"
+    )
+    if not view.get("work_tiebreak_active"):
+        return base + "; interchangeable partial profiles remain tied"
+    scorer = _canonical_scorer()
+    work = scorer._format_work(view.get("ranking_work"), view.get("metric"))
+    metric_label = _METRIC_LABEL.get(view.get("metric"), view.get("metric", "work"))
+    return base + f"; {work} ranking {metric_label}"
+
+
+def _grouped_profile(result, view):
+    """Human-readable hardest-first group score profile for the local leaderboard."""
+    del result
+    return _canonical_scorer()._format_group_points(view)
+
+
+def _grouped_cases(view):
+    """Human-readable hardest-first case profile for the local leaderboard."""
+    return _canonical_scorer()._format_group_cases(view)
 
 
 # Human label + sort order for each metric; scores of different metrics are NOT comparable
@@ -2142,8 +2805,24 @@ def _score_key(r):
 _METRIC_LABEL = {"perf_instructions": "instructions", "wall_time": "wall seconds (dev)"}
 
 
+def _stage1_problem_ids():
+    """Return current grouped problem ids for non-ranked status reporting."""
+    problem_ids = set()
+    for path in PROBLEMS.glob("*/config.json"):
+        try:
+            cfg = json.loads(path.read_text())
+        except (OSError, UnicodeError, ValueError, RecursionError):
+            continue
+        evaluation = cfg.get("evaluation") if isinstance(cfg, dict) else None
+        if (isinstance(evaluation, dict)
+                and evaluation.get("schema") == _GROUPED_EVALUATION_SCHEMA):
+            problem_ids.add(path.parent.name)
+    return problem_ids
+
+
 def leaderboard():
     rows = []
+    stage1_problems = _stage1_problem_ids()
     if not RESULTS.is_dir():          # fresh clone with no results/ yet — empty board, no crash
         print(f"no results yet at {RESULTS}")
         return
@@ -2163,9 +2842,16 @@ def leaderboard():
                     and isinstance(r.get("problem"), str) and isinstance(r.get("submission"), str)
                     and isinstance(r.get("status"), str) and isinstance(r.get("stages"), dict)):
                 continue
+            if r["problem"] not in stage1_problems:
+                continue
+            if r["status"] == "accepted":
+                if not _canonical_scorer()._is_grouped_verdict(r):
+                    continue
             rows.append(r)
     lines = ["# Lean Kernel Challenge — leaderboard (local dev)", ""]
+    problem_sections = {}
     for problem in sorted({r["problem"] for r in rows}):
+        section_start = len(lines)
         lines.append(f"## {md_cell(problem)}")
         lines.append("")
         prows = [r for r in rows if r["problem"] == problem]
@@ -2201,19 +2887,50 @@ def leaderboard():
                         unscored.append((r, view["reason"]))
                 ranked.sort(key=lambda pair: scorer._rank_key(pair[1]))
                 label = _METRIC_LABEL.get(metric, metric)
-                lines.append(
-                    f"**canonical {label} ranking — cohort `{md_cell(cohort_id)}`:** "
-                    f"completed slots, coverage, harder-slot profile, then lower total replay work")
-                lines.append("")
-                lines.append("| rank | submission | coverage | total work | score |")
-                lines.append("|---|---|---|---|---|")
                 placements = scorer._competition_ranks([view for _, view in ranked])
-                for (r, view), placement in zip(ranked, placements):
-                    coverage = f"{view['completed_slots']}/{view['planned_slots']}"
-                    total = scorer._format_work(view["total_work"], metric)
+                grouped = any(
+                    isinstance(r.get("evaluation_cohort"), dict)
+                    and isinstance(r["evaluation_cohort"].get("policy"), dict)
+                    and r["evaluation_cohort"]["policy"].get("schema")
+                        == "evaluation-policy-v2"
+                    for r in grp
+                )
+                if grouped:
                     lines.append(
-                        f"| {placement} | {md_cell(r['submission'])} | {coverage} | "
-                        f"{md_cell(total)} | {md_cell(r.get('score'))} |")
+                        f"**canonical {label} ranking — cohort `{md_cell(cohort_id)}`:** "
+                        "points, harder-group/case profile, then configured ranking work")
+                    lines.append("")
+                    lines.append(
+                        "| rank | submission | points | passed cases | group profile | case outcomes | "
+                        "ranking work | score |")
+                    lines.append("|---|---|---|---|---|---|---|---|")
+                    for (r, view), placement in zip(ranked, placements):
+                        maximum = _grouped_max_points(r)
+                        passed = f"{view['completed_slots']}/{view['planned_slots']}"
+                        profile = _grouped_profile(r, view)
+                        cases = _grouped_cases(view)
+                        work = (
+                            scorer._format_work(view["ranking_work"], metric)
+                            if view.get("work_tiebreak_active") else "not compared")
+                        summary = _grouped_score_summary(r, view)
+                        lines.append(
+                            f"| {placement} | {md_cell(r['submission'])} | "
+                            f"{view['points']}/{maximum} | {passed} | {md_cell(profile)} | "
+                            f"{md_cell(cases)} | {md_cell(work)} | {md_cell(summary)} |")
+                else:
+                    # Preserve the legacy v1 report byte-for-byte apart from surrounding cohorts.
+                    lines.append(
+                        f"**canonical {label} ranking — cohort `{md_cell(cohort_id)}`:** "
+                        f"completed slots, coverage, harder-slot profile, then lower total replay work")
+                    lines.append("")
+                    lines.append("| rank | submission | coverage | total work | score |")
+                    lines.append("|---|---|---|---|---|")
+                    for (r, view), placement in zip(ranked, placements):
+                        coverage = f"{view['completed_slots']}/{view['planned_slots']}"
+                        total = scorer._format_work(view["total_work"], metric)
+                        lines.append(
+                            f"| {placement} | {md_cell(r['submission'])} | {coverage} | "
+                            f"{md_cell(total)} | {md_cell(r.get('score'))} |")
                 lines.append("")
                 if unscored:
                     lines.append("_accepted but unscored under the current scoring contract:_")
@@ -2232,10 +2949,31 @@ def leaderboard():
                 icon = icons.get(r["status"], f"? {r['status']}")
                 lines.append(f"| {md_cell(r['submission'])} | {icon} | {md_cell(r.get('reason'))} |")
             lines.append("")
+        problem_sections[problem] = lines[section_start:]
+    for problem in sorted(stage1_problems):
+        problem_dir = RESULTS / problem
+        problem_dir.mkdir(parents=True, exist_ok=True)
+        section = problem_sections.get(problem, ["_No local results yet._", ""])
+        (problem_dir / "leaderboard-local.md").write_text("\n".join([
+            f"# Lean Kernel Challenge — {problem} leaderboard (local dev)",
+            "",
+            "This local leaderboard is independent; no cross-problem total is computed.",
+            "",
+            *section,
+        ]))
     RESULTS.mkdir(parents=True, exist_ok=True)
     out = RESULTS / "leaderboard.md"
     out.write_text("\n".join(lines))
     print(f"wrote {out}")
+
+
+def _validate_repetition_count(reps):
+    if reps < 1:
+        raise InfraError(f"--reps must be >= 1 (got {reps})")
+    if OFFICIAL_EVAL and reps != DEFAULT_REPS:
+        raise InfraError(
+            f"official evaluation requires exactly {DEFAULT_REPS} timing repetitions "
+            f"(got {reps})")
 
 
 def main():
@@ -2287,8 +3025,7 @@ def main():
             raise InfraError(f"invalid --tag slug '{tag}'")
         if not valid_slug(sub_name):
             raise InfraError(f"submission name '{sub_name}' is not a safe slug; pass --tag")
-        if args.reps < 1:
-            raise InfraError(f"--reps must be >= 1 (got {args.reps})")
+        _validate_repetition_count(args.reps)
         if TIMING_METRIC not in ("wall_time", "perf_instructions"):
             raise InfraError(f"invalid TIMING_METRIC '{TIMING_METRIC}' "
                              "(must be 'wall_time' or 'perf_instructions')")

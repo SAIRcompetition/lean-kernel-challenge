@@ -31,7 +31,7 @@ Usage:
     --results /absolute/path/to/results \
     --perf-seed SECRET \
     --cohort ROUND_ID \
-    [--tag SLUG] [--reps N] [--image IMAGE] \
+    [--tag SLUG] [--reps 3] [--image IMAGE] \
     [--memory 4g] [--cpus 2] [--pids-limit 512] [--perfmon]
 
 PERF_SEED may be supplied in the environment instead of --perf-seed.
@@ -208,8 +208,12 @@ awk -v m="$MEMORY" 'BEGIN {
   }
   exit !(bytes <= 64 * 1024 * 1024 * 1024)      # 64 GiB ceiling
 }' || die "--memory above the 64g ceiling: $MEMORY"
+[[ "$MEMORY" == "4g" ]] || die "official Stage 1 evaluation requires --memory 4g"
+[[ "$CPUS" == "2" ]] || die "official Stage 1 evaluation requires --cpus 2"
+[[ "$PIDS_LIMIT" == "512" ]] || die "official Stage 1 evaluation requires --pids-limit 512"
 if [[ -n "$REPS" ]]; then
   [[ "$REPS" =~ ^[1-9][0-9]*$ ]] || die "invalid positive --reps value: $REPS"
+  [[ "$REPS" == "3" ]] || die "official Stage 1 evaluation requires --reps 3"
 fi
 [[ "$PERF_SEED_VALUE" != *$'\n'* ]] || die "PERF_SEED may not contain a newline"
 (( ${#PERF_SEED_VALUE} <= 1024 )) || die "PERF_SEED is unreasonably long"

@@ -1,6 +1,6 @@
 import Spec
 
-/-! Baseline: naive parametric spec as impl. -/
+/-! Baseline: the trusted depth-first computation on the seeded fixed-row-degree matrix. -/
 
 namespace Submission
 

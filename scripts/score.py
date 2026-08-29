@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Build the canonical per-problem scoring tables from judge verdicts.
+"""Build canonical, per-problem scoring tables from sealed judge verdicts.
 
-Official ranking is deliberately simple and monotone:
+``evaluation-policy-v2`` cohorts use the embedded ``grouped-evaluation-v1``
+contract: milestone points, harder-group points, the declared case-profile policy,
+then eligible configured work and proof tie-breaks.  The scorer never consults a live problem
+config and never trusts points copied into a plan or verdict.
+
+Legacy ``evaluation-policy-v1`` ranking remains deliberately simple and monotone:
 
   1. more completed sampling slots wins;
   2. for equal completed-slot counts, higher coverage wins;
@@ -30,7 +35,14 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESULTS = os.path.join(ROOT, "results")
 with open(os.path.join(ROOT, "pipeline", "config.json")) as _config_file:
-    _TIMING_POLICY = json.load(_config_file)["timing"]
+    _PIPELINE_POLICY = json.load(_config_file)
+_TIMING_POLICY = _PIPELINE_POLICY["timing"]
+STAGE1_OFFICIAL_REPS = _PIPELINE_POLICY["judge"]["timing_reps"]
+REPLAY_MEMORY_MB = _PIPELINE_POLICY["sandbox"]["memory_mb"]
+STAGE1_PROBLEMS = frozenset({
+    "ca-rule110", "fib", "mertens", "partition", "permanent",
+    "polydisc", "primecount", "saw", "sha256",
+})
 
 REMOTE_PROTOCOL = _TIMING_POLICY["remote_protocol"]
 LOCAL_PROTOCOL = "local-v2"
@@ -67,6 +79,7 @@ PERFORMANCE_RESULTS = {
     "value-eval-timeout",
     "build-timeout",
     "axiom-audit-timeout",
+    "resource-limit",
     "budget-exhausted",
     "not-run",
 }
@@ -145,7 +158,7 @@ def _finite_number(value):
         return False
 
 
-def _policy_shape_error(policy):
+def _policy_v1_shape_error(policy):
     """Validate the complete schema emitted by the current judge, not just its hash."""
     required = {
         "schema", "round", "problem", "problem_bundle_sha256",
@@ -256,6 +269,365 @@ def _policy_shape_error(policy):
     return None
 
 
+_V1_POLICY_FIELDS = {
+    "schema", "round", "problem", "problem_bundle_sha256",
+    "evaluator_bundle_sha256", "evaluation_mode", "perf", "perf_defaults",
+    "inputs", "metric", "reps", "budgets", "resource_policy", "toolchain",
+    "checker", "timing_protocol", "measurement_contract", "executor",
+}
+
+
+def _group_sampling_shape(sampling, *, official):
+    """Return ``(error, metadata)`` for one sealed grouped sampler.
+
+    The resolved plan is authoritative only after it has been shown to belong to
+    the sampler published in the cohort.  Keep this validator self-contained:
+    the canonical scorer must never consult the current problem config or infer
+    omitted sampler defaults from a different evaluator build.
+    """
+    if not isinstance(sampling, dict):
+        return "grouped evaluation has an invalid sampling policy", None
+    kind = sampling.get("kind")
+    if kind in ("geometric_range", "linear_range"):
+        required = {"kind", "min", "max", "count", "jitter"}
+        if set(sampling) != required:
+            return "grouped range sampling has an incomplete or unknown field set", None
+        spacing = "geometric" if kind == "geometric_range" else "linear"
+    elif kind == "range":
+        required = {"kind", "min", "max", "count", "jitter", "spacing"}
+        if set(sampling) != required:
+            return "grouped range sampling has an incomplete or unknown field set", None
+        spacing = sampling.get("spacing")
+        if spacing not in ("geometric", "linear"):
+            return "grouped range sampling has an invalid spacing", None
+    elif kind == "uniform_int":
+        required = {"kind", "min", "max", "count"}
+        if set(sampling) != required:
+            return "grouped uniform sampling has an incomplete or unknown field set", None
+        spacing = None
+    elif kind == "packed":
+        required = {"kind", "scale", "seed_bits", "count"}
+        if set(sampling) != required:
+            return "grouped packed sampling has an incomplete or unknown field set", None
+        scale = sampling.get("scale")
+        seed_bits = sampling.get("seed_bits")
+        count = sampling.get("count")
+        if (type(scale) is not int or scale < 0
+                or seed_bits != 32
+                or type(count) is not int or count < 1 or count > 2 ** 32):
+            return "grouped evaluation has an invalid packed sampling policy", None
+        return None, {"kind": kind, "count": count, "scale": scale}
+    elif kind == "fixed":
+        if not ({"kind", "values"} <= set(sampling)
+                and set(sampling) <= {"kind", "values", "count"}):
+            return "grouped fixed sampling has an incomplete or unknown field set", None
+        values = sampling.get("values")
+        if not (isinstance(values, list) and values
+                and all(type(value) is int and value >= 0 for value in values)
+                and len(values) == len(set(values))):
+            return "grouped evaluation has invalid fixed sampling values", None
+        if "count" in sampling and (
+                type(sampling["count"]) is not int
+                or sampling["count"] != len(values)):
+            return "grouped fixed sampling count does not match its values", None
+        return None, {"kind": kind, "count": len(values), "values": values}
+    else:
+        return f"grouped evaluation has an unknown sampling kind {kind!r}", None
+
+    lo = sampling.get("min")
+    hi = sampling.get("max")
+    count = sampling.get("count")
+    if (type(lo) is not int or type(hi) is not int
+            or lo < 0 or hi < lo
+            or type(count) is not int or count < 1 or count > hi - lo + 1):
+        return "grouped evaluation has an invalid integer sampling range", None
+    if kind != "uniform_int":
+        jitter = sampling.get("jitter")
+        if (not _finite_number(jitter) or not 0 <= jitter < 1
+                or (official and jitter == 0)):
+            return "grouped range sampling has an invalid jitter", None
+    return None, {
+        "kind": kind, "count": count, "min": lo, "max": hi,
+        "spacing": spacing,
+    }
+
+
+def _grouped_evaluation_shape_error(evaluation, performance_plan, *, official):
+    """Validate the public grouped-scoring contract embedded in a v2 cohort.
+
+    The scorer intentionally supports only fully specified milestone awards.  In
+    particular, no points are taken from the resolved plan or from a live problem
+    config: the signed cohort policy is the sole source of scoring authority.
+    """
+    if not (isinstance(evaluation, dict)
+            and set(evaluation) == {"schema", "axis", "groups", "ranking"}
+            and evaluation.get("schema") == "grouped-evaluation-v1"):
+        return "evaluation cohort policy has an invalid grouped evaluation contract"
+    axis = evaluation["axis"]
+    if not (isinstance(axis, dict)
+            and set(axis) == {"label", "unit", "input_encoding"}
+            and all(_nonempty_string(axis[field]) for field in axis)):
+        return "grouped evaluation has an invalid difficulty axis"
+
+    ranking = evaluation["ranking"]
+    if not (isinstance(ranking, dict)
+            and set(ranking) == {"contract", "work", "proof", "profile"}
+            and ranking.get("contract") == "group-points-v1"
+            and ranking.get("work") in ("total", "curve", "worst_normalized")
+            and ranking.get("proof") in ("include", "gate", "last_tiebreak")
+            and ranking.get("profile") in (
+                "hardest_group_then_slot", "hardest_group_then_count")):
+        return "grouped evaluation has an invalid ranking contract"
+    # A normalization denominator must be calibrated and defined uniformly before this
+    # mode can be compared safely.  Fail closed instead of silently guessing from limits.
+    if ranking["work"] == "worst_normalized":
+        return "worst_normalized ranking is not supported by this scorer"
+    if (ranking["work"], ranking["proof"]) not in {
+            ("total", "include"),
+            ("curve", "gate"),
+            ("curve", "last_tiebreak"),
+    }:
+        return "grouped evaluation has an inconsistent work/proof ranking policy"
+
+    groups = evaluation["groups"]
+    if not isinstance(groups, list) or not groups:
+        return "grouped evaluation requires at least one group"
+    group_by_id = {}
+    sampling_by_id = {}
+    orders = set()
+    for group in groups:
+        required = {"id", "label", "order", "sampling", "award", "limits"}
+        if not (isinstance(group, dict)
+                and required <= set(group)
+                and set(group) <= required | {"requires"}):
+            return "grouped evaluation has an invalid group field set"
+        group_id = group.get("id")
+        order = group.get("order")
+        if (not _nonempty_string(group_id) or group_id in group_by_id
+                or not _nonempty_string(group.get("label"))
+                or type(order) is not int or order < 0 or order in orders
+                or not isinstance(group.get("sampling"), dict)
+                or not isinstance(group.get("limits"), dict)):
+            return "grouped evaluation has an invalid group identity or metadata"
+        limits = group["limits"]
+        unknown_limits = set(limits) - {"timeout_seconds", "kernel_instructions"}
+        if unknown_limits:
+            return (
+                f"grouped evaluation group {group_id!r} has unsupported limits "
+                f"{sorted(unknown_limits)!r}")
+        if (type(limits.get("timeout_seconds")) is not int
+                or limits["timeout_seconds"] <= 0):
+            return f"grouped evaluation group {group_id!r} lacks a timeout limit"
+        for field in ("kernel_instructions",):
+            if field in limits and (
+                    type(limits[field]) is not int or limits[field] <= 0):
+                return f"grouped evaluation group {group_id!r} has an invalid {field} limit"
+        requires = group.get("requires", [])
+        if not (isinstance(requires, list)
+                and all(_nonempty_string(item) for item in requires)
+                and len(requires) == len(set(requires))
+                and group_id not in requires):
+            return f"grouped evaluation group {group_id!r} has invalid prerequisites"
+
+        award = group.get("award")
+        table = award.get("table") if isinstance(award, dict) else None
+        if not (isinstance(award, dict)
+                and set(award) == {"mode", "table"}
+                and award.get("mode") == "milestones"
+                and isinstance(table, list) and table):
+            return f"grouped evaluation group {group_id!r} has an invalid award"
+        previous_passed = previous_points = -1
+        for milestone in table:
+            if not (isinstance(milestone, dict)
+                    and set(milestone) == {"passed", "points"}
+                    and type(milestone.get("passed")) is int
+                    and type(milestone.get("points")) is int
+                    and milestone["passed"] >= 0 and milestone["points"] >= 0
+                    and milestone["passed"] > previous_passed
+                    and milestone["points"] > previous_points):
+                return f"grouped evaluation group {group_id!r} has invalid milestones"
+            previous_passed = milestone["passed"]
+            previous_points = milestone["points"]
+        if table[0] != {"passed": 0, "points": 0}:
+            return f"grouped evaluation group {group_id!r} must start at 0 passed / 0 points"
+        sampling_error, sampling_meta = _group_sampling_shape(
+            group["sampling"], official=official)
+        if sampling_error is not None:
+            return f"grouped evaluation group {group_id!r}: {sampling_error}"
+        group_by_id[group_id] = group
+        sampling_by_id[group_id] = sampling_meta
+        orders.add(order)
+
+    profile_mode = ranking["profile"]
+    interchangeable = {"packed", "uniform_int"}
+    sampling_kinds = {sampling["kind"] for sampling in sampling_by_id.values()}
+    if (profile_mode == "hardest_group_then_count"
+            and not sampling_kinds <= interchangeable):
+        return "hardest_group_then_count requires interchangeable seeded samplers"
+    if (profile_mode == "hardest_group_then_slot"
+            and sampling_kinds & interchangeable):
+        return "interchangeable seeded samplers require hardest_group_then_count"
+
+    if [group["order"] for group in groups] != sorted(orders):
+        return "grouped evaluation groups are not ordered by difficulty"
+    for group in groups:
+        for prerequisite in group.get("requires", []):
+            required_group = group_by_id.get(prerequisite)
+            if required_group is None or required_group["order"] >= group["order"]:
+                return f"grouped evaluation group {group['id']!r} has an invalid prerequisite"
+
+    if not isinstance(performance_plan, list) or not performance_plan:
+        return "evaluation cohort policy has an invalid performance plan"
+    plan_counts = {group_id: 0 for group_id in group_by_id}
+    plan_cases = {group_id: [] for group_id in group_by_id}
+    plan_values = {group_id: [] for group_id in group_by_id}
+    expected_order = []
+    for slot, case in enumerate(performance_plan):
+        allowed = {"slot", "group", "case", "n", "limits", "scale"}
+        if not (isinstance(case, dict)
+                and {"slot", "group", "case", "n", "limits"} <= set(case)
+                and set(case) <= allowed
+                and type(case.get("slot")) is int and case["slot"] == slot
+                and _nonempty_string(case.get("group"))
+                and case["group"] in group_by_id
+                and type(case.get("case")) is int and case["case"] >= 0
+                and type(case.get("n")) is int and case["n"] >= 0
+                and isinstance(case.get("limits"), dict)):
+            return "evaluation cohort policy has an invalid performance-plan row"
+        if "scale" in case and (type(case["scale"]) is not int or case["scale"] < 0):
+            return "evaluation cohort policy has an invalid packed-case scale"
+        group_id = case["group"]
+        sampling = sampling_by_id[group_id]
+        if sampling["kind"] == "packed":
+            if ("scale" not in case
+                    or case["scale"] != sampling["scale"]
+                    or case["n"] >> 32 != case["scale"]):
+                return "performance plan does not match its packed sampling policy"
+        elif "scale" in case:
+            return "non-packed performance-plan row carries a scale"
+        if sampling["kind"] == "fixed":
+            case_index = case["case"]
+            if (case_index >= len(sampling["values"])
+                    or case["n"] != sampling["values"][case_index]):
+                return "performance plan does not match its fixed sampling values"
+        elif sampling["kind"] in (
+                "geometric_range", "linear_range", "range", "uniform_int"):
+            if not sampling["min"] <= case["n"] <= sampling["max"]:
+                return "performance plan input lies outside its published sampling range"
+        if case["limits"] != group_by_id[group_id]["limits"]:
+            return "performance-plan limits do not match the grouped evaluation"
+        plan_counts[group_id] += 1
+        plan_cases[group_id].append(case["case"])
+        plan_values[group_id].append(case["n"])
+        expected_order.append((group_by_id[group_id]["order"], case["case"]))
+    if expected_order != sorted(expected_order):
+        return "performance plan is not ordered by group difficulty and case"
+    for group_id, group in group_by_id.items():
+        count = plan_counts[group_id]
+        if count < 1 or plan_cases[group_id] != list(range(count)):
+            return f"performance plan has invalid cases for group {group_id!r}"
+        sampling = sampling_by_id[group_id]
+        sampling_count = sampling["count"]
+        if count > sampling_count or (official and count != sampling_count):
+            return f"performance plan does not match group {group_id!r} sampling count"
+        if (sampling["kind"] in ("geometric_range", "linear_range", "range")
+                and any(left >= right for left, right in zip(
+                    plan_values[group_id], plan_values[group_id][1:]))):
+            return f"performance plan range cases are not increasing for group {group_id!r}"
+        if group["award"]["table"][-1]["passed"] != sampling_count:
+            return f"group {group_id!r} does not award its final milestone at full coverage"
+    return None
+
+
+def _policy_v2_shape_error(policy):
+    common_fields = _V1_POLICY_FIELDS - {"perf", "perf_defaults"}
+    required = common_fields | {
+        "evaluation", "performance_plan", "performance_plan_sha256",
+        "seed_commitment",
+    }
+    if set(policy) != required:
+        return "evaluation cohort policy has an incomplete or unknown field set"
+
+    # Reuse every v1 environment/measurement check.  Only the schema and the added
+    # grouped fields differ in v2.
+    inputs = policy.get("inputs")
+    if not (isinstance(inputs, list) and inputs
+            and all(type(n) is int and n >= 0 for n in inputs)
+            and len(inputs) == len(set(inputs))):
+        return "evaluation cohort policy has invalid grouped inputs"
+    budgets = policy.get("budgets")
+    budget_fields = {
+        "comparator_timeout_seconds", "audit_timeout_seconds",
+        "timing_timeout_seconds", "perf_phase_budget_seconds",
+    }
+    if not (isinstance(budgets, dict) and set(budgets) == budget_fields
+            and budgets.get("perf_phase_budget_seconds") == 0
+            and all(type(budgets.get(field)) is int and budgets[field] > 0
+                    for field in budget_fields - {"perf_phase_budget_seconds"})):
+        return "grouped evaluation must disable the aggregate performance-phase deadline"
+
+    common = {field: policy[field] for field in common_fields}
+    # Reuse the v1 validator for the shared fields.  Its legacy aggregate budget
+    # must be positive, whereas v2 deliberately seals zero (disabled).
+    common["budgets"] = {
+        **budgets,
+        "perf_phase_budget_seconds": 1,
+    }
+    common["schema"] = "evaluation-policy-v1"
+    common["inputs"] = sorted(inputs)
+    common["perf"] = {"min": min(inputs), "max": max(inputs)}
+    common["perf_defaults"] = {
+        "count": len(inputs), "spacing": "linear", "jitter": 0.15,
+    }
+    common_error = _policy_v1_shape_error(common)
+    if common_error is not None:
+        return common_error
+    if (policy["evaluation_mode"] == "official"
+            and policy["reps"] != STAGE1_OFFICIAL_REPS):
+        return (
+            f"official grouped evaluation requires exactly "
+            f"{STAGE1_OFFICIAL_REPS} repetitions")
+    if policy["evaluation_mode"] == "official":
+        resources = policy["resource_policy"]
+        if (resources["memory"] != "4g" or resources["cpus"] != "2"
+                or resources["pids_limit"] != "512"):
+            return "official grouped evaluation has a noncanonical resource envelope"
+        if (policy["executor"]["kind"] != "local"
+                or policy["timing_protocol"] != LOCAL_PROTOCOL):
+            return "official grouped evaluation must use the local PMU protocol"
+    plan = policy["performance_plan"]
+    plan_digest = _policy_digest(plan)
+    if (not _sha256_string(policy["performance_plan_sha256"])
+            or policy["performance_plan_sha256"] != plan_digest):
+        return "evaluation cohort policy has an invalid performance-plan hash"
+    commitment = policy["seed_commitment"]
+    if policy["evaluation_mode"] == "official":
+        if not _sha256_string(commitment):
+            return "official evaluation cohort policy has an invalid seed commitment"
+    elif commitment is not None and not _sha256_string(commitment):
+        return "development evaluation cohort policy has an invalid seed commitment"
+    grouped_error = _grouped_evaluation_shape_error(
+        policy["evaluation"], plan,
+        official=policy["evaluation_mode"] == "official")
+    if grouped_error is not None:
+        return grouped_error
+    if policy["inputs"] != [case["n"] for case in plan]:
+        return "evaluation cohort policy inputs do not match its performance plan"
+    return None
+
+
+def _policy_shape_error(policy):
+    """Validate either immutable scoring-policy generation without weakening v1."""
+    if not isinstance(policy, dict):
+        return "evaluation cohort policy is not an object"
+    schema = policy.get("schema")
+    if schema == "evaluation-policy-v1":
+        return _policy_v1_shape_error(policy)
+    if schema == "evaluation-policy-v2":
+        return _policy_v2_shape_error(policy)
+    return "unsupported evaluation cohort policy schema"
+
+
 def _fit(points):
     """Report-only least-squares (α, β) for log cost ≈ α·log n + β."""
     points = [(n, value) for n, value in points if n > 0]
@@ -304,7 +676,8 @@ def _measurement_contract_error(verdict):
         return "missing/invalid evaluation cohort policy"
     if cohort["id"] != policy_sha256[:24]:
         return "evaluation cohort id does not match its policy hash"
-    if policy.get("schema") != "evaluation-policy-v1":
+    policy_schema = policy.get("schema")
+    if policy_schema not in ("evaluation-policy-v1", "evaluation-policy-v2"):
         return "unsupported evaluation cohort policy schema"
     shape_error = _policy_shape_error(policy)
     if shape_error is not None:
@@ -312,7 +685,8 @@ def _measurement_contract_error(verdict):
     mode = verdict.get("evaluation_mode")
     if mode not in ("official", "development") or policy.get("evaluation_mode") != mode:
         return "missing/mismatched evaluation mode"
-    planned = verdict.get("stages", {}).get("perf_inputs")
+    stages = verdict.get("stages", {})
+    planned = stages.get("perf_inputs") if isinstance(stages, dict) else None
     if (policy.get("round") != cohort["round"]
             or policy.get("problem") != verdict.get("problem")
             or policy.get("inputs") != planned
@@ -320,6 +694,9 @@ def _measurement_contract_error(verdict):
             or policy.get("measurement_contract") != CURRENT_MEASUREMENT_RECORD
             or policy.get("executor") != executor):
         return "evaluation cohort policy does not match the verdict"
+    if (policy_schema == "evaluation-policy-v2"
+            and stages.get("performance_plan") != policy.get("performance_plan")):
+        return "verdict performance_plan does not match the evaluation cohort policy"
 
     expected_protocol = LOCAL_PROTOCOL if executor["kind"] == "local" else REMOTE_PROTOCOL
     protocol = verdict.get("timing_protocol")
@@ -384,7 +761,124 @@ def _base_row(verdict, metric, reason):
         "total_work": None,
         "alpha": None,
         "beta": None,
+        "scoring_schema": None,
+        "points": None,
+        "group_points": {},
+        "group_points_profile": (),
+        "group_points_detail": (),
+        "case_profile": (),
+        "group_case_detail": (),
+        "ranking_work": None,
+        "ranking_work_profile": (),
+        "work_tiebreak_active": False,
+        "ranking_policy": None,
     }
+
+
+def _milestone_points(table, passed):
+    """Return the greatest points milestone reached by ``passed`` cases."""
+    points = 0
+    for milestone in table:
+        if milestone["passed"] > passed:
+            break
+        points = milestone["points"]
+    return points
+
+
+def _apply_grouped_scoring(row, policy, slot_values):
+    """Derive v2 points and tie-break profiles solely from the sealed policy."""
+    evaluation = policy["evaluation"]
+    plan = policy["performance_plan"]
+    groups = evaluation["groups"]
+    passed_by_group = {group["id"]: 0 for group in groups}
+    slots_by_group = {group["id"]: [] for group in groups}
+    work_by_group = {group["id"]: 0 for group in groups}
+    for case in plan:
+        slot = case["slot"]
+        group_id = case["group"]
+        passed = row["slot_profile"][slot] == 1
+        slots_by_group[group_id].append((case["case"], passed))
+        if passed:
+            passed_by_group[group_id] += 1
+            work_by_group[group_id] += slot_values[slot]
+
+    maximum_passed = {
+        group["id"]: group["award"]["table"][-1]["passed"] for group in groups
+    }
+    group_points = {}
+    eligible_by_group = {}
+    for group in groups:
+        group_id = group["id"]
+        prerequisites_met = all(
+            passed_by_group[required] >= maximum_passed[required]
+            for required in group.get("requires", [])
+        )
+        eligible_by_group[group_id] = prerequisites_met
+        group_points[group_id] = (
+            _milestone_points(group["award"]["table"], passed_by_group[group_id])
+            if prerequisites_met else 0
+        )
+
+    hardest = sorted(groups, key=lambda group: group["order"], reverse=True)
+    row["points"] = sum(group_points.values())
+    row["group_points"] = group_points
+    row["group_points_profile"] = tuple(
+        group_points[group["id"]] for group in hardest)
+    row["group_points_detail"] = tuple(
+        (group["id"], group_points[group["id"]],
+         group["award"]["table"][-1]["points"])
+        for group in hardest
+    )
+    ranking = evaluation["ranking"]
+    row["ranking_policy"] = dict(ranking)
+    if ranking["profile"] == "hardest_group_then_count":
+        # Packed/uniform cases within one group are exchangeable random instances.  Comparing
+        # their arbitrary hidden case indices would introduce a random tie-break.  Count passes
+        # by difficulty group instead, and compare work only once every case is shared.
+        row["case_profile"] = tuple(
+            passed_by_group[group["id"]] if eligible_by_group[group["id"]] else 0
+            for group in hardest)
+        row["group_case_detail"] = tuple(
+            (group["id"], passed_by_group[group["id"]],
+             len(slots_by_group[group["id"]]))
+            for group in hardest
+        )
+        row["work_tiebreak_active"] = (
+            row["completed_slots"] == row["planned_slots"])
+    else:
+        row["case_profile"] = tuple(
+            int(passed)
+            for group in hardest
+            for _, passed in sorted(
+                slots_by_group[group["id"]], key=lambda pair: pair[0], reverse=True)
+        )
+        row["group_case_detail"] = tuple(
+            (group["id"], "".join(
+                "1" if passed else "0"
+                for _, passed in sorted(
+                    slots_by_group[group["id"]],
+                    key=lambda pair: pair[0], reverse=True)))
+            for group in hardest
+        )
+        row["work_tiebreak_active"] = True
+
+    work_mode = ranking["work"]
+    proof_mode = ranking["proof"]
+    if work_mode == "total":
+        row["ranking_work"] = row["total_work"]
+    elif work_mode == "curve":
+        # ``include`` means the proof is part of the first work comparator.  ``gate``
+        # excludes it after validity, and ``last_tiebreak`` appends it below.
+        row["ranking_work"] = (
+            row["total_work"] if proof_mode == "include" else row["curve_work"])
+    else:  # rejected by policy validation; defensive for direct helper callers
+        row["ranking_work"] = None
+    row["ranking_work_profile"] = tuple(
+        work_by_group[group["id"]] for group in hardest)
+
+
+def _is_grouped_row(row):
+    return row.get("scoring_schema") == "grouped-evaluation-v1"
 
 
 def _score_row(verdict, metric):
@@ -413,6 +907,10 @@ def _score_row(verdict, metric):
     if contract_error is not None:
         row["reason"] = contract_error
         return row
+    policy = cohort["policy"]
+    grouped = policy["schema"] == "evaluation-policy-v2"
+    row["scoring_schema"] = (
+        "grouped-evaluation-v1" if grouped else "legacy-slot-ranking-v1")
     row["measurement_contract"] = MEASUREMENT_CONTRACT
     if verdict.get("metric") != metric:
         row["reason"] = "metric group mismatch"
@@ -437,7 +935,8 @@ def _score_row(verdict, metric):
     planned = verdict.get("stages", {}).get("perf_inputs")
     if not (isinstance(planned, list) and planned
             and all(isinstance(n, int) and not isinstance(n, bool) and n >= 0 for n in planned)
-            and planned == sorted(set(planned))):
+            and len(planned) == len(set(planned))
+            and (grouped or planned == sorted(planned))):
         row["reason"] = "invalid or non-distinct perf_inputs"
         return row
     row["planned_slots"] = len(planned)
@@ -463,14 +962,27 @@ def _score_row(verdict, metric):
 
     points = []
     slot_profile = []
+    slot_values = {}
+    performance_plan = policy.get("performance_plan") if grouped else None
     for slot, planned_n in enumerate(planned):
         sample = by_slot[slot]
         if type(sample.get("n")) is not int or sample.get("n") != planned_n:
             row["reason"] = f"slot {slot} input does not match perf_inputs"
             return row
+        if grouped:
+            planned_case = performance_plan[slot]
+            if (sample.get("group") != planned_case["group"]
+                    or type(sample.get("case")) is not int
+                    or sample.get("case") != planned_case["case"]):
+                row["reason"] = (
+                    f"slot {slot} group/case does not match performance_plan")
+                return row
         sample_result = sample.get("result")
         if not isinstance(sample_result, str) or sample_result not in PERFORMANCE_RESULTS:
             row["reason"] = f"slot {slot} has an unknown result {sample_result!r}"
+            return row
+        if grouped and sample_result in ("budget-exhausted", "not-run"):
+            row["reason"] = "grouped verdict is incomplete and requires evaluation retry"
             return row
         if sample_result in ("ok", "timeout"):
             if sample.get("measurement_contract") != MEASUREMENT_CONTRACT:
@@ -486,13 +998,39 @@ def _score_row(verdict, metric):
                 row["reason"] = (
                     f"measured slot {slot} lacks a measurement target")
                 return row
+        if sample_result == "resource-limit":
+            if (sample.get("resource") != "memory"
+                    or sample.get("memory_mb") != REPLAY_MEMORY_MB
+                    or not isinstance(sample.get("resource_limit_source"), str)
+                    or sample.get("resource_phase") not in {
+                        "value-eval", "build-export", "axiom-audit", "target-replay",
+                    }):
+                row["reason"] = f"resource-limited slot {slot} lacks the canonical memory record"
+                return row
+            if sample["resource_phase"] == "target-replay":
+                if (sample.get("measurement_contract") != MEASUREMENT_CONTRACT
+                        or sample.get("measurement_boundary") != PERFORMANCE_BOUNDARY
+                        or not isinstance(sample.get("measurement_target"), str)
+                        or not sample["measurement_target"]):
+                    row["reason"] = (
+                        f"resource-limited target slot {slot} lacks its measurement identity")
+                    return row
         if sample_result == "ok":
             value = sample.get(cost_field)
             if not _is_cost(value, integral=(metric == "perf_instructions")):
                 row["reason"] = f"successful slot {slot} lacks a positive {cost_field}"
                 return row
-            points.append((planned_n, value))
-            slot_profile.append(1)
+            within_limit = True
+            if grouped and metric == "perf_instructions":
+                instruction_cap = performance_plan[slot]["limits"].get(
+                    "kernel_instructions")
+                within_limit = instruction_cap is None or value <= instruction_cap
+            if within_limit:
+                points.append((planned_n, value))
+                slot_values[slot] = value
+                slot_profile.append(1)
+            else:
+                slot_profile.append(0)
         else:
             slot_profile.append(0)
 
@@ -506,7 +1044,7 @@ def _score_row(verdict, metric):
     alpha, beta = _fit(points)
     row["alpha"], row["beta"] = alpha, beta
 
-    if not points:
+    if not points and not grouped:
         row["reason"] = "accepted but completed no performance slot"
         return row
 
@@ -514,6 +1052,14 @@ def _score_row(verdict, metric):
     if not _is_cost(row["total_work"], integral=(metric == "perf_instructions")):
         row["reason"] = "total measured work is not a finite positive cost"
         return row
+    if grouped:
+        _apply_grouped_scoring(row, policy, slot_values)
+        if not _is_cost(row["ranking_work"], integral=(metric == "perf_instructions")):
+            # A zero curve is legitimate only when no case passed; the success profile is
+            # compared first, so treating it as an exact zero tie-break cannot reward failure.
+            if not (row["ranking_work"] == 0 and not points):
+                row["reason"] = "grouped ranking work is not a finite nonnegative cost"
+                return row
     row["scoreable"] = True
     return row
 
@@ -522,6 +1068,20 @@ def _placement_key(row):
     """Competitive ranking values only; submission names never affect placement."""
     if not row["scoreable"]:
         return None
+    if _is_grouped_row(row):
+        # Profiles are compared before work, so work is only compared for submissions
+        # that passed the same cases.  This prevents cheap failures from improving rank.
+        key = (
+            -row["points"],
+            tuple(-points for points in row["group_points_profile"]),
+            tuple(-passed for passed in row["case_profile"]),
+        )
+        if row.get("work_tiebreak_active"):
+            key += (row["ranking_work"],)
+            policy = row.get("ranking_policy", {})
+            if policy.get("proof") == "last_tiebreak":
+                key += (row["correctness_work"],)
+        return key
     # Higher-index slots are nominally harder. Comparing the complete success bitmap before
     # work also guarantees that total_work is only compared over the same set of n values.
     harder_slots_first = tuple(-bit for bit in reversed(row["slot_profile"]))
@@ -532,7 +1092,7 @@ def _placement_key(row):
 def _rank_key(row):
     placement = _placement_key(row)
     if placement is None:
-        return (1, 0, 0, (), math.inf, str(row["sub"]))
+        return (1, str(row["sub"]))
     # Name is a deterministic display-order key only. `_competition_ranks` ignores it.
     return (0, *placement, str(row["sub"]))
 
@@ -582,8 +1142,43 @@ def _groups(verdicts):
     return groups
 
 
+def _is_grouped_verdict(verdict):
+    """Whether a verdict carries the current grouped policy, including development runs."""
+    cohort = verdict.get("evaluation_cohort")
+    policy = cohort.get("policy") if isinstance(cohort, dict) else None
+    return isinstance(policy, dict) and policy.get("schema") == "evaluation-policy-v2"
+
+
+def _is_stage1_public_verdict(verdict):
+    """Whether a verdict belongs in the official public Stage 1 reports.
+
+    Legacy v1 scoring remains available through ``_score_row`` and ``_groups``
+    for development and regression compatibility. Grouped wall-time and KTP/3
+    validation records are likewise non-official and never enter public boards.
+    """
+    cohort = verdict.get("evaluation_cohort")
+    policy = cohort.get("policy") if isinstance(cohort, dict) else None
+    executor = policy.get("executor") if isinstance(policy, dict) else None
+    return (
+        _is_grouped_verdict(verdict)
+        and verdict.get("evaluation_mode") == "official"
+        and policy.get("evaluation_mode") == "official"
+        and verdict.get("metric") == "perf_instructions"
+        and verdict.get("timing_protocol") == LOCAL_PROTOCOL
+        and isinstance(executor, dict)
+        and executor.get("kind") == "local"
+    )
+
+
+def _stage1_problem_ids():
+    """Return the fixed public Stage 1 allowlist; cohort policy supplies score semantics."""
+    return set(STAGE1_PROBLEMS)
+
+
 def _format_work(value, metric):
     integral = metric == "perf_instructions"
+    if value == 0 and not isinstance(value, bool):
+        return "0"
     if not _is_cost(value, integral=integral):
         return "—"
     try:
@@ -594,22 +1189,53 @@ def _format_work(value, metric):
         return "—"
 
 
+def _format_group_points(row):
+    """Render labeled hardest-first group points from a canonical score row."""
+    return ", ".join(
+        f"{group_id}:{earned}/{maximum}"
+        for group_id, earned, maximum in row.get("group_points_detail", ())
+    ) or "—"
+
+
+def _format_group_cases(row):
+    """Render the exact ranking-relevant case profile without exposing inputs."""
+    detail = row.get("group_case_detail", ())
+    if not detail:
+        return "—"
+    if all(len(item) == 3 for item in detail):
+        return ", ".join(
+            f"{group_id}:{passed}/{total}"
+            for group_id, passed, total in detail
+        )
+    return ", ".join(f"{group_id}:{bitmap}" for group_id, bitmap in detail)
+
+
 def main():
-    groups = _groups(_load_verdicts())
+    stage1_problems = _stage1_problem_ids()
+    groups = _groups([
+        verdict for verdict in _load_verdicts()
+        if (_is_stage1_public_verdict(verdict)
+            and verdict.get("problem") in stage1_problems)
+    ])
     md = [
         "# Lean Kernel Challenge — canonical scoring",
         "",
-        "Official order: completed slots, then coverage, then harder-slot success profile, "
-        "then lower total measured kernel work (one full correctness-closure replay median "
-        "plus the completed target-declaration medians). "
-        f"Only {REMOTE_PROTOCOL}/{LOCAL_PROTOCOL} verdicts under {MEASUREMENT_CONTRACT} "
-        "and its exact replay boundaries are scoreable. α and β are diagnostics only. "
+        "Each problem is ranked independently under the scoring contract sealed into its "
+        "evaluation cohort. Grouped v2 cohorts rank awarded points, harder-group points, "
+        "the declared case profile, and eligible kernel/proof work tie-breaks. "
+        "This public Stage 1 report includes grouped v2 cohorts only; legacy v1 scoring remains "
+        "available for local compatibility but is not published as a Stage 1 leaderboard. "
+        f"Only official {LOCAL_PROTOCOL} verdicts under {MEASUREMENT_CONTRACT} enter these "
+        f"public boards. {REMOTE_PROTOCOL} and wall-time grouped verdicts remain "
+        "validation-only. α and β are diagnostics only. "
         "Instruction, wall-time, and evaluation cohorts are never mixed. "
         "See `rules/evaluation.md`.",
         "",
     ]
 
+    problem_sections = {problem: [] for problem in stage1_problems}
     for problem, metric, cohort_id in sorted(groups):
+        section_start = len(md)
         label = METRICS[metric]["label"]
         first = groups[(problem, metric, cohort_id)][0]
         cohort = first.get("evaluation_cohort")
@@ -618,12 +1244,20 @@ def main():
         md.append("")
         md.append(f"Round: `{round_id}`")
         md.append("")
+        rows = _rows_for(problem, groups[(problem, metric, cohort_id)], metric)
         # Keep the shared hidden schedule out of the publishable table. Raw verdicts are
         # operator-private until the cohort closes (rules/evaluation.md).
-        md.append("| rank | submission | coverage | correctness work | "
-                  "curve work | total work | α (report only) | β (report only) | status |")
-        md.append("|---|---|---|---|---|---|---|---|---|")
-        rows = _rows_for(problem, groups[(problem, metric, cohort_id)], metric)
+        grouped = (isinstance(cohort, dict)
+                   and isinstance(cohort.get("policy"), dict)
+                   and cohort["policy"].get("schema") == "evaluation-policy-v2")
+        if grouped:
+            md.append("| rank | submission | points | group points | case outcomes | "
+                      "cases | performance work | proof work | status |")
+            md.append("|---|---|---|---|---|---|---|---|---|")
+        else:
+            md.append("| rank | submission | coverage | correctness work | "
+                      "curve work | total work | α (report only) | β (report only) | status |")
+            md.append("|---|---|---|---|---|---|---|---|---|")
         for row, placement in zip(rows, _competition_ranks(rows)):
             if row["scoreable"]:
                 rank = str(placement)
@@ -634,18 +1268,49 @@ def main():
             alpha = f"{row['alpha']:.3f}" if row["alpha"] is not None else "—"
             beta = f"{row['beta']:.2f}" if row["beta"] is not None else "—"
             coverage = f"{row['completed_slots']}/{row['planned_slots']}"
-            md.append(
-                f"| {rank} | {row['sub']} | {coverage} | "
-                f"{_format_work(row['correctness_work'], metric)} | "
-                f"{_format_work(row['curve_work'], metric)} | "
-                f"{_format_work(row['total_work'], metric)} | {alpha} | {beta} | {status} |"
-            )
+            if grouped:
+                group_profile = _format_group_points(row)
+                case_profile = _format_group_cases(row)
+                performance_work = (
+                    _format_work(row["curve_work"], metric)
+                    if row["work_tiebreak_active"] else "not compared")
+                proof_work = (
+                    _format_work(row["correctness_work"], metric)
+                    if row["work_tiebreak_active"] else "not compared")
+                md.append(
+                    f"| {rank} | {row['sub']} | "
+                    f"{row['points'] if row['points'] is not None else '—'} | "
+                    f"{group_profile} | {case_profile} | {coverage} | "
+                    f"{performance_work} | {proof_work} | {status} |"
+                )
+            else:
+                md.append(
+                    f"| {rank} | {row['sub']} | {coverage} | "
+                    f"{_format_work(row['correctness_work'], metric)} | "
+                    f"{_format_work(row['curve_work'], metric)} | "
+                    f"{_format_work(row['total_work'], metric)} | {alpha} | {beta} | {status} |"
+                )
         md.append("")
+        problem_sections[problem].extend(md[section_start:])
 
     os.makedirs(RESULTS, exist_ok=True)
     out = os.path.join(RESULTS, "scoring.md")
     with open(out, "w") as f:
         f.write("\n".join(md))
+    for problem in sorted(stage1_problems):
+        problem_dir = os.path.join(RESULTS, problem)
+        os.makedirs(problem_dir, exist_ok=True)
+        problem_out = os.path.join(problem_dir, "leaderboard.md")
+        sections = problem_sections[problem]
+        body = sections if sections else ["_No scored cohort yet._", ""]
+        with open(problem_out, "w") as f:
+            f.write("\n".join([
+                f"# Lean Kernel Challenge — {problem} leaderboard",
+                "",
+                "This leaderboard is independent; no cross-problem total is computed.",
+                "",
+                *body,
+            ]))
     print(f"wrote {out}")
 
 

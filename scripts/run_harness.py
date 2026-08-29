@@ -8,7 +8,7 @@ run it after any change to the judge, timer-kernel, problems, or rules.
 
 Usage:
   python3 scripts/run_harness.py            # all cases
-  python3 scripts/run_harness.py --quick    # accepted cases use 1 timing rep
+  python3 scripts/run_harness.py --quick    # 1 rep/case per level, 30 s prep cap
   python3 scripts/run_harness.py --only fib # cases whose problem matches a substring
 """
 import argparse
@@ -72,6 +72,23 @@ def validate_manifest(cases):
         if unknown_problems:
             details.append("manifest references unknown problems: " + ", ".join(unknown_problems))
         raise ValueError("; ".join(details))
+
+
+def configure_local_overrides(args):
+    """Apply development-only harness overrides without weakening checked-in policy.
+
+    ``--quick`` shortens both the sampled schedule and unscored preparation.
+    Explicit command-line or environment values always win.
+    """
+    if args.timeout is not None:
+        os.environ["TIMING_TIMEOUT_SECONDS"] = str(args.timeout)
+    elif args.quick and not os.environ.get("TIMING_TIMEOUT_SECONDS"):
+        os.environ["TIMING_TIMEOUT_SECONDS"] = "30"
+
+    if args.count is not None:
+        os.environ["PERF_COUNT"] = str(args.count)
+    elif args.quick and not os.environ.get("PERF_COUNT"):
+        os.environ["PERF_COUNT"] = "1"
 
 
 def run_case(case, reps):
@@ -159,24 +176,25 @@ def run_case(case, reps):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--quick", action="store_true", help="use 1 timing rep for accepted cases")
+    ap.add_argument(
+        "--quick", action="store_true",
+        help=("use 1 timing rep, PERF_COUNT=1, and a 30 s preparation timeout "
+              "unless already overridden"))
     ap.add_argument("--only", help="run only cases whose problem contains this substring")
-    ap.add_argument("--count", type=int, help="override PERF_COUNT (sample points per problem)")
+    ap.add_argument(
+        "--count", type=int,
+        help=("override PERF_COUNT: total sample points for legacy policies; "
+              "maximum cases in each group for grouped policies"))
     ap.add_argument("--timeout", type=int,
                     help="override the per-step timing budget in seconds (dev gate speed). Use this "
                          "instead of editing pipeline/config.json, which risks committing a tiny "
                          "debug budget into the official configuration.")
     args = ap.parse_args()
 
-    if args.timeout is not None:
-        os.environ["TIMING_TIMEOUT_SECONDS"] = str(args.timeout)
-
     # The gate checks verdicts + that the perf phase produced a score; it does not need the full
-    # official 10-point curve. Default --quick to a few points for speed (official run: no override).
-    if args.count is not None:
-        os.environ["PERF_COUNT"] = str(args.count)
-    elif args.quick and not os.environ.get("PERF_COUNT"):
-        os.environ["PERF_COUNT"] = "4"
+    # official schedule.  In grouped policies the override caps EACH group, retaining one case at
+    # every difficulty level instead of accidentally dropping all but the easiest groups.
+    configure_local_overrides(args)
 
     cases = json.loads(MANIFEST.read_text())["cases"]
     try:

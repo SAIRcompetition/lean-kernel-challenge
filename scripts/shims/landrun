@@ -7,6 +7,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --best-effort|-ldd|-add-exec) shift ;;
     --ro|--rw|--rwx|--rox|--env) shift 2 ;;
+    --) shift; break ;;
     --*) shift 2 ;;
     -*) shift ;;
     *) break ;;

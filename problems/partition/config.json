@@ -13,8 +13,41 @@
     "Classical.choice"
   ],
   "enable_nanoda": false,
-  "perf": {
-    "min": 5,
-    "max": 20
+  "evaluation": {
+    "schema": "grouped-evaluation-v1",
+    "axis": {"label": "partition argument", "unit": "n", "input_encoding": "direct Nat input"},
+    "groups": [
+      {
+        "id": "P1", "label": "Small", "order": 1,
+        "sampling": {"kind": "geometric_range", "min": 10, "max": 20, "count": 2, "jitter": 0.15},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 5}]},
+        "limits": {"timeout_seconds": 15}
+      },
+      {
+        "id": "P2", "label": "Medium", "order": 2,
+        "sampling": {"kind": "geometric_range", "min": 25, "max": 35, "count": 2, "jitter": 0.15},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 10}]},
+        "limits": {"timeout_seconds": 30}
+      },
+      {
+        "id": "P3", "label": "Large", "order": 3,
+        "sampling": {"kind": "geometric_range", "min": 50, "max": 100, "count": 2, "jitter": 0.15},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 15}]},
+        "limits": {"timeout_seconds": 60}
+      },
+      {
+        "id": "P4", "label": "Very Large", "order": 4,
+        "sampling": {"kind": "geometric_range", "min": 200, "max": 500, "count": 2, "jitter": 0.15},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 25}]},
+        "limits": {"timeout_seconds": 120}
+      },
+      {
+        "id": "P5", "label": "Frontier", "order": 5,
+        "sampling": {"kind": "geometric_range", "min": 1000, "max": 2000, "count": 2, "jitter": 0.15},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 45}]},
+        "limits": {"timeout_seconds": 300}
+      }
+    ],
+    "ranking": {"contract": "group-points-v1", "work": "curve", "proof": "last_tiebreak", "profile": "hardest_group_then_slot"}
   }
 }

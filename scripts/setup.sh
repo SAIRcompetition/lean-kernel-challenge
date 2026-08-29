@@ -24,7 +24,12 @@ clone_build() {
   local name="$1" url="$2" rev="$3" target="$4" patch="${5:-}"   # patch optional (set -u safe)
   local dir="$TOOLS_DIR/$name"
   if [ ! -d "$dir/.git" ]; then git clone "$url" "$dir"; fi
-  ( cd "$dir" && git checkout -- . && git checkout "$rev"
+  ( cd "$dir"
+    # Existing tool checkouts may predate a newly pinned revision. Fetch that exact
+    # commit before checkout so an in-place challenge toolchain upgrade is idempotent.
+    git fetch --quiet origin "$rev"
+    git checkout -- .
+    git checkout "$rev"
     if [ -n "$patch" ]; then
       echo "   applying $patch"
       git apply --3way "$HERE/$patch" || { echo "ERROR: failed to apply $patch"; exit 1; }
