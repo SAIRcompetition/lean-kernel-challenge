@@ -156,7 +156,12 @@ class MalformedVerdictReporting(unittest.TestCase):
         self.assertNotIn("Traceback", p.stderr)
         report = (self.tmp / "leaderboard.md").read_text()
         self.assertIn("good", report)
-        self.assertNotIn("legacy-conv", report)
+        # Legacy verdicts surface only in the informal unranked section, never as a
+        # ranked problem section.
+        canonical, _, informal = report.partition(
+            "## Experimental / legacy verdicts (informal, unranked)")
+        self.assertNotIn("legacy-conv", canonical)
+        self.assertIn("legacy-conv", informal)
         self.assertNotIn("## conv", report)
         standalone = (self.tmp / "fib" / "leaderboard-local.md").read_text()
         self.assertIn("good", standalone)

@@ -26,13 +26,17 @@ clone_build() {
   if [ ! -d "$dir/.git" ]; then git clone "$url" "$dir"; fi
   ( cd "$dir"
     # Existing tool checkouts may predate a newly pinned revision. Fetch that exact
-    # commit before checkout so an in-place challenge toolchain upgrade is idempotent.
-    git fetch --quiet origin "$rev"
-    git checkout -- .
-    git checkout "$rev"
+    # commit (only when it is not already local, so offline re-runs keep working),
+    # then hard-reset so a previously applied patch cannot survive in the index or
+    # worktree — `git apply` stages nothing, but an interrupted run or an older
+    # `--3way` apply may have; `checkout -- .` restores from the index and would
+    # keep it, breaking both same-pin re-runs and in-place upgrades.
+    git cat-file -e "$rev^{commit}" 2>/dev/null || git fetch --quiet origin "$rev"
+    git reset --hard --quiet
+    git checkout --quiet "$rev"
     if [ -n "$patch" ]; then
       echo "   applying $patch"
-      git apply --3way "$HERE/$patch" || { echo "ERROR: failed to apply $patch"; exit 1; }
+      git apply "$HERE/$patch" || { echo "ERROR: failed to apply $patch"; exit 1; }
     fi
     # Tool tags may lag the challenge toolchain (e.g. v4.33.0 tools on v4.33.1).
     # Build them with the challenge Lean so .olean headers match problem workspaces.

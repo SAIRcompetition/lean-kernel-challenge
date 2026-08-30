@@ -86,7 +86,7 @@ jobs:
                   -e EVALUATION_EXECUTOR_VERSION=ci-pmu-v1 \
                   -e TIMING_METRIC=perf_instructions lean-kernel-judge \
                   python3 judge/judge.py run --problem fib \
-                  --submission examples/submissions/fib/baseline --tag ci-attest --reps 1 2>&1)
+                  --submission examples/submissions/fib/baseline --tag ci-attest --reps 3 2>&1)
           status=$?
           set -e
           echo "$out"
@@ -112,7 +112,7 @@ jobs:
             -e EVALUATION_EXECUTOR_VERSION=ci-pmu-v1 \
             -e ISOLATION_ATTESTATION=run_isolated.sh -e TIMING_METRIC=perf_instructions \
             lean-kernel-judge python3 judge/judge.py run --problem fib \
-            --submission examples/submissions/fib/cheat-sorry --tag ci-attest-ok --reps 1)
+            --submission examples/submissions/fib/cheat-sorry --tag ci-attest-ok --reps 3)
           echo "$out"
           echo "$out" | grep -q "fib/ci-attest-ok: rejected" || {
             echo "FAIL: attested invalid submission did not reach a judged rejection"; exit 1; }

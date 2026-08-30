@@ -460,7 +460,12 @@ def _group_range_values(sampling, problem, group, spacing):
             problem, group,
             f"count {count} exceeds the {capacity} distinct integers in [{lo}, {hi}]")
 
-    jitter_value = sampling.get("jitter", _PERF_DEFAULTS.get("jitter", 0.15))
+    # No default: the canonical scorer's sealed-contract validator requires an explicit
+    # jitter on range samplers, so defaulting here would only defer the failure past
+    # plan construction. Both validators must state the same contract.
+    if "jitter" not in sampling:
+        _group_sampling_error(problem, group, "sampling.jitter must be declared explicitly")
+    jitter_value = sampling["jitter"]
     if isinstance(jitter_value, bool) or not isinstance(jitter_value, (int, float)):
         _group_sampling_error(problem, group, f"jitter must be a finite number (got {jitter_value!r})")
     jitter = float(jitter_value)
@@ -675,6 +680,17 @@ def performance_plan(cfg, problem):
                 _group_sampling_error(
                     problem, group,
                     f"limits.{limit_name} must be a positive integer (got {limit_value!r})")
+        # The effective replay deadline is min(evaluator ceiling, group watchdog). A group
+        # watchdog above the checked-in ceiling would be silently clipped while the public
+        # table and the sealed policy advertise the larger value — reject it at plan time.
+        # Compare against the checked-in config value, not the env-derived TIMING_TIMEOUT:
+        # dev quick mode legitimately shrinks the latter below every group watchdog.
+        replay_cap = limits.get("timeout_seconds")
+        if replay_cap is not None and replay_cap > _J["timing_timeout_seconds"]:
+            _group_sampling_error(
+                problem, group,
+                f"limits.timeout_seconds ({replay_cap}) exceeds the evaluator timing ceiling "
+                f"({_J['timing_timeout_seconds']}s) and would be silently clipped")
 
         for case, n in enumerate(values):
             if n in seen_inputs:
@@ -1360,6 +1376,45 @@ def _timer_command(export_file, target):
     return cmd + [str(export_file)]
 
 
+def _preflight_perf_counter(env):
+    """Prove the local PMU instruction counter works BEFORE elaborating the submission.
+
+    Two production failure modes would otherwise surface only after the comparator hour, as
+    errors misattributed to the submission's replay: Ubuntu's linux-tools `perf` wrapper has
+    no build for the running kernel (nonzero exit on any host/kernel drift), and a PMU
+    permission shortfall (perf_event_paranoid >= 2 without effective CAP_PERFMON) makes perf
+    silently downgrade to user-only counting under the renamed event `instructions:u`, which
+    would not measure what the sealed contract promises. Probe with a trivial command and
+    demand the exact full-scope `instructions` event.
+    """
+    perf = shutil.which("perf", path=env.get("PATH", ""))
+    if not perf:
+        raise InfraError("metric=perf_instructions but `perf` not found — requires the Linux eval host")
+    try:
+        proc = subprocess.run([perf, "stat", "-x", ",", "-e", "instructions", "--", "true"],
+                              capture_output=True, text=True, timeout=30, env=env)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise InfraError(f"perf preflight could not execute: {e}")
+    if proc.returncode != 0:
+        tail = (proc.stderr or proc.stdout or "").strip()[-500:]
+        raise InfraError("perf preflight exited nonzero — no working perf for the running kernel "
+                         f"(linux-tools wrapper/kernel mismatch?): {tail}")
+    events = []
+    for line in proc.stderr.splitlines():
+        f = line.split(",")
+        if len(f) >= 3 and f[0] not in ("", "<not counted>", "<not supported>"):
+            events.append(f[2])
+    if "instructions" not in events:
+        downgraded = sorted(e for e in events if e.startswith("instructions:"))
+        if downgraded:
+            raise InfraError(
+                f"perf preflight counted only {', '.join(downgraded)} — the container lacks "
+                "kernel-scope PMU permission (perf_event_paranoid >= 2 without effective "
+                "CAP_PERFMON); refusing a metric that would not match the sealed contract")
+        raise InfraError("perf preflight produced no usable `instructions` count "
+                         "(PMU unavailable in this container?)")
+
+
 def _time_replay(export_file, work, env, timeout, target=None):
     """One full-closure or explicit-target replay.
 
@@ -1387,17 +1442,27 @@ def _time_replay(export_file, work, env, timeout, target=None):
             return rc, out, {}
         measured = _parse_timer_measurement(out, target)
         insns = task_clock = None
+        downgraded = []
         try:
             for line in perf_out.read_text().splitlines():
                 f = line.split(",")
                 if len(f) >= 3 and f[0] not in ("", "<not counted>", "<not supported>"):
                     if f[2] == "instructions":
                         insns = int(float(f[0]))
+                    elif f[2].startswith("instructions:"):
+                        # Permission shortfall: perf renames the event (`instructions:u`)
+                        # when it silently drops to user-only counting. Never accept it —
+                        # it does not measure what the sealed contract promises.
+                        downgraded.append(f[2])
                     elif f[2] == "task-clock":
                         task_clock = float(f[0])  # msec
         except OSError:
             pass
         if insns is None:
+            if downgraded:
+                raise InfraError(
+                    f"perf counted only {', '.join(sorted(downgraded))} — kernel-scope PMU "
+                    "permission was lost mid-run (perf_event_paranoid/CAP_PERFMON)")
             raise InfraError("perf produced no instruction count (PMU unavailable in this container?)")
         return rc, out, {
             "instructions": insns,
@@ -2238,6 +2303,10 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                          "(missing or invalid ISOLATION_ATTESTATION)")
     if OFFICIAL_EVAL and _read_cgroup_oom_kills() is None:
         raise InfraError("official evaluation requires cgroup-v2 memory.events OOM accounting")
+    if OFFICIAL_EVAL and os.environ.get("TIMING_TIMEOUT_SECONDS"):
+        # The dev knob would be silently sealed into the cohort budgets, contradicting the
+        # published watchdog ceilings. Official runs take the checked-in value only.
+        raise InfraError("official evaluation forbids the TIMING_TIMEOUT_SECONDS dev override")
 
     # Fail-closed sandbox policy: production must have a real sandbox.
     env = tool_env()
@@ -2426,6 +2495,14 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                 raise InfraError("local perf produced a non-positive/non-integral instruction sample")
         return "ok", samples
 
+    if TIMING_METRIC == "perf_instructions" and not TIMING_EXECUTOR_URLS and not DEFER_TIMING:
+        # Prove the local PMU instruction counter works before the first timed replay: a broken
+        # perf wrapper or a permission downgrade must fail here with its real diagnosis, not
+        # surface as an error misattributed to the correctness export or a perf case. Placed
+        # after the correctness gate so PMU-less hosts can still exercise the gate itself
+        # (the CI attestation sanity test relies on that).
+        _preflight_perf_counter(env)
+
     # Score the proof work too. This prevents a specialization table from appearing free merely
     # because its expensive closed-value proofs live in the already-verified correctness export.
     correctness_status, correctness_payload = _measure_or_defer(
@@ -2511,7 +2588,13 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     _prepare_generated_workspace(work, artifact_lib)
 
     # A timeout occupies only its own configured slot. We still probe every later slot because a
-    # valid implementation's reduction cost need not be monotone in n. Deterministic failures
+    # valid implementation's reduction cost need not be monotone in n. Deterministic failures of
+    # the VALUE ORACLE (NONLIT, invalid literal, nonzero oracle exit) depend only on how far the
+    # submission's impl reduces, so they fail that case and the plan continues — otherwise a
+    # comparator-legal submission that passed every easier group would lose all its points to a
+    # deterministic elaborator crash at one harder input, ranking strictly worse than timing out
+    # there (non-monotone and contrary to the published "zero cases passed scores 0" rule).
+    # Judge-owned faults (identity, generated-theorem build, kernel rejection of a perf export)
     # remain fatal and can never be misread as a slow-but-valid point.
     def probe_point(n, deadline=None):
         # Preparation keeps its infrastructure timeout; only the target timing process uses
@@ -2541,7 +2624,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                     None, "value-eval-container-cgroup", "value-eval"),
             }, None
         if vkind == "error":
-            return {"n": n, "result": "value-eval-error"}, f"value oracle failed at n={n}: {v}"
+            # Contestant-dependent deterministic failure: this case fails, later cases still run.
+            return {"n": n, "result": "value-eval-error", "detail": str(v)[:300]}, None
         # Identity binding: the impl we are about to build/time must be byte-identical to the
         # one comparator verified `impl_correct` against. A mismatch means the Submission was
         # modified after verification — a fault, never a score.
@@ -2670,7 +2754,9 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     # Correctness already passed, so the submission is ACCEPTED regardless of speed; performance
     # only determines its score. Grouped-v2 awards a valid zero-point score when no case passes.
     # Legacy v1 remains accepted-but-unscored when no input completes. Slowness is not a
-    # rejection (only incorrect, illegal-axiom, or kernel-rejected exports are rejected, above).
+    # rejection (only incorrect or illegal-axiom submissions are rejected, above; a kernel
+    # rejection of a judge-built export contradicts the comparator's own verification and is
+    # therefore an infrastructure error verdict, not a rejection).
     result["timing"] = timing
     result["status"] = "accepted"
     ok_rows = [r for r in scaling if r.get("result") == "ok"]
@@ -2822,6 +2908,7 @@ def _stage1_problem_ids():
 
 def leaderboard():
     rows = []
+    legacy_rows = []
     stage1_problems = _stage1_problem_ids()
     if not RESULTS.is_dir():          # fresh clone with no results/ yet — empty board, no crash
         print(f"no results yet at {RESULTS}")
@@ -2843,9 +2930,11 @@ def leaderboard():
                     and isinstance(r.get("status"), str) and isinstance(r.get("stages"), dict)):
                 continue
             if r["problem"] not in stage1_problems:
+                legacy_rows.append(r)
                 continue
             if r["status"] == "accepted":
                 if not _canonical_scorer()._is_grouped_verdict(r):
+                    legacy_rows.append(r)
                     continue
             rows.append(r)
     lines = ["# Lean Kernel Challenge — leaderboard (local dev)", ""]
@@ -2950,6 +3039,20 @@ def leaderboard():
                 lines.append(f"| {md_cell(r['submission'])} | {icon} | {md_cell(r.get('reason'))} |")
             lines.append("")
         problem_sections[problem] = lines[section_start:]
+    if legacy_rows:
+        # Informal visibility for experimental problems (conv) and pre-redesign v1 verdicts:
+        # they belong on no Stage 1 board, but silently vanishing from EVERY report would make
+        # local development on them blind. Listed only — never ranked or mixed with cohorts.
+        lines.append("## Experimental / legacy verdicts (informal, unranked)")
+        lines.append("")
+        lines.append("| problem | submission | status | metric | note |")
+        lines.append("|---|---|---|---|---|")
+        for r in sorted(legacy_rows, key=lambda r: (r["problem"], r["submission"])):
+            lines.append(
+                f"| {md_cell(r['problem'])} | {md_cell(r['submission'])} | "
+                f"{md_cell(r['status'])} | {md_cell(r.get('metric'))} | "
+                f"{md_cell(r.get('score') or r.get('reason'))} |")
+        lines.append("")
     for problem in sorted(stage1_problems):
         problem_dir = RESULTS / problem
         problem_dir.mkdir(parents=True, exist_ok=True)

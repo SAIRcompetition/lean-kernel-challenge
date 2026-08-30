@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Known-answer checks for the four packed, seed-specific Lean specs.
+"""Known-answer checks for the packed, seed-specific Lean specs and polydisc.
 
 The reference functions below intentionally do not import judge or duplicate
 Lean output files.  They implement the public generators in Python, while the
@@ -8,8 +8,10 @@ Frozen answers make an accidental matching change on both sides visible.
 """
 
 import hashlib
+import importlib.util
 import itertools
 import re
+import shutil
 import subprocess
 import unittest
 from pathlib import Path
@@ -185,6 +187,82 @@ CASES = {
 }
 
 
+# Frozen known answers for `problems/polydisc/Spec.lean` (`discSpec`).  The
+# input is a plain seed, not a packed (scale, seed) pair; the six seeds cover
+# coefficient-width bands 0-2 with two seeds each, taken from the sampling
+# ranges of evaluation groups D1-D3 in `problems/polydisc/config.json`.  The
+# expected discriminants were computed with the repository's own Python mirror
+# (`scripts/check_polydisc_candidate.py`) plus SymPy, then cross-checked
+# against Lean's `discSpec` before freezing.  They are stored as decimal
+# strings and compared as strings, so the check is independent of the large
+# int-to-str conversion cap introduced in Python 3.11.
+POLYDISC_VECTORS = [
+    (262144,
+     "303470771677018177369005898145299643300756168039600225712837245485675610"
+     "833541547159974155910628760906731568524596851222880317456424130550525844"
+     "8863391462091221629670401872"),
+    (1000000,
+     "774450076976763970289981171935720156100320768149556884603860012639247956"
+     "998179843714529217570082463678577925226542135066320961613139761299413650"
+     "2997168963583488275591760"),
+    (33554432,
+     "197013343885744768115510819017207977490899712029982582272230983471177382"
+     "930036076197648725756511092166112706526382118851509361828945511897665348"
+     "29577395859417632849712892"),
+    (134217728,
+     "281782084634836190461375724093769489386541170871120134232992999404747145"
+     "768273915782492720866778022694222351499111290573767786431114775327854045"
+     "115968132567215779536916455361038668868633862494334753245352856823762968"
+     "077187490604140918987851734261023395530388526978844739863288069191543257"
+     "512685767288715612489127818522074552017533236743648296638523182621176401"
+     "9462746171857063206955796998079592085505617"),
+    (8589934592,
+     "-10657192124258122220446968542379213370714136580090626631136935169826761"
+     "347555405348785468852188221664779131161541238666189973677147285080105256"
+     "448224119124589207300774537449638663426457271410826453637787422374710229"
+     "207886388057430555867529798500473902148939748845979575112835402645178415"
+     "676587212912752526578126188154830984535023483056184846331508918888695036"
+     "671447544225762147603416908877128389009808489704841799"),
+    (137438953472,
+     "-12658129311832010785654853595940986334136841195745883811214013830751306"
+     "786638075428802878854791562775522054895197993247999428978504780973245696"
+     "139535055422421809508789978531417105109550575856238156499052676546693241"
+     "903621991728304915018435154103173145995360372951132856680863154081238642"
+     "508441484702325391075877395011953491666802877623592008670104771999186683"
+     "074936172561493060539022215002593415364482318425164568230790526487523864"
+     "143843109781153222675567336917274844862928732512487004081305047190010471"
+     "907668265252329227867174974195685571552481291995386024000176877298312533"
+     "598746300478742948259315566885672618447524073153310618182447074955099003"
+     "738172937167644275560339362228213253902599109256279954159848876811544194"
+     "229191532763221972963960963138377027051340578446178568414344006687191848"
+     "746878472965046275673790980839446867170462449744054694203354835695917611"
+     "593830286210403850112901803506128829219129828393504134271205811190441178"
+     "070694965229583817821931875826628765763533443310684499130034332189916581"
+     "177191661407772144565451743292835895549955152308634572584213269464620522"
+     "492577568486446835330599272950505012930582257773039496640521203018565631"
+     "810572873727531274745773118388540940655420784397642276155555746700638952"
+     "144688864056248995823408551644865376841052778861222137461548385987861433"
+     "698114492822344611124763449973273886501994384176069342519485762637627528"
+     "908069362441422470363425620035983570038935477519386165283515906557363748"
+     "2798903075630841609516571983323"),
+]
+
+
+def load_polydisc_mirror():
+    """Load the repository's Python mirror of the polydisc construction.
+
+    The module imports sympy at top level, so callers must gate on sympy
+    availability before invoking this helper.
+    """
+    location = ROOT / "scripts" / "check_polydisc_candidate.py"
+    spec = importlib.util.spec_from_file_location(
+        "check_polydisc_candidate", location
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def lean_values(problem, spec_name, vectors):
     workspace = ROOT / "problems" / problem
     subprocess.run(
@@ -221,6 +299,41 @@ def lean_values(problem, spec_name, vectors):
     return values
 
 
+def lean_int_values(problem, spec_name, inputs):
+    workspace = ROOT / "problems" / problem
+    subprocess.run(
+        ["lake", "build", "Spec"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    source = "import Spec\n" + "\n".join(
+        f"#eval {spec_name} {value}" for value in inputs
+    ) + "\n"
+    result = subprocess.run(
+        ["lake", "env", "lean", "--stdin"],
+        cwd=workspace,
+        input=source,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    values = [
+        line
+        for line in result.stdout.splitlines()
+        if re.fullmatch(r"-?[0-9]+", line)
+    ]
+    if len(values) != len(inputs):
+        raise AssertionError(
+            f"Lean printed {len(values)} values for {problem}, expected {len(inputs)}; "
+            f"stdout={result.stdout!r}, stderr={result.stderr!r}"
+        )
+    return values
+
+
 class PackedInstanceKnownAnswerTests(unittest.TestCase):
     def test_permanent_generator_has_fixed_row_degree_and_diagonal(self):
         for dimension in (3, 4, 8, 12):
@@ -248,6 +361,29 @@ class PackedInstanceKnownAnswerTests(unittest.TestCase):
                 with self.subTest(problem=problem, scale=scale, seed=seed):
                     self.assertEqual(reference(scale, seed), expected)
 
+    def test_polydisc_frozen_discriminants_are_nonzero(self):
+        for n, expected in POLYDISC_VECTORS:
+            with self.subTest(n=n):
+                self.assertRegex(expected, r"^-?[1-9][0-9]*$")
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("sympy") is not None,
+        "sympy not on this interpreter (the repository mirror imports it)",
+    )
+    def test_polydisc_mirror_matches_frozen_answers(self):
+        import sympy
+
+        mirror = load_polydisc_mirror()
+        x = sympy.symbols("x")
+        for n, expected in POLYDISC_VECTORS:
+            with self.subTest(n=n):
+                coefficients, _, _ = mirror.candidate_polynomial(n)
+                polynomial = sympy.Poly.from_list(
+                    coefficients, gens=x, domain=sympy.ZZ
+                )
+                self.assertEqual(str(int(polynomial.discriminant())), expected)
+
+    @unittest.skipUnless(shutil.which("lake"), "lake (Lean toolchain) not on PATH")
     def test_lean_specs_match_independent_references(self):
         for problem, case_set in CASES.items():
             with self.subTest(problem=problem):
@@ -256,6 +392,12 @@ class PackedInstanceKnownAnswerTests(unittest.TestCase):
                     lean_values(problem, case_set["spec"], case_set["vectors"]),
                     expected,
                 )
+
+    @unittest.skipUnless(shutil.which("lake"), "lake (Lean toolchain) not on PATH")
+    def test_polydisc_lean_spec_matches_frozen_answers(self):
+        inputs = [n for n, _ in POLYDISC_VECTORS]
+        expected = [value for _, value in POLYDISC_VECTORS]
+        self.assertEqual(lean_int_values("polydisc", "discSpec", inputs), expected)
 
 
 if __name__ == "__main__":

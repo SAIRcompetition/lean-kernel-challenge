@@ -250,6 +250,40 @@ class GroupedPerformancePlanTests(unittest.TestCase):
             with self.assertRaisesRegex(judge.InfraError, "difficulty axis"):
                 judge._validated_performance_plan(bad_axis, "demo")
 
+    def test_group_watchdog_may_not_exceed_the_evaluator_ceiling(self):
+        # A group watchdog above the checked-in timing ceiling would be silently clipped at
+        # replay time while the public table advertises the larger value — reject at plan time.
+        ceiling = judge._J["timing_timeout_seconds"]
+        cfg = _grouped_cfg(_packed_group("L1", 0, 3, limits={
+            "kernel_instructions": 1000000, "timeout_seconds": ceiling + 1,
+        }))
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "PERF_SEED", ""), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            with self.assertRaisesRegex(judge.InfraError, "silently clipped"):
+                judge.performance_plan(cfg, "demo")
+
+    def test_range_sampling_requires_explicit_jitter(self):
+        # The canonical scorer's sealed-contract validator requires jitter on range samplers;
+        # the plan builder must state the same contract instead of filling a default.
+        range_group = {
+            "id": "R1", "label": "R1", "order": 0,
+            "sampling": {"kind": "geometric_range", "min": 10, "max": 1000, "count": 2},
+            "award": {"mode": "milestones", "table": [
+                {"passed": 0, "points": 0},
+                {"passed": 2, "points": 10},
+            ]},
+            "limits": {"timeout_seconds": 17},
+        }
+        cfg = _grouped_cfg(range_group)
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "OFFICIAL_EVAL", False), \
+             mock.patch.object(judge, "PERF_SEED", ""), \
+             mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
+            with self.assertRaisesRegex(judge.InfraError, "declared explicitly"):
+                judge.performance_plan(cfg, "demo")
+
     def test_official_stage1_rejects_legacy_only_problem_policy(self):
         with mock.patch.object(judge, "TIMING_METRIC", "perf_instructions"), \
              mock.patch.object(judge, "OFFICIAL_EVAL", True), \
@@ -540,7 +574,12 @@ class GroupedJudgeReportingTests(unittest.TestCase):
         self.assertIn("L2:20/50, L1:10/25", report)
         self.assertIn("L2:01, L1:01", report)
         self.assertIn("30/75 points; 2/4 passed cases", report)
-        self.assertNotIn("legacy-conv", report)
+        # Legacy/experimental verdicts are visible ONLY in the informal unranked section —
+        # never as a ranked problem section or a legacy coverage table.
+        canonical, _, informal = report.partition(
+            "## Experimental / legacy verdicts (informal, unranked)")
+        self.assertNotIn("legacy-conv", canonical)
+        self.assertIn("legacy-conv", informal)
         self.assertNotIn("## conv", report)
         self.assertNotIn("| rank | submission | coverage | total work | score |", report)
 

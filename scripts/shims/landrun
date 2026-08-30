@@ -6,8 +6,10 @@
 while [ $# -gt 0 ]; do
   case "$1" in
     --best-effort|-ldd|-add-exec) shift ;;
+    --ldd|--add-exec|--unrestricted-filesystem|--unrestricted-network) shift ;;
     --ro|--rw|--rwx|--rox|--env) shift 2 ;;
     --) shift; break ;;
+    --*=*) shift ;;
     --*) shift 2 ;;
     -*) shift ;;
     *) break ;;

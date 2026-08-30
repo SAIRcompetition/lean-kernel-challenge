@@ -75,7 +75,10 @@ process's untimed parsing and preload overhead, while the ranking metric itself 
 target-declaration kernel replay. Earlier value generation, generated-theorem build/export, and
 axiom audit use separate per-case ceilings: 1,800 seconds for value generation, 1,800 seconds
 shared by theorem build and export, and 300 seconds for axiom audit. A timeout in any required
-step fails that case, but cannot consume another case's limit.
+step fails that case, but cannot consume another case's limit. Likewise, a deterministic value
+generation failure at one input — the submission's `impl` does not reduce to an integer literal
+there, or the evaluation process fails on it — fails that case only; later cases are still
+attempted, and a submission passing no case scores zero points rather than becoming unscored.
 
 The official evaluator job has one common 4 GiB cgroup-v2 envelope. A child SIGKILL is classified
 as memory exhaustion only when the attested `memory.events` OOM counter also increases. If that

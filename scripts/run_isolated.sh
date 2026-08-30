@@ -292,6 +292,10 @@ DOCKER_ARGS=(
   run --rm
   --network none
   --memory "$MEMORY"
+  # Swap must equal the memory limit (i.e. zero extra swap): Docker's default grants
+  # memory-limit-sized ADDITIONAL swap, under which an over-limit submission thrashes
+  # instead of OOM-killing and the memory.events attribution never fires.
+  --memory-swap "$MEMORY"
   --cpus "$CPUS"
   --pids-limit "$PIDS_LIMIT"
   --security-opt no-new-privileges:true

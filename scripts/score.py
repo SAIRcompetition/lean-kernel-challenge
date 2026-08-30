@@ -39,6 +39,17 @@ with open(os.path.join(ROOT, "pipeline", "config.json")) as _config_file:
 _TIMING_POLICY = _PIPELINE_POLICY["timing"]
 STAGE1_OFFICIAL_REPS = _PIPELINE_POLICY["judge"]["timing_reps"]
 REPLAY_MEMORY_MB = _PIPELINE_POLICY["sandbox"]["memory_mb"]
+# Official cohorts must seal exactly the checked-in watchdog budgets and toolchain: the public
+# contract publishes these ceilings, and a verdict is otherwise free to carry any self-consistent
+# policy of its own (the seal hashes are unkeyed). Pinning them here fail-closes both a drifted
+# dev override sealed into an "official" run and a stale verdict from an older toolchain.
+STAGE1_OFFICIAL_BUDGETS = {
+    "comparator_timeout_seconds": _PIPELINE_POLICY["judge"]["comparator_timeout_seconds"],
+    "audit_timeout_seconds": _PIPELINE_POLICY["judge"]["audit_timeout_seconds"],
+    "timing_timeout_seconds": _PIPELINE_POLICY["judge"]["timing_timeout_seconds"],
+    "perf_phase_budget_seconds": 0,
+}
+STAGE1_OFFICIAL_TOOLCHAIN = _PIPELINE_POLICY["toolchain"]
 STAGE1_PROBLEMS = frozenset({
     "ca-rule110", "fib", "mertens", "partition", "permanent",
     "polydisc", "primecount", "saw", "sha256",
@@ -77,6 +88,9 @@ PERFORMANCE_RESULTS = {
     "ok",
     "timeout",
     "value-eval-timeout",
+    # Deterministic value-oracle failure (NONLIT / invalid literal / oracle crash) depends only
+    # on the submission's impl at that input: the case fails, the rest of the plan still counts.
+    "value-eval-error",
     "build-timeout",
     "axiom-audit-timeout",
     "resource-limit",
@@ -104,6 +118,11 @@ def _load_verdicts():
             if not (isinstance(r, dict) and isinstance(r.get("problem"), str)
                     and isinstance(r.get("submission"), str)
                     and isinstance(r.get("status"), str) and isinstance(r.get("stages"), dict)):
+                continue
+            if r["problem"] != prob:
+                # The directory is authoritative: a record may only score under the problem
+                # whose directory it lives in, so a misfiled or relabeled verdict cannot
+                # land on another problem's board.
                 continue
             rows.append(r)
     return rows
@@ -595,6 +614,10 @@ def _policy_v2_shape_error(policy):
         if (policy["executor"]["kind"] != "local"
                 or policy["timing_protocol"] != LOCAL_PROTOCOL):
             return "official grouped evaluation must use the local PMU protocol"
+        if budgets != STAGE1_OFFICIAL_BUDGETS:
+            return "official grouped evaluation has noncanonical watchdog budgets"
+        if policy["toolchain"] != STAGE1_OFFICIAL_TOOLCHAIN:
+            return "official grouped evaluation was sealed under a different toolchain"
     plan = policy["performance_plan"]
     plan_digest = _policy_digest(plan)
     if (not _sha256_string(policy["performance_plan_sha256"])
@@ -846,8 +869,12 @@ def _apply_grouped_scoring(row, policy, slot_values):
         row["work_tiebreak_active"] = (
             row["completed_slots"] == row["planned_slots"])
     else:
+        # Eligibility gates the ranking bits here exactly as in count mode: a group whose
+        # prerequisites are unmet earns no points and must contribute zero to the ranking
+        # profile, or its bits could still decide a tie the published rules say it cannot.
+        # (group_case_detail below stays raw in both modes — it is display, not ranking.)
         row["case_profile"] = tuple(
-            int(passed)
+            int(passed) if eligible_by_group[group["id"]] else 0
             for group in hardest
             for _, passed in sorted(
                 slots_by_group[group["id"]], key=lambda pair: pair[0], reverse=True)
@@ -1210,6 +1237,15 @@ def _format_group_cases(row):
     return ", ".join(f"{group_id}:{bitmap}" for group_id, bitmap in detail)
 
 
+def _write_text_atomic(path, text):
+    """Report files must never be observable half-written (a crash mid-write would leave a
+    fresh scoring.md alongside stale per-problem boards); write-then-rename is atomic on POSIX."""
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
 def main():
     stage1_problems = _stage1_problem_ids()
     groups = _groups([
@@ -1217,6 +1253,38 @@ def main():
         if (_is_stage1_public_verdict(verdict)
             and verdict.get("problem") in stage1_problems)
     ])
+
+    # Fail-closed cohort integrity, checked before anything is written.
+    # (a) A ranking table's rows must all be sealed under ONE policy: the grouping key's
+    #     cohort id is the 96-bit hash prefix, so demand full-hash agreement inside it.
+    # (b) One (problem, round) must not span multiple official cohorts: that is the
+    #     signature of a mid-round seed rotation, env drift, or a stale verdict left in
+    #     results/ — each fragment would silently get its own rank 1. An operator who
+    #     intends parallel cohorts must say so explicitly.
+    split = {}
+    for (problem, metric, cohort_id), members in sorted(groups.items()):
+        hashes = {
+            (m.get("evaluation_cohort") or {}).get("policy_sha256")
+            for m in members if isinstance(m.get("evaluation_cohort"), dict)
+        }
+        if len(hashes) > 1:
+            raise SystemExit(
+                f"refusing to score: cohort `{cohort_id}` ({problem}, {metric}) contains "
+                f"verdicts sealed under {len(hashes)} different policies")
+        rounds = {
+            (m.get("evaluation_cohort") or {}).get("round") for m in members
+        }
+        for round_id in rounds:
+            split.setdefault((problem, metric, round_id), set()).add(cohort_id)
+    conflicts = {key: ids for key, ids in split.items() if len(ids) > 1}
+    if conflicts and os.environ.get("ALLOW_COHORT_SPLIT") != "1":
+        lines = "; ".join(
+            f"{problem}/{metric} round `{round_id}`: cohorts {sorted(ids)}"
+            for (problem, metric, round_id), ids in sorted(conflicts.items()))
+        raise SystemExit(
+            "refusing to publish: one round spans multiple official cohorts — likely a "
+            "seed rotation, sealed-env drift, or stale verdicts needing cleanup "
+            f"({lines}). Set ALLOW_COHORT_SPLIT=1 to publish them side by side anyway.")
     md = [
         "# Lean Kernel Challenge — canonical scoring",
         "",
@@ -1295,22 +1363,20 @@ def main():
 
     os.makedirs(RESULTS, exist_ok=True)
     out = os.path.join(RESULTS, "scoring.md")
-    with open(out, "w") as f:
-        f.write("\n".join(md))
+    _write_text_atomic(out, "\n".join(md))
     for problem in sorted(stage1_problems):
         problem_dir = os.path.join(RESULTS, problem)
         os.makedirs(problem_dir, exist_ok=True)
         problem_out = os.path.join(problem_dir, "leaderboard.md")
         sections = problem_sections[problem]
         body = sections if sections else ["_No scored cohort yet._", ""]
-        with open(problem_out, "w") as f:
-            f.write("\n".join([
-                f"# Lean Kernel Challenge — {problem} leaderboard",
-                "",
-                "This leaderboard is independent; no cross-problem total is computed.",
-                "",
-                *body,
-            ]))
+        _write_text_atomic(problem_out, "\n".join([
+            f"# Lean Kernel Challenge — {problem} leaderboard",
+            "",
+            "This leaderboard is independent; no cross-problem total is computed.",
+            "",
+            *body,
+        ]))
     print(f"wrote {out}")
 
 

@@ -135,6 +135,9 @@ class RunIsolatedTests(unittest.TestCase):
         self.assertEqual(args[:2], ["run", "--rm"])
         self.assert_pair(args, "--network", "none")
         self.assert_pair(args, "--memory", "4g")
+        # Swap must be pinned to the memory limit (zero extra swap); Docker's
+        # default would grant 4g of additional swap and defeat OOM attribution.
+        self.assert_pair(args, "--memory-swap", "4g")
         self.assert_pair(args, "--cpus", "2")
         self.assert_pair(args, "--pids-limit", "512")
         self.assert_pair(args, "--security-opt", "no-new-privileges:true")

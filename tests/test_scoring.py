@@ -2,9 +2,11 @@
 import hashlib
 import importlib.util
 import json
+import os
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -139,6 +141,7 @@ def make_official_grouped(result):
         "pids_limit": "512",
         "sandbox_mode": "container",
     }
+    policy["budgets"] = dict(score.STAGE1_OFFICIAL_BUDGETS)
     result["evaluation_cohort"]["executor"] = executor
     _reseal_policy(result)
     return result
@@ -1066,6 +1069,87 @@ class ScoringTests(unittest.TestCase):
 
         self.assertFalse(row["scoreable"])
         self.assertIn("worst_normalized", row["reason"])
+
+
+class SealHardeningTests(unittest.TestCase):
+    """Regressions for the fail-closed hardenings layered onto the sealed-cohort scorer."""
+
+    def test_value_eval_error_fails_only_its_case(self):
+        # A deterministic value-oracle failure at one input is a case failure, not a
+        # run-voiding error: the submission keeps every other case's points.
+        baseline = grouped_verdict("oracle-crash", [100, None, 100, 100])
+        baseline_row = score._score_row(baseline, "perf_instructions")
+        self.assertTrue(baseline_row["scoreable"])
+
+        item = grouped_verdict("oracle-crash", [100, None, 100, 100])
+        item["timing"]["scaling"][1]["result"] = "value-eval-error"
+        item["timing"]["scaling"][1]["detail"] = "value oracle failed at n=20: NONLIT"
+        row = score._score_row(item, "perf_instructions")
+        self.assertTrue(row["scoreable"])
+        self.assertEqual(row["points"], baseline_row["points"])
+        self.assertEqual(row["completed_slots"], baseline_row["completed_slots"])
+
+    def test_official_budget_pin_rejects_dev_override(self):
+        item = grouped_verdict("dev-budget", [100, 100, 100, 100])
+        make_official_grouped(item)
+        item["evaluation_cohort"]["policy"]["budgets"]["timing_timeout_seconds"] = 30
+        _reseal_policy(item)
+        row = score._score_row(item, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("noncanonical watchdog budgets", row["reason"])
+
+    def test_official_toolchain_pin_rejects_stale_seal(self):
+        item = grouped_verdict("stale-toolchain", [100, 100, 100, 100])
+        make_official_grouped(item)
+        item["evaluation_cohort"]["policy"]["toolchain"]["comparator_rev"] = "d" * 40
+        _reseal_policy(item)
+        row = score._score_row(item, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("different toolchain", row["reason"])
+
+    def test_misfiled_verdict_never_loads(self):
+        # The containing directory is authoritative for the problem a record scores under.
+        item = make_official_grouped(grouped_verdict("misfiled", [100, 100, 100, 100]))
+        old_results = score.RESULTS
+        with tempfile.TemporaryDirectory() as temp:
+            try:
+                score.RESULTS = temp
+                wrong = pathlib.Path(temp) / "sha256"
+                wrong.mkdir()
+                (wrong / "misfiled.json").write_text(json.dumps(item))
+                self.assertEqual(score._load_verdicts(), [])
+                right = pathlib.Path(temp) / "fib"
+                right.mkdir()
+                (right / "misfiled.json").write_text(json.dumps(item))
+                self.assertEqual(len(score._load_verdicts()), 1)
+            finally:
+                score.RESULTS = old_results
+
+    def test_round_spanning_official_cohorts_fail_closed(self):
+        alice = make_official_grouped(grouped_verdict("alice", [100, 100, 100, 100]))
+        bob = grouped_verdict("bob", [100, 100, 100, 100])
+        make_official_grouped(bob)
+        # A rotated seed reseals a different policy → different cohort id, same round.
+        bob["evaluation_cohort"]["policy"]["seed_commitment"] = "c" * 64
+        _reseal_policy(bob)
+        old_results = score.RESULTS
+        with tempfile.TemporaryDirectory() as temp:
+            try:
+                score.RESULTS = temp
+                pdir = pathlib.Path(temp) / "fib"
+                pdir.mkdir()
+                (pdir / "alice.json").write_text(json.dumps(alice))
+                (pdir / "bob.json").write_text(json.dumps(bob))
+                with self.assertRaisesRegex(SystemExit, "multiple official cohorts"):
+                    score.main()
+                self.assertFalse((pathlib.Path(temp) / "scoring.md").exists())
+                with mock.patch.dict(os.environ, {"ALLOW_COHORT_SPLIT": "1"}):
+                    score.main()
+                report = (pathlib.Path(temp) / "scoring.md").read_text()
+                self.assertIn("alice", report)
+                self.assertIn("bob", report)
+            finally:
+                score.RESULTS = old_results
 
 
 if __name__ == "__main__":
