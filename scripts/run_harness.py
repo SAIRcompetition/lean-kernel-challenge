@@ -22,6 +22,8 @@ memory: each concurrent case holds a Lean compilation whose peak RSS can
 reach several GiB. The default is deliberately one worker. Only raise
 ``--jobs`` after measuring the target host; exceeding its available memory
 can turn the intended speedup into swap thrashing or an out-of-memory failure.
+Such a resource failure is a failed gate: the harness never shrinks the
+schedule or retries under a weaker resource envelope.
 """
 import argparse
 import concurrent.futures

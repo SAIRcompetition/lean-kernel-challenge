@@ -108,10 +108,12 @@ class HarnessManifestTests(unittest.TestCase):
 
         pool.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
 
-    def test_image_gate_defaults_to_one_configurable_worker(self):
+    def test_image_gate_limits_parallelism_without_weakening_the_gate(self):
         dockerfile = (ROOT / "Dockerfile").read_text()
         self.assertIn("ARG HARNESS_JOBS=1", dockerfile)
         self.assertIn('--jobs "$HARNESS_JOBS"', dockerfile)
+        self.assertIn("--count 2", dockerfile)
+        self.assertNotIn("HARNESS_COUNT", dockerfile)
 
 
 if __name__ == "__main__":
