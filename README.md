@@ -206,6 +206,7 @@ for each problem.
 ```bash
 scripts/setup.sh                                  # build the pinned tools (comparator, lean4export, timer-kernel)
 python3 scripts/run_harness.py                    # green gate: judge every example, check verdicts
+python3 scripts/run_harness.py --quick --jobs 2   # shortened schedule, two cases in parallel
 python3 judge/judge.py run --problem fib --submission examples/submissions/fib/doubling
 python3 scripts/score.py                          # canonical metric-separated scoring tables
 ```

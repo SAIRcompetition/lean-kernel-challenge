@@ -10,8 +10,21 @@ Usage:
   python3 scripts/run_harness.py            # all cases
   python3 scripts/run_harness.py --quick    # 1 rep/case per level, 30 s prep cap
   python3 scripts/run_harness.py --only fib # cases whose problem matches a substring
+  python3 scripts/run_harness.py --jobs 4   # run up to 4 cases concurrently
+
+Concurrency safety: every case judges into its own per-run workspace
+(``judge/judge.py`` allocates a unique ``results/work/<problem>__<sub>__*``
+directory) and publishes a unique run-tag verdict under
+``results/<problem>/`` before atomically replacing that problem's canonical
+verdict. Different cases never share a verdict path and no case runs twice in
+one invocation, so the cases are independent. The limiting resource is
+memory: each concurrent case holds a Lean compilation whose peak RSS can
+reach several GiB. Bound ``--jobs`` by available memory (a 16 GiB host fits
+``--jobs 2``); exceeding it risks an out-of-memory failure inside the build
+rather than a faster gate.
 """
 import argparse
+import concurrent.futures
 import importlib.util
 import json
 import os
@@ -182,6 +195,11 @@ def main():
               "unless already overridden"))
     ap.add_argument("--only", help="run only cases whose problem contains this substring")
     ap.add_argument(
+        "--jobs", type=int, default=1,
+        help=("run up to N harness cases concurrently; each case holds a Lean "
+              "compilation whose peak RSS can reach several GiB, so bound N by "
+              "available memory (a 16 GiB host fits --jobs 2)"))
+    ap.add_argument(
         "--count", type=int,
         help=("override PERF_COUNT: total sample points for legacy policies; "
               "maximum cases in each group for grouped policies"))
@@ -190,6 +208,8 @@ def main():
                          "instead of editing pipeline/config.json, which risks committing a tiny "
                          "debug budget into the official configuration.")
     args = ap.parse_args()
+    if args.jobs < 1:
+        ap.error("--jobs must be at least 1")
 
     # The gate checks verdicts + that the perf phase produced a score; it does not need the full
     # official schedule.  In grouped policies the override caps EACH group, retaining one case at
@@ -209,20 +229,29 @@ def main():
             sys.exit(2)
 
     reps = 1 if args.quick else None  # None → judge default from config
+    if reps is None:
+        reps = json.loads((ROOT / "pipeline" / "config.json").read_text())["judge"]["timing_reps"]
+
     npass = 0
     failures = []
-    for c in cases:
-        r = reps if reps is not None else json.loads((ROOT / "pipeline" / "config.json").read_text())["judge"]["timing_reps"]
-        ok, detail = run_case(c, r)
-        mark = "✅" if ok else "❌"
-        print(f"{mark} {c['problem']}/{c['submission']}: {detail}")
-        if ok:
-            npass += 1
-        else:
-            failures.append((c, detail))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        future_to_case = {pool.submit(run_case, c, reps): c for c in cases}
+        for future in concurrent.futures.as_completed(future_to_case):
+            c = future_to_case[future]
+            try:
+                ok, detail = future.result()
+            except Exception as exc:  # a worker crash must fail the gate, not hang it
+                ok, detail = False, f"harness exception: {exc}"
+            mark = "✅" if ok else "❌"
+            print(f"{mark} {c['problem']}/{c['submission']}: {detail}")
+            if ok:
+                npass += 1
+            else:
+                failures.append((c, detail))
 
     print(f"\n{npass}/{len(cases)} cases passed")
     if failures:
+        failures.sort(key=lambda cd: (cd[0]["problem"], cd[0]["submission"]))
         print("FAILURES:")
         for c, d in failures:
             print(f"  - {c['problem']}/{c['submission']}: {d}")
