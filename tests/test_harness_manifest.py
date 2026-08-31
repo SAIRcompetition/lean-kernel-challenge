@@ -5,6 +5,8 @@ import argparse
 import json
 import os
 import sys
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -52,6 +54,64 @@ class HarnessManifestTests(unittest.TestCase):
             run_harness.configure_local_overrides(args)
             self.assertEqual(os.environ["PERF_COUNT"], "3")
             self.assertEqual(os.environ["TIMING_TIMEOUT_SECONDS"], "12")
+
+    def test_run_cases_respects_worker_limit_and_reports_every_case(self):
+        cases = [
+            {"problem": "p", "submission": f"s{index}"}
+            for index in range(4)
+        ]
+        lock = threading.Lock()
+        active = 0
+        peak = 0
+
+        def fake_run(case, _reps):
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            time.sleep(0.02)
+            with lock:
+                active -= 1
+            return True, case["submission"]
+
+        reported = []
+        with mock.patch.object(run_harness, "run_case", side_effect=fake_run):
+            run_harness.run_cases(cases, 1, 2, lambda *result: reported.append(result))
+
+        self.assertEqual(peak, 2)
+        self.assertCountEqual((case for case, _ok, _detail in reported), cases)
+        self.assertTrue(all(ok for _case, ok, _detail in reported))
+
+    def test_run_cases_turns_worker_exception_into_failure(self):
+        case = {"problem": "p", "submission": "broken"}
+        reported = []
+        with mock.patch.object(run_harness, "run_case", side_effect=RuntimeError("boom")):
+            run_harness.run_cases([case], 1, 1, lambda *result: reported.append(result))
+
+        self.assertEqual(reported, [(case, False, "harness exception: boom")])
+
+    def test_run_cases_cancels_pending_work_on_interrupt(self):
+        cases = [
+            {"problem": "p", "submission": "one"},
+            {"problem": "p", "submission": "two"},
+        ]
+        pool = mock.Mock()
+        futures = [mock.Mock(), mock.Mock()]
+        pool.submit.side_effect = futures
+
+        with mock.patch.object(
+                run_harness.concurrent.futures, "ThreadPoolExecutor", return_value=pool), \
+             mock.patch.object(
+                 run_harness.concurrent.futures, "as_completed", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                run_harness.run_cases(cases, 1, 1, mock.Mock())
+
+        pool.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+
+    def test_image_gate_defaults_to_one_configurable_worker(self):
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        self.assertIn("ARG HARNESS_JOBS=1", dockerfile)
+        self.assertIn('--jobs "$HARNESS_JOBS"', dockerfile)
 
 
 if __name__ == "__main__":

@@ -93,11 +93,12 @@ WORKDIR /work/lean-kernel-challenge
 # requiring PMU access in the Docker build sandbox; official runs still use the
 # metric configured above.  Running this gate in the runtime stage proves the
 # trimmed image (not the builder) can judge end to end.
-# --jobs 2 runs two harness cases concurrently; each case holds a Lean
-# compilation whose peak RSS can reach several GiB, so keep the concurrency
-# bounded for the ~16 GiB build hosts that run this gate.
+# A worker can consume several GiB.  Keep constrained builders safe by default;
+# a host with measured spare capacity can opt in, for example with
+# `docker build --build-arg HARNESS_JOBS=2 ...`.
+ARG HARNESS_JOBS=1
 RUN TIMING_METRIC=wall_time SANDBOX_MODE=none \
-      python3 scripts/run_harness.py --quick --count 2 --timeout 120 --jobs 2 \
+      python3 scripts/run_harness.py --quick --count 2 --timeout 120 --jobs "$HARNESS_JOBS" \
     && rm -rf results
 
 # Non-root user for running untrusted submissions.  Verification tools, problem

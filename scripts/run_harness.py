@@ -19,9 +19,9 @@ directory) and publishes a unique run-tag verdict under
 verdict. Different cases never share a verdict path and no case runs twice in
 one invocation, so the cases are independent. The limiting resource is
 memory: each concurrent case holds a Lean compilation whose peak RSS can
-reach several GiB. Bound ``--jobs`` by available memory (a 16 GiB host fits
-``--jobs 2``); exceeding it risks an out-of-memory failure inside the build
-rather than a faster gate.
+reach several GiB. The default is deliberately one worker. Only raise
+``--jobs`` after measuring the target host; exceeding its available memory
+can turn the intended speedup into swap thrashing or an out-of-memory failure.
 """
 import argparse
 import concurrent.futures
@@ -187,6 +187,33 @@ def run_case(case, reps):
     return True, detail
 
 
+def run_cases(cases, reps, jobs, report):
+    """Run cases concurrently and report each completion on the caller thread.
+
+    Pending cases are cancelled if the caller is interrupted.  The executor
+    context-manager form cannot be used here: its implicit ``shutdown(wait=True)``
+    would run every already-queued case before returning from Ctrl-C.
+    """
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=jobs)
+    future_to_case = {}
+    try:
+        future_to_case = {pool.submit(run_case, case, reps): case for case in cases}
+        for future in concurrent.futures.as_completed(future_to_case):
+            case = future_to_case[future]
+            try:
+                ok, detail = future.result()
+            except Exception as exc:  # a worker crash must fail the gate, not hang it
+                ok, detail = False, f"harness exception: {exc}"
+            report(case, ok, detail)
+    except BaseException:
+        # cancel_futures prevents an interrupt from draining the entire queue. Running
+        # judge children share the foreground process group and receive terminal signals.
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    else:
+        pool.shutdown(wait=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -198,7 +225,7 @@ def main():
         "--jobs", type=int, default=1,
         help=("run up to N harness cases concurrently; each case holds a Lean "
               "compilation whose peak RSS can reach several GiB, so bound N by "
-              "available memory (a 16 GiB host fits --jobs 2)"))
+              "measured available memory (default: 1)"))
     ap.add_argument(
         "--count", type=int,
         help=("override PERF_COUNT: total sample points for legacy policies; "
@@ -232,22 +259,27 @@ def main():
     if reps is None:
         reps = json.loads((ROOT / "pipeline" / "config.json").read_text())["judge"]["timing_reps"]
 
+    jobs = min(args.jobs, len(cases))
+    print(f"running {len(cases)} harness cases with {jobs} worker(s)", flush=True)
+
     npass = 0
     failures = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        future_to_case = {pool.submit(run_case, c, reps): c for c in cases}
-        for future in concurrent.futures.as_completed(future_to_case):
-            c = future_to_case[future]
-            try:
-                ok, detail = future.result()
-            except Exception as exc:  # a worker crash must fail the gate, not hang it
-                ok, detail = False, f"harness exception: {exc}"
-            mark = "✅" if ok else "❌"
-            print(f"{mark} {c['problem']}/{c['submission']}: {detail}")
-            if ok:
-                npass += 1
-            else:
-                failures.append((c, detail))
+
+    def report(case, ok, detail):
+        nonlocal npass
+        mark = "✅" if ok else "❌"
+        print(f"{mark} {case['problem']}/{case['submission']}: {detail}", flush=True)
+        if ok:
+            npass += 1
+        else:
+            failures.append((case, detail))
+
+    try:
+        run_cases(cases, reps, jobs, report)
+    except KeyboardInterrupt:
+        print("\ninterrupted; cancelled harness cases that had not started", file=sys.stderr,
+              flush=True)
+        sys.exit(130)
 
     print(f"\n{npass}/{len(cases)} cases passed")
     if failures:
