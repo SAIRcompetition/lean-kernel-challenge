@@ -12,6 +12,12 @@ Modes:
   kernel --parse-only <file>                — only parse the export
   kernel --check-axioms <a,b,c> <file>      — audit that every axiom in the export is whitelisted
 
+A leading `--count-instructions` (timing modes only) makes the timer open its own hardware
+instruction counter (Linux perf_event_open) around the measured replay and report the count
+in the measurement record; the judge passes it only for metric=perf_instructions. Without it
+the timer never touches the PMU, so wall-time development runs work on hosts and build
+sandboxes that have no PMU access, and the record carries `"instructions": null`.
+
 Derived from lean-kernel-arena's `official` checker (which mirrors comparator's runKernel).
 
 The `--check-axioms` mode re-runs comparator's axiom whitelist on the *exact*
@@ -38,21 +44,21 @@ def normalizedConstMap (solution : Export.ExportedEnv) :
   solution.constMap.erase `Quot.mk |>.erase `Quot.lift |>.erase `Quot.ind
 
 def emitMeasurement (boundary : String) (target : Option Lean.Name) (wallNs : Nat)
-    (instructions : Nat) : IO Unit := do
+    (instructions : Option Nat) : IO Unit := do
   let positiveWallNs := max 1 wallNs
   let payload := Lean.Json.mkObj [
     ("measurement_contract", .str "kernel-replay-v2"),
     ("boundary", .str boundary),
     ("target", target.map (fun name => Lean.Json.str name.toString) |>.getD .null),
     ("wall_ns", .num (positiveWallNs : Lean.JsonNumber)),
-    ("instructions", .num (instructions : Lean.JsonNumber)),
+    ("instructions", instructions.map (fun n => Lean.Json.num (n : Lean.JsonNumber)) |>.getD .null),
     ("phase", .str "complete")
   ]
   IO.println s!"KERNEL_TIMING={payload.compress}"
 
-def measureReplay (boundary : String) (target : Option Lean.Name) (replay : IO α)
-    (validate : α → IO Unit := fun _ => pure ()) : IO α := do
-  perfEnable
+def measureReplay (countInstructions : Bool) (boundary : String) (target : Option Lean.Name)
+    (replay : IO α) (validate : α → IO Unit := fun _ => pure ()) : IO α := do
+  if countInstructions then perfEnable
   let started ← IO.monoNanosNow
   let (result, stopped) ←
     try
@@ -60,22 +66,23 @@ def measureReplay (boundary : String) (target : Option Lean.Name) (replay : IO �
       let stopped ← IO.monoNanosNow
       pure (result, stopped)
     finally
-      -- A kernel exception must not leave the externally-created PMU event enabled.
-      perfDisable
+      -- A kernel exception must not leave the timer's PMU event enabled.
+      if countInstructions then perfDisable
   -- Read the counter the timer just disabled, before any post-replay work adds to it.
-  let instructions := (← perfInstructions).toNat!
+  let instructions ← if countInstructions then pure (some (← perfInstructions).toNat!) else pure none
   -- Validate the replay result outside the measured interval, but before publishing a
   -- successful measurement record.
   validate result
   emitMeasurement boundary target (stopped - started) instructions
   return result
 
-def runKernel (solution : Export.ExportedEnv) : IO Unit := do
+def runKernel (countInstructions : Bool) (solution : Export.ExportedEnv) : IO Unit := do
   let env ← Lean.mkEmptyEnvironment
   let constMap := normalizedConstMap solution
-  discard <| measureReplay "full-closure-replay-v1" none (env.replay constMap)
+  discard <| measureReplay countInstructions "full-closure-replay-v1" none (env.replay constMap)
 
-def runTarget (solution : Export.ExportedEnv) (targetText : String) : IO Unit := do
+def runTarget (countInstructions : Bool) (solution : Export.ExportedEnv) (targetText : String) :
+    IO Unit := do
   if targetText.isEmpty then
     throw <| .userError "target declaration name must not be empty"
   let target := targetText.toName
@@ -104,6 +111,7 @@ def runTarget (solution : Export.ExportedEnv) (targetText : String) : IO Unit :=
   let targetMap : Std.HashMap Lean.Name Lean.ConstantInfo :=
     ({} : Std.HashMap Lean.Name Lean.ConstantInfo).insert target targetInfo
   let _ ← measureReplay
+    countInstructions
     "target-declaration-replay-v1"
     (some target)
     (preEnv.replay targetMap)
@@ -132,6 +140,12 @@ def parseFile (inputPath : String) : IO Export.ExportedEnv := do
 end TimerKernel
 
 def main (args : List String) : IO Unit := do
+  -- `--count-instructions` is only meaningful for the two timing modes; the judge passes it
+  -- exclusively under metric=perf_instructions.
+  let (countInstructions, args) :=
+    match args with
+    | "--count-instructions" :: rest => (true, rest)
+    | _ => (false, args)
   match args with
   | ["--parse-only", inputPath] =>
     discard <| TimerKernel.parseFile inputPath
@@ -144,10 +158,10 @@ def main (args : List String) : IO Unit := do
     TimerKernel.checkAxioms env names
   | ["--target", target, inputPath] =>
     let env ← TimerKernel.parseFile inputPath
-    TimerKernel.runTarget env target
+    TimerKernel.runTarget countInstructions env target
   | [inputPath] =>
     let env ← TimerKernel.parseFile inputPath
-    TimerKernel.runKernel env
+    TimerKernel.runKernel countInstructions env
   | _ => throw (.userError
-      ("Usage: kernel [--target <name> | --parse-only | " ++
+      ("Usage: kernel [--count-instructions] [--target <name> | --parse-only | " ++
        "--check-axioms <a,b,c>] <file>"))

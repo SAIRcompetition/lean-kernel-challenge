@@ -794,12 +794,13 @@ class OracleAndGeneratedTheoremTests(unittest.TestCase):
         self.assertEqual(run_mock.call_count, 1)
 
 
-def _timer_output(target=None, wall_ns=123456):
+def _timer_output(target=None, wall_ns=123456, instructions=None):
     payload = {
         "measurement_contract": judge.MEASUREMENT_CONTRACT,
         "boundary": judge._measurement_boundary(target),
         "target": target,
         "wall_ns": wall_ns,
+        "instructions": instructions,
         "phase": "complete",
     }
     return "Accepted.\nKERNEL_TIMING=" + json.dumps(payload, separators=(",", ":")) + "\n"
@@ -829,17 +830,14 @@ class LocalTimingProtocolTests(unittest.TestCase):
         self.assertEqual(
             cmd, [str(judge.TIMER), "--target", target, str(self.export)])
 
-    def test_perf_starts_disabled_and_counts_explicit_target_only(self):
+    def test_perf_metric_asks_timer_to_count_and_reads_its_instructions(self):
         target = "LeanKernelChallengeJudge.Generated_perf.check"
 
         def fake_run(cmd, cwd, env, timeout):
             self.assertEqual(cwd, self.work)
-            (self.work / "perf.txt").write_text(
-                "321,,instructions,\n1.25,,task-clock,\n")
-            return 0, _timer_output(target, wall_ns=777)
+            return 0, _timer_output(target, wall_ns=777, instructions=321)
 
         with mock.patch.object(judge, "TIMING_METRIC", "perf_instructions"), \
-             mock.patch.object(judge.shutil, "which", return_value="/usr/bin/perf"), \
              mock.patch.object(judge, "run", side_effect=fake_run) as run_mock:
             rc, _, sample = judge._time_replay(
                 self.export, self.work, {"PATH": "/bin"}, 9, target=target)
@@ -847,11 +845,33 @@ class LocalTimingProtocolTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(sample["instructions"], 321)
         self.assertEqual(sample["wall_ns"], 777)
+        self.assertIsNone(sample["task_clock_ms"])
+        # The timer owns the counter: no `perf stat` wrapper, and the flag is explicit.
         cmd = run_mock.call_args.args[0]
-        self.assertEqual(cmd[:4], ["/usr/bin/perf", "stat", "-D", "-1"])
         self.assertEqual(
-            cmd[-5:],
-            ["--", str(judge.TIMER), "--target", target, str(self.export)])
+            cmd,
+            [str(judge.TIMER), "--count-instructions", "--target", target, str(self.export)])
+
+    def test_instruction_count_is_required_only_under_perf_metric(self):
+        target = "Judge.Generated.check"
+        with mock.patch.object(judge, "TIMING_METRIC", "perf_instructions"):
+            for bad in (None, 0, -1, "321", True):
+                with self.assertRaisesRegex(judge.InfraError, "positive integer"):
+                    judge._parse_timer_measurement(
+                        _timer_output(target, instructions=bad), target)
+            parsed = judge._parse_timer_measurement(
+                _timer_output(target, instructions=321), target)
+            self.assertEqual(parsed["instructions"], 321)
+        # Wall-time development never touches the PMU, so the record must say null and
+        # the timer must not be asked to count.
+        with mock.patch.object(judge, "TIMING_METRIC", "wall_time"):
+            with self.assertRaisesRegex(judge.InfraError, "outside metric"):
+                judge._parse_timer_measurement(
+                    _timer_output(target, instructions=321), target)
+            parsed = judge._parse_timer_measurement(_timer_output(target), target)
+            self.assertIsNone(parsed["instructions"])
+            self.assertNotIn("--count-instructions",
+                             judge._timer_command(self.export, target))
 
     def test_timer_output_is_unique_versioned_and_target_bound(self):
         target = "Judge.Generated.check"
