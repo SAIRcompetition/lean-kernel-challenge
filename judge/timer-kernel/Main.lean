@@ -28,19 +28,24 @@ opaque perfEnable : IO Unit
 @[extern "lean_kernel_timer_perf_disable"]
 opaque perfDisable : IO Unit
 
+@[extern "lean_kernel_timer_perf_instructions"]
+opaque perfInstructions : IO String
+
 def normalizedConstMap (solution : Export.ExportedEnv) :
     Std.HashMap Lean.Name Lean.ConstantInfo :=
   -- Lean's kernel interprets just the addition of `Quot as adding all of these so adding them
   -- multiple times leads to errors.
   solution.constMap.erase `Quot.mk |>.erase `Quot.lift |>.erase `Quot.ind
 
-def emitMeasurement (boundary : String) (target : Option Lean.Name) (wallNs : Nat) : IO Unit := do
+def emitMeasurement (boundary : String) (target : Option Lean.Name) (wallNs : Nat)
+    (instructions : Nat) : IO Unit := do
   let positiveWallNs := max 1 wallNs
   let payload := Lean.Json.mkObj [
     ("measurement_contract", .str "kernel-replay-v2"),
     ("boundary", .str boundary),
     ("target", target.map (fun name => Lean.Json.str name.toString) |>.getD .null),
     ("wall_ns", .num (positiveWallNs : Lean.JsonNumber)),
+    ("instructions", .num (instructions : Lean.JsonNumber)),
     ("phase", .str "complete")
   ]
   IO.println s!"KERNEL_TIMING={payload.compress}"
@@ -57,10 +62,12 @@ def measureReplay (boundary : String) (target : Option Lean.Name) (replay : IO Œ
     finally
       -- A kernel exception must not leave the externally-created PMU event enabled.
       perfDisable
+  -- Read the counter the timer just disabled, before any post-replay work adds to it.
+  let instructions := (‚Üê perfInstructions).toNat!
   -- Validate the replay result outside the measured interval, but before publishing a
   -- successful measurement record.
   validate result
-  emitMeasurement boundary target (stopped - started)
+  emitMeasurement boundary target (stopped - started) instructions
   return result
 
 def runKernel (solution : Export.ExportedEnv) : IO Unit := do

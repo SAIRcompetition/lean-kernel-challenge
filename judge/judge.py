@@ -1300,7 +1300,7 @@ def _measurement_contract_record():
         "performance_boundary": TARGET_REPLAY_BOUNDARY,
         "target_proof_encoding": TARGET_PROOF_ENCODING,
         "wall_clock_source": "timer-internal-monotonic-ns",
-        "perf_counter_control": "perf-delay-minus-one+timer-prctl",
+        "perf_counter_control": "timer-perf-event-open+ioctl-enable",
         "local_protocol": "local-v2",
         "remote_protocol": REMOTE_PROTOCOL,
         "timeout_scope": PROCESS_TIMEOUT_SCOPE,
@@ -1348,7 +1348,8 @@ def _parse_timer_measurement(out, target):
     except json.JSONDecodeError as e:
         raise InfraError(f"timer emitted malformed measurement JSON: {e.msg}")
     expected_keys = {
-        "measurement_contract", "boundary", "target", "wall_ns", "phase",
+        "measurement_contract", "boundary", "target", "wall_ns", "instructions",
+        "phase",
     }
     if not isinstance(data, dict) or set(data) != expected_keys:
         raise InfraError("timer measurement record has an incompatible schema")
@@ -1365,6 +1366,8 @@ def _parse_timer_measurement(out, target):
         raise InfraError(f"timer measurement did not complete ({data['phase']!r})")
     if type(data["wall_ns"]) is not int or data["wall_ns"] <= 0:
         raise InfraError("timer measurement wall_ns must be a positive integer")
+    if type(data["instructions"]) is not int or data["instructions"] <= 0:
+        raise InfraError("timer measurement instructions must be a positive integer")
     return data
 
 
@@ -1425,48 +1428,19 @@ def _time_replay(export_file, work, env, timeout, target=None):
     """
     timer_cmd = _timer_command(export_file, target)
     if TIMING_METRIC == "perf_instructions":
-        perf = shutil.which("perf", path=env.get("PATH", ""))
-        if not perf:
-            raise InfraError("metric=perf_instructions but `perf` not found — requires the Linux eval host")
-        perf_out = export_file.parent / "perf.txt"
-        try:
-            perf_out.unlink(missing_ok=True)
-        except OSError as e:
-            raise InfraError(f"cannot clear stale perf output: {e}")
-        cmd = [perf, "stat", "-D", "-1", "-o", str(perf_out), "-x", ",",
-               "-e", "instructions,task-clock", "--", *timer_cmd]
-        rc, out = run(cmd, work, env, timeout)
+        # A': the timer manages its own PMU counter (perf_event_open + ioctl)
+        # around the replay window and reports the instruction count in its
+        # measurement record. This replaces the `perf stat -D -1` + prctl scheme,
+        # whose delayed enable never armed the perf-owned counter on this kernel.
+        rc, out = run(timer_cmd, work, env, timeout)
         if rc == "timeout":
             return rc, out, _timeout_measurement(target, "local-process-watchdog")
         if rc != 0:
             return rc, out, {}
         measured = _parse_timer_measurement(out, target)
-        insns = task_clock = None
-        downgraded = []
-        try:
-            for line in perf_out.read_text().splitlines():
-                f = line.split(",")
-                if len(f) >= 3 and f[0] not in ("", "<not counted>", "<not supported>"):
-                    if f[2] == "instructions":
-                        insns = int(float(f[0]))
-                    elif f[2].startswith("instructions:"):
-                        # Permission shortfall: perf renames the event (`instructions:u`)
-                        # when it silently drops to user-only counting. Never accept it —
-                        # it does not measure what the sealed contract promises.
-                        downgraded.append(f[2])
-                    elif f[2] == "task-clock":
-                        task_clock = float(f[0])  # msec
-        except OSError:
-            pass
-        if insns is None:
-            if downgraded:
-                raise InfraError(
-                    f"perf counted only {', '.join(sorted(downgraded))} — kernel-scope PMU "
-                    "permission was lost mid-run (perf_event_paranoid/CAP_PERFMON)")
-            raise InfraError("perf produced no instruction count (PMU unavailable in this container?)")
         return rc, out, {
-            "instructions": insns,
-            "task_clock_ms": task_clock,
+            "instructions": measured["instructions"],
+            "task_clock_ms": None,
             "wall_ns": measured["wall_ns"],
             "wall_s": measured["wall_ns"] / 1_000_000_000,
             "measurement_contract": MEASUREMENT_CONTRACT,
