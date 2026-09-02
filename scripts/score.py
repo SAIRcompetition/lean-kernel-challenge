@@ -67,7 +67,7 @@ CURRENT_MEASUREMENT_RECORD = {
     "performance_boundary": PERFORMANCE_BOUNDARY,
     "target_proof_encoding": TARGET_PROOF_ENCODING,
     "wall_clock_source": "timer-internal-monotonic-ns",
-    "perf_counter_control": "perf-delay-minus-one+timer-prctl",
+    "perf_counter_control": "timer-perf-event-open+ioctl-enable",
     "local_protocol": LOCAL_PROTOCOL,
     "remote_protocol": REMOTE_PROTOCOL,
     "timeout_scope": "whole-timer-process-including-untimed-preparation",
