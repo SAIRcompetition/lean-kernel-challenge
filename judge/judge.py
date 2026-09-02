@@ -1366,13 +1366,22 @@ def _parse_timer_measurement(out, target):
         raise InfraError(f"timer measurement did not complete ({data['phase']!r})")
     if type(data["wall_ns"]) is not int or data["wall_ns"] <= 0:
         raise InfraError("timer measurement wall_ns must be a positive integer")
-    if type(data["instructions"]) is not int or data["instructions"] <= 0:
-        raise InfraError("timer measurement instructions must be a positive integer")
+    if TIMING_METRIC == "perf_instructions":
+        if type(data["instructions"]) is not int or data["instructions"] <= 0:
+            raise InfraError("timer measurement instructions must be a positive integer "
+                             "(PMU unavailable to the timer?)")
+    elif data["instructions"] is not None:
+        # The timer must not have touched the PMU outside the instruction metric.
+        raise InfraError("timer counted instructions outside metric=perf_instructions")
     return data
 
 
 def _timer_command(export_file, target):
     cmd = [str(TIMER)]
+    if TIMING_METRIC == "perf_instructions":
+        # Only the instruction metric asks the timer to open its own PMU counter. Wall-time
+        # development runs (and the Docker image's build-time gate) must stay PMU-free.
+        cmd.append("--count-instructions")
     if target is not None:
         _measurement_boundary(target)  # validate before it reaches argv
         cmd += ["--target", target]
@@ -1421,17 +1430,19 @@ def _preflight_perf_counter(env):
 def _time_replay(export_file, work, env, timeout, target=None):
     """One full-closure or explicit-target replay.
 
-    The trusted timer emits the replay-only monotonic wall duration. On Linux, `perf -D -1`
-    starts counters disabled and timer-kernel enables them only around the selected replay.
+    The trusted timer emits the replay-only monotonic wall duration. Under
+    metric=perf_instructions it is also passed `--count-instructions`, so it opens its own
+    hardware instruction counter (perf_event_open + ioctl) only around the selected replay
+    and reports the count in the same record.
     The outer watchdog still includes untimed preparation; timeout metadata says so explicitly.
     Returns (rc, out, sample_dict).
     """
     timer_cmd = _timer_command(export_file, target)
     if TIMING_METRIC == "perf_instructions":
-        # A': the timer manages its own PMU counter (perf_event_open + ioctl)
-        # around the replay window and reports the instruction count in its
-        # measurement record. This replaces the `perf stat -D -1` + prctl scheme,
-        # whose delayed enable never armed the perf-owned counter on this kernel.
+        # The timer manages its own PMU counter (perf_event_open + ioctl) around the
+        # replay window and reports the instruction count in its measurement record.
+        # This replaces the `perf stat -D -1` + prctl scheme, whose delayed enable never
+        # armed the perf-owned counter (prctl only enables events the caller opened).
         rc, out = run(timer_cmd, work, env, timeout)
         if rc == "timeout":
             return rc, out, _timeout_measurement(target, "local-process-watchdog")
