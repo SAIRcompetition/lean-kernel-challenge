@@ -794,13 +794,17 @@ class OracleAndGeneratedTheoremTests(unittest.TestCase):
         self.assertEqual(run_mock.call_count, 1)
 
 
-def _timer_output(target=None, wall_ns=123456, instructions=None):
+def _timer_output(target=None, wall_ns=123456, instructions=None, peak_rss_kb="auto"):
+    if peak_rss_kb == "auto":
+        # The real timer measures the window exactly when it runs on Linux.
+        peak_rss_kb = 4321 if judge._LINUX else None
     payload = {
         "measurement_contract": judge.MEASUREMENT_CONTRACT,
         "boundary": judge._measurement_boundary(target),
         "target": target,
         "wall_ns": wall_ns,
         "instructions": instructions,
+        "peak_rss_kb": peak_rss_kb,
         "phase": "complete",
     }
     return "Accepted.\nKERNEL_TIMING=" + json.dumps(payload, separators=(",", ":")) + "\n"
@@ -887,6 +891,70 @@ class LocalTimingProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(judge.InfraError, "contract mismatch"):
             judge._parse_timer_measurement(
                 "KERNEL_TIMING=" + json.dumps(old), target)
+
+    def test_peak_rss_validation_is_platform_derived(self):
+        target = "Judge.Generated.check"
+        with mock.patch.object(judge, "_LINUX", True):
+            record = json.loads(_timer_output(target).split("KERNEL_TIMING=", 1)[1])
+            del record["peak_rss_kb"]
+            with self.assertRaisesRegex(judge.InfraError, "incompatible schema"):
+                judge._parse_timer_measurement(
+                    "KERNEL_TIMING=" + json.dumps(record), target)
+            for bad in (None, 0, -5, "4321"):
+                with self.assertRaisesRegex(judge.InfraError, "peak_rss_kb"):
+                    judge._parse_timer_measurement(
+                        _timer_output(target, peak_rss_kb=bad), target)
+            parsed = judge._parse_timer_measurement(
+                _timer_output(target, peak_rss_kb=4321), target)
+            self.assertEqual(parsed["peak_rss_kb"], 4321)
+        with mock.patch.object(judge, "_LINUX", False):
+            with self.assertRaisesRegex(judge.InfraError, "off Linux"):
+                judge._parse_timer_measurement(
+                    _timer_output(target, peak_rss_kb=4321), target)
+            parsed = judge._parse_timer_measurement(
+                _timer_output(target, peak_rss_kb=None), target)
+            self.assertIsNone(parsed["peak_rss_kb"])
+
+    def test_local_samples_carry_the_window_peak_rss(self):
+        target = "LeanKernelChallengeJudge.Generated_mem.check"
+
+        def fake_run(cmd, cwd, env, timeout):
+            return 0, _timer_output(
+                target, wall_ns=777, instructions=321, peak_rss_kb=98765)
+
+        with mock.patch.object(judge, "_LINUX", True), \
+             mock.patch.object(judge, "TIMING_METRIC", "perf_instructions"), \
+             mock.patch.object(judge, "run", side_effect=fake_run):
+            rc, _, sample = judge._time_replay(
+                self.export, self.work, {}, 9, target=target)
+        self.assertEqual(rc, 0)
+        self.assertEqual(sample["peak_rss_kb"], 98765)
+
+        def fake_wall_run(cmd, cwd, env, timeout):
+            return 0, _timer_output(target, peak_rss_kb=98765)
+
+        with mock.patch.object(judge, "_LINUX", True), \
+             mock.patch.object(judge, "TIMING_METRIC", "wall_time"), \
+             mock.patch.object(judge, "run", side_effect=fake_wall_run):
+            rc, _, sample = judge._time_replay(
+                self.export, self.work, {}, 9, target=target)
+        self.assertEqual(rc, 0)
+        self.assertEqual(sample["peak_rss_kb"], 98765)
+
+    def test_summary_reports_worst_rep_peak_rss_only_when_all_reps_have_it(self):
+        local = judge._summarize_samples(
+            [{"wall_ns": 400, "peak_rss_kb": 90000},
+             {"wall_ns": 600, "peak_rss_kb": 120000},
+             {"wall_ns": 500, "peak_rss_kb": 100000}],
+            metric="wall_time")
+        self.assertEqual(local["peak_rss_kb"], 120000)
+        self.assertEqual(local["median_wall_ns"], 500)
+        # Remote executor samples carry no peak; the summary must stay valid
+        # without inventing one.
+        remote = judge._summarize_samples(
+            [{"instructions": 5, "wall_ns": 400}], metric="perf_instructions")
+        self.assertEqual(remote["median_instructions"], 5)
+        self.assertNotIn("peak_rss_kb", remote)
 
     def test_submillisecond_wall_median_never_rounds_to_zero(self):
         summary = judge._summarize_samples(

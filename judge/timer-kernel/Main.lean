@@ -18,6 +18,11 @@ in the measurement record; the judge passes it only for metric=perf_instructions
 the timer never touches the PMU, so wall-time development runs work on hosts and build
 sandboxes that have no PMU access, and the record carries `"instructions": null`.
 
+Every timed replay additionally reports `peak_rss_kb`: the peak resident set of the replay
+window alone (Linux RSS high-water mark, reset via /proc/self/clear_refs just before the
+window opens). This needs procfs, not the PMU, so it is unconditional on Linux; off Linux
+the record carries `"peak_rss_kb": null`.
+
 Derived from lean-kernel-arena's `official` checker (which mirrors comparator's runKernel).
 
 The `--check-axioms` mode re-runs comparator's axiom whitelist on the *exact*
@@ -37,6 +42,12 @@ opaque perfDisable : IO Unit
 @[extern "lean_kernel_timer_perf_instructions"]
 opaque perfInstructions : IO String
 
+@[extern "lean_kernel_timer_memory_window_open"]
+opaque memoryWindowOpen : IO Unit
+
+@[extern "lean_kernel_timer_memory_window_peak_kb"]
+opaque memoryWindowPeakKb : IO String
+
 def normalizedConstMap (solution : Export.ExportedEnv) :
     Std.HashMap Lean.Name Lean.ConstantInfo :=
   -- Lean's kernel interprets just the addition of `Quot as adding all of these so adding them
@@ -44,7 +55,7 @@ def normalizedConstMap (solution : Export.ExportedEnv) :
   solution.constMap.erase `Quot.mk |>.erase `Quot.lift |>.erase `Quot.ind
 
 def emitMeasurement (boundary : String) (target : Option Lean.Name) (wallNs : Nat)
-    (instructions : Option Nat) : IO Unit := do
+    (instructions : Option Nat) (peakRssKb : Option Nat) : IO Unit := do
   let positiveWallNs := max 1 wallNs
   let payload := Lean.Json.mkObj [
     ("measurement_contract", .str "kernel-replay-v2"),
@@ -52,12 +63,17 @@ def emitMeasurement (boundary : String) (target : Option Lean.Name) (wallNs : Na
     ("target", target.map (fun name => Lean.Json.str name.toString) |>.getD .null),
     ("wall_ns", .num (positiveWallNs : Lean.JsonNumber)),
     ("instructions", instructions.map (fun n => Lean.Json.num (n : Lean.JsonNumber)) |>.getD .null),
+    ("peak_rss_kb", peakRssKb.map (fun kb => Lean.Json.num (kb : Lean.JsonNumber)) |>.getD .null),
     ("phase", .str "complete")
   ]
   IO.println s!"KERNEL_TIMING={payload.compress}"
 
 def measureReplay (countInstructions : Bool) (boundary : String) (target : Option Lean.Name)
     (replay : IO α) (validate : α → IO Unit := fun _ => pure ()) : IO α := do
+  -- Reset the RSS high-water mark before arming the counter: the reset's own kernel work
+  -- is never counted, and VmHWM afterwards reports this replay window's peak alone. This
+  -- needs procfs, not the PMU, so it is unconditional (a no-op stub off Linux).
+  memoryWindowOpen
   if countInstructions then perfEnable
   let started ← IO.monoNanosNow
   let (result, stopped) ←
@@ -70,10 +86,14 @@ def measureReplay (countInstructions : Bool) (boundary : String) (target : Optio
       if countInstructions then perfDisable
   -- Read the counter the timer just disabled, before any post-replay work adds to it.
   let instructions ← if countInstructions then pure (some (← perfInstructions).toNat!) else pure none
+  -- VmHWM only rises until the next window reset, so reading it here cannot lose the
+  -- in-window peak. The non-Linux stub reports 0, published as null.
+  let peakKb := (← memoryWindowPeakKb).toNat!
+  let peakRssKb := if peakKb == 0 then none else some peakKb
   -- Validate the replay result outside the measured interval, but before publishing a
   -- successful measurement record.
   validate result
-  emitMeasurement boundary target (stopped - started) instructions
+  emitMeasurement boundary target (stopped - started) instructions peakRssKb
   return result
 
 def runKernel (countInstructions : Bool) (solution : Export.ExportedEnv) : IO Unit := do
