@@ -956,6 +956,27 @@ class LocalTimingProtocolTests(unittest.TestCase):
         self.assertEqual(remote["median_instructions"], 5)
         self.assertNotIn("peak_rss_kb", remote)
 
+    def test_summary_retains_every_replay_sample_verbatim(self):
+        # The measured replays stay next to their summary, in measurement
+        # order and reduced to the measurements themselves, so a reader can
+        # re-derive the median and the worst peak. A value the timer could not
+        # report is omitted instead of written as null.
+        local = judge._summarize_samples(
+            [{"instructions": 7, "wall_ns": 400, "peak_rss_kb": 90000, "phase": "target"},
+             {"instructions": 5, "wall_ns": 600, "peak_rss_kb": 120000, "phase": "target"},
+             {"instructions": 6, "wall_ns": 500, "peak_rss_kb": None, "phase": "target"}],
+            metric="perf_instructions")
+        self.assertEqual(local["median_instructions"], 6)
+        self.assertEqual(local["samples"], [
+            {"instructions": 7, "wall_ns": 400, "peak_rss_kb": 90000},
+            {"instructions": 5, "wall_ns": 600, "peak_rss_kb": 120000},
+            {"instructions": 6, "wall_ns": 500}])
+        self.assertNotIn("peak_rss_kb", local)
+        remote = judge._summarize_samples(
+            [{"instructions": None, "wall_ns": 400}], metric="wall_time")
+        self.assertEqual(remote["samples"], [{"wall_ns": 400}])
+        self.assertEqual(remote["median_wall_ns"], 400)
+
     def test_submillisecond_wall_median_never_rounds_to_zero(self):
         summary = judge._summarize_samples(
             [{"wall_ns": 400}, {"wall_ns": 600}, {"wall_ns": 500}],
