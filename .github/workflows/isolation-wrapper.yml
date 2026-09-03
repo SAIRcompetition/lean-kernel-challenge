@@ -30,7 +30,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build evaluation image
-        run: docker build -t lean-kernel-judge .
+        # The in-build green gate replays every example serially by default and
+        # no longer fits the 90-minute job budget on a hosted runner. Hosted
+        # ubuntu-latest runners have 4 vCPUs and 16 GiB, matching the deploy
+        # host where HARNESS_JOBS=4 is the measured safe setting; a gate worker
+        # that still exhausts memory fails the build loudly (fail-closed), never
+        # silently shrinking the gate.
+        run: docker build --build-arg HARNESS_JOBS=4 -t lean-kernel-judge .
       - name: Network must be unreachable (IPv4 and IPv6, fail-closed)
         run: |
           # Reuse the judge's own probe so CI and the judge cannot drift, and so this test
