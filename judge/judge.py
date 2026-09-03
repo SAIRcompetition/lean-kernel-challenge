@@ -1959,9 +1959,31 @@ def _prepare_generated_workspace(work, artifact_lib):
                 raise InfraError(f"cannot prepare generated source '{name}': {e}")
 
 
+def _retained_sample(sample):
+    """The measured values of one timed replay, kept verbatim for audit.
+
+    Only the measurements themselves are retained (instructions, wall_ns,
+    peak_rss_kb); the contract, boundary and target already sit on the record
+    that summarizes the series. A value the timer could not report (a remote
+    executor sample carries no peak, the non-Linux stub reports None) is
+    omitted rather than written as null, so every retained sample is a plain
+    subset of the same three keys.
+    """
+    retained = {}
+    for key in ("instructions", "wall_ns", "peak_rss_kb"):
+        value = sample.get(key)
+        if type(value) is int and value > 0:
+            retained[key] = value
+    return retained
+
+
 def _summarize_samples(samples, metric=None):
     metric = metric or TIMING_METRIC
     summary = {}
+    # Every timed replay is retained next to its summary, in measurement order,
+    # so a reader can re-derive the median and the worst peak from the raw
+    # repetitions and a leaderboard can show the individual replays behind them.
+    summary["samples"] = [_retained_sample(s) for s in samples]
     # Peak replay RSS comes from the local in-timer window only; remote executor
     # samples do not carry it and the non-Linux stub reports None. Surface the
     # worst rep when every sample reports one, so a remote or platform-mixed
