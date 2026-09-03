@@ -142,6 +142,10 @@ TARGET_REPLAY_BOUNDARY = "target-declaration-replay-v1"
 TARGET_PROOF_ENCODING = "direct-rfl-v1-experimental"
 CHECKER_ID = f"official-kernel-replay v4.33.1 ({MEASUREMENT_CONTRACT})"
 _TIMER_TIMING_PREFIX = "KERNEL_TIMING="
+# The replay memory window (peak_rss_kb) needs procfs, not the PMU: the timer
+# measures it exactly when it runs on Linux, so its validation is
+# platform-derived rather than metric-derived.
+_LINUX = sys.platform.startswith("linux")
 # There is no READY/ACK channel in v2. The process watchdog therefore bounds untimed
 # parse/dependency preparation plus the measured replay. Record that limitation explicitly
 # whenever it fires; a normal nonzero exit remains a deterministic failure, never a timeout.
@@ -1349,7 +1353,7 @@ def _parse_timer_measurement(out, target):
         raise InfraError(f"timer emitted malformed measurement JSON: {e.msg}")
     expected_keys = {
         "measurement_contract", "boundary", "target", "wall_ns", "instructions",
-        "phase",
+        "peak_rss_kb", "phase",
     }
     if not isinstance(data, dict) or set(data) != expected_keys:
         raise InfraError("timer measurement record has an incompatible schema")
@@ -1373,6 +1377,12 @@ def _parse_timer_measurement(out, target):
     elif data["instructions"] is not None:
         # The timer must not have touched the PMU outside the instruction metric.
         raise InfraError("timer counted instructions outside metric=perf_instructions")
+    if _LINUX:
+        if type(data["peak_rss_kb"]) is not int or data["peak_rss_kb"] <= 0:
+            raise InfraError("timer measurement peak_rss_kb must be a positive integer on Linux")
+    elif data["peak_rss_kb"] is not None:
+        # The non-Linux timer stub cannot measure the window; a value here is a fault.
+        raise InfraError("timer reported a replay memory peak off Linux")
     return data
 
 
@@ -1454,6 +1464,7 @@ def _time_replay(export_file, work, env, timeout, target=None):
             "task_clock_ms": None,
             "wall_ns": measured["wall_ns"],
             "wall_s": measured["wall_ns"] / 1_000_000_000,
+            "peak_rss_kb": measured["peak_rss_kb"],
             "measurement_contract": MEASUREMENT_CONTRACT,
             "measurement_boundary": measured["boundary"],
             "measurement_target": target,
@@ -1468,6 +1479,7 @@ def _time_replay(export_file, work, env, timeout, target=None):
         return rc, out, {
             "wall_ns": measured["wall_ns"],
             "wall_s": measured["wall_ns"] / 1_000_000_000,
+            "peak_rss_kb": measured["peak_rss_kb"],
             "measurement_contract": MEASUREMENT_CONTRACT,
             "measurement_boundary": measured["boundary"],
             "measurement_target": target,
@@ -1949,18 +1961,26 @@ def _prepare_generated_workspace(work, artifact_lib):
 
 def _summarize_samples(samples, metric=None):
     metric = metric or TIMING_METRIC
+    summary = {}
+    # Peak replay RSS comes from the local in-timer window only; remote executor
+    # samples do not carry it and the non-Linux stub reports None. Surface the
+    # worst rep when every sample reports one, so a remote or platform-mixed
+    # series stays valid without it.
+    peaks = [s.get("peak_rss_kb") for s in samples]
+    if peaks and all(type(p) is int and p > 0 for p in peaks):
+        summary["peak_rss_kb"] = max(peaks)
     if metric == "perf_instructions":
         insns = [s["instructions"] for s in samples]
         median = statistics.median(insns)
         # Instruction counts are integral. Round .5 upward instead of Python's banker's round.
-        return {"median_instructions": int(math.floor(median + 0.5))}
+        summary["median_instructions"] = int(math.floor(median + 0.5))
+        return summary
     # Preserve the timer's nanosecond resolution. Target-only checks can complete well below
     # one millisecond, so the old three-decimal rounding could turn valid samples into score 0.
     median_ns = statistics.median([s["wall_ns"] for s in samples])
-    return {
-        "median_wall_ns": median_ns,
-        "median_s": median_ns / 1_000_000_000,
-    }
+    summary["median_wall_ns"] = median_ns
+    summary["median_s"] = median_ns / 1_000_000_000
+    return summary
 
 
 def _coverage_fields(inputs, scaling):
