@@ -1959,6 +1959,30 @@ def _prepare_generated_workspace(work, artifact_lib):
                 raise InfraError(f"cannot prepare generated source '{name}': {e}")
 
 
+def _remote_sample(remote_sample):
+    """One KTP/3 executor sample in the shape the local timer produces.
+
+    The executor reports the instruction count (its scored value), the
+    diagnostic task clock and wall time, and — when it runs the peak-RSS timer
+    — the replay window's RSS high-water mark. Keeping ``peak_rss_kb`` here
+    lets the summary and the retained samples of a remotely timed run carry
+    the same peak a locally timed run records; an executor that predates the
+    field simply yields samples without it, and the summary then omits the
+    peak rather than inventing one.
+    """
+    sample = {
+        "instructions": remote_sample["instructions"],
+        "task_clock_ms": remote_sample.get("task_clock_ms"),
+    }
+    if "wall_ns" in remote_sample:
+        sample["wall_ns"] = remote_sample["wall_ns"]
+        sample["wall_s"] = remote_sample["wall_ns"] / 1_000_000_000
+    peak_rss_kb = remote_sample.get("peak_rss_kb")
+    if type(peak_rss_kb) is int and peak_rss_kb > 0:
+        sample["peak_rss_kb"] = peak_rss_kb
+    return sample
+
+
 def _retained_sample(sample):
     """The measured values of one timed replay, kept verbatim for audit.
 
@@ -2488,17 +2512,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                 return "resource-limit", resource_meta
             if remote["status"] == "failed":
                 return "failed", last_line(remote.get("output_tail", ""))
-            samples = []
-            for remote_sample in remote["samples"]:
-                sample = {
-                    "instructions": remote_sample["instructions"],
-                    "task_clock_ms": remote_sample.get("task_clock_ms"),
-                }
-                if "wall_ns" in remote_sample:
-                    sample["wall_ns"] = remote_sample["wall_ns"]
-                    sample["wall_s"] = remote_sample["wall_ns"] / 1_000_000_000
-                samples.append(sample)
-            return "ok", samples
+            return "ok", [_remote_sample(s) for s in remote["samples"]]
 
         samples = []
         for i in range(reps):

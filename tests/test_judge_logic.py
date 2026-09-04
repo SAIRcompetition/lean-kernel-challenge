@@ -1040,6 +1040,38 @@ class RemoteTimingTests(unittest.TestCase):
         judge._PINNED_EXECUTOR[0] = None
         judge._PINNED_EXECUTOR_IDENTITY[0] = None
 
+    def test_remote_sample_keeps_peak_rss_only_when_reported(self):
+        # An executor running the peak-RSS timer reports the replay window's
+        # high-water mark; it must survive the splice so a remotely timed run
+        # summarizes the same peak a local run does. Older executors report
+        # no peak, and a summary over such samples must not invent one.
+        with_peak = judge._remote_sample(
+            {"instructions": 100, "task_clock_ms": 1.25, "wall_ns": 1250,
+             "peak_rss_kb": 158532})
+        self.assertEqual(with_peak, {
+            "instructions": 100, "task_clock_ms": 1.25, "wall_ns": 1250,
+            "wall_s": 0.00000125, "peak_rss_kb": 158532})
+        without_peak = judge._remote_sample(
+            {"instructions": 100, "task_clock_ms": 1.25, "wall_ns": 1250})
+        self.assertNotIn("peak_rss_kb", without_peak)
+        null_peak = judge._remote_sample(
+            {"instructions": 100, "wall_ns": 1250, "peak_rss_kb": None})
+        self.assertNotIn("peak_rss_kb", null_peak)
+        summary = judge._summarize_samples(
+            [with_peak, judge._remote_sample(
+                {"instructions": 102, "wall_ns": 1300, "peak_rss_kb": 160000}),
+             judge._remote_sample(
+                {"instructions": 101, "wall_ns": 1280, "peak_rss_kb": 159000})],
+            metric="perf_instructions")
+        self.assertEqual(summary["median_instructions"], 101)
+        self.assertEqual(summary["peak_rss_kb"], 160000)
+        self.assertEqual([s["peak_rss_kb"] for s in summary["samples"]],
+                         [158532, 160000, 159000])
+        self.assertNotIn(
+            "peak_rss_kb",
+            judge._summarize_samples([with_peak, without_peak, null_peak],
+                                     metric="perf_instructions"))
+
     def test_malformed_ok_does_not_suppress_healthy_standby(self):
         malformed = {
             "status": "ok", "executor": "bad", "version": "v1", "samples": []
