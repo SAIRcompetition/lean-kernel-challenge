@@ -65,11 +65,9 @@ correctness-closure work is the final tie-break.
 
 | Group | Hidden `n` range | Cases | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| F1 | 10,000–30,000 | 2 | 2/2 → 5 | 15 s |
-| F2 | 50,000–100,000 | 2 | 2/2 → 10 | 30 s |
-| F3 | 150,000–300,000 | 2 | 2/2 → 15 | 60 s |
-| F4 | 400,000–700,000 | 2 | 2/2 → 25 | 90 s |
-| F5 | 800,000–1,200,000 | 2 | 2/2 → 45 | 120 s |
+| F1 | 5,000–10,000 | 2 | 2/2 → 20 | 30 s |
+| F2 | 20,000–40,000 | 2 | 2/2 → 30 | 60 s |
+| F3 | 80,000–150,000 | 2 | 2/2 → 50 | 120 s |
 
 ## `partition` — subtask frontier
 
@@ -78,11 +76,9 @@ correctness-closure work is the final tie-break.
 
 | Group | Hidden `n` range | Cases | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| P1 | 10–20 | 2 | 2/2 → 5 | 15 s |
-| P2 | 25–35 | 2 | 2/2 → 10 | 30 s |
-| P3 | 50–100 | 2 | 2/2 → 15 | 60 s |
-| P4 | 200–500 | 2 | 2/2 → 25 | 120 s |
-| P5 | 1,000–2,000 | 2 | 2/2 → 45 | 300 s |
+| P1 | 14–18 | 2 | 2/2 → 20 | 30 s |
+| P2 | 22–26 | 2 | 2/2 → 30 | 60 s |
+| P3 | 32–36 | 2 | 2/2 → 50 | 120 s |
 
 ## `mertens` — independent arithmetic cases
 
@@ -92,11 +88,9 @@ correctness-closure work is the final tie-break.
 
 | Group | Hidden `n` range | Cases | Milestones | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| M1 | 50–100 | 2 | 1/2 → 3, 2/2 → 6 | 15 s |
-| M2 | 200–500 | 2 | 1/2 → 6, 2/2 → 12 | 30 s |
-| M3 | 1,000–3,000 | 2 | 1/2 → 9, 2/2 → 18 | 90 s |
-| M4 | 10,000–30,000 | 2 | 1/2 → 13, 2/2 → 26 | 240 s |
-| M5 | 100,000–300,000 | 2 | 1/2 → 19, 2/2 → 38 | 600 s |
+| M1 | 25–50 | 2 | 1/2 → 10, 2/2 → 20 | 30 s |
+| M2 | 80–150 | 2 | 1/2 → 15, 2/2 → 30 | 60 s |
+| M3 | 300–500 | 2 | 1/2 → 25, 2/2 → 50 | 120 s |
 
 ## `primecount` — robust scaling frontier
 
@@ -105,11 +99,9 @@ correctness-closure work is the final tie-break.
 
 | Group | Hidden `n` range | Cases | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| Q1 | 1,000–3,000 | 2 | 2/2 → 5 | 30 s |
-| Q2 | 5,000–10,000 | 2 | 2/2 → 10 | 60 s |
-| Q3 | 30,000–100,000 | 2 | 2/2 → 15 | 120 s |
-| Q4 | 300,000–1,000,000 | 2 | 2/2 → 25 | 300 s |
-| Q5 | 3,000,000–10,000,000 | 2 | 2/2 → 45 | 600 s |
+| Q1 | 50–100 | 2 | 2/2 → 20 | 30 s |
+| Q2 | 150–300 | 2 | 2/2 → 30 | 60 s |
+| Q3 | 600–1,000 | 2 | 2/2 → 50 | 120 s |
 
 ## `permanent` — seeded matrix groups
 
@@ -122,11 +114,9 @@ correctness-closure work is the final tie-break.
 
 | Group | Dimension | Hidden seeds | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| R1 | 4 | 5 | 5/5 → 5 | 2 s |
-| R2 | 6 | 5 | 5/5 → 10 | 2 s |
-| R3 | 8 | 5 | 5/5 → 15 | 2 s |
-| R4 | 10 | 5 | 5/5 → 25 | 3 s |
-| R5 | 12 | 5 | 5/5 → 45 | 3 s |
+| R1 | 6 | 5 | 5/5 → 20 | 30 s |
+| R2 | 12 | 5 | 5/5 → 30 | 60 s |
+| R3 | 16 | 5 | 5/5 → 50 | 120 s |
 
 ## `saw` — seeded-obstacle prefix frontier
 
@@ -140,11 +130,9 @@ plan passes, the tie-break combines the correctness closure and target replays.
 
 | Group | Walk length | Hidden seeds | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| S1 | 6 | 2 | 2/2 → 5 | 10 s |
-| S2 | 7 | 2 | 2/2 → 10 | 20 s |
-| S3 | 8 | 2 | 2/2 → 15 | 25 s |
-| S4 | 9 | 2 | 2/2 → 25 | 60 s |
-| S5 | 10 | 2 | 2/2 → 45 | 120 s |
+| S1 | 4 | 2 | 2/2 → 20 | 30 s |
+| S2 | 6 | 2 | 2/2 → 30 | 60 s |
+| S3 | 8 | 2 | 2/2 → 50 | 120 s |
 
 ## `ca-rule110` — seeded 256-cell evolution
 
@@ -156,11 +144,9 @@ correctness closure and target replays.
 
 | Group | Evolution steps | Hidden seeds | Milestones | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| C1 | 512 | 2 | 1/2 → 4, 2/2 → 8 | 30 s |
-| C2 | 2,048 | 2 | 1/2 → 6, 2/2 → 12 | 45 s |
-| C3 | 8,192 | 2 | 1/2 → 9, 2/2 → 18 | 60 s |
-| C4 | 32,768 | 2 | 1/2 → 13, 2/2 → 26 | 90 s |
-| C5 | 131,072 | 2 | 1/2 → 18, 2/2 → 36 | 120 s |
+| C1 | 2 | 2 | 1/2 → 10, 2/2 → 20 | 30 s |
+| C2 | 4 | 2 | 1/2 → 15, 2/2 → 30 | 60 s |
+| C3 | 8 | 2 | 1/2 → 25, 2/2 → 50 | 120 s |
 
 ## `sha256` — independent seeded chains
 
@@ -172,11 +158,9 @@ correctness closure and target replays.
 
 | Group | Chain steps | Hidden seeds | Milestones | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| H1 | 2 | 2 | 1/2 → 3, 2/2 → 6 | 30 s |
-| H2 | 8 | 2 | 1/2 → 5, 2/2 → 10 | 30 s |
-| H3 | 32 | 2 | 1/2 → 8, 2/2 → 16 | 45 s |
-| H4 | 128 | 2 | 1/2 → 13, 2/2 → 26 | 60 s |
-| H5 | 512 | 2 | 1/2 → 21, 2/2 → 42 | 120 s |
+| H1 | 4 | 2 | 1/2 → 10, 2/2 → 20 | 30 s |
+| H2 | 32 | 2 | 1/2 → 15, 2/2 → 30 | 60 s |
+| H3 | 512 | 2 | 1/2 → 25, 2/2 → 50 | 120 s |
 
 ## `polydisc` — degree-24 coefficient bands
 
@@ -188,8 +172,6 @@ ties and correctness-closure work is the final tie-break.
 
 | Group | Public input range | Max coefficient width | Milestones | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| D1 | 2^18–2^25 | 15 bits | 1/2 → 10, 2/2 → 20 | 120 s |
-| D2 | 2^27–2^35 | 36 bits | 1/2 → 10, 2/2 → 20 | 180 s |
-| D3 | 2^37–2^45 | 205 bits | 1/2 → 10, 2/2 → 20 | 300 s |
-| D4 | 2^47–2^55 | 1,001 bits | 1/2 → 10, 2/2 → 20 | 600 s |
-| D5 | 2^57–2^63 | 3,484 bits | 1/2 → 10, 2/2 → 20 | 900 s |
+| D1 | 2^18–2^25 | 15 bits | 1/2 → 10, 2/2 → 20 | 30 s |
+| D3 | 2^37–2^45 | 205 bits | 1/2 → 15, 2/2 → 30 | 60 s |
+| D5 | 2^57–2^63 | 3,484 bits | 1/2 → 25, 2/2 → 50 | 120 s |
