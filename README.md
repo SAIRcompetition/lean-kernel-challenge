@@ -218,7 +218,13 @@ builder can use `docker build --build-arg HARNESS_JOBS=2 -t lean-kernel-judge .`
 The image-build green gate intentionally retains `--count 2` and the judge's
 configured resource limits.  It never lowers the schedule or relaxes a bound
 to accommodate a constrained builder: if even one case exceeds its limit, the
-build fails and exposes the capacity problem.
+build fails and exposes the capacity problem.  The one explicit narrowing is
+`docker build --build-arg HARNESS_ONLY=mertens ...`, which judges only the
+manifest cases whose problem contains the substring (`run_harness.py --only`):
+a development and test-rehearsal shortcut, never a release build.  Such an
+image has not been proven on every problem, so a deployment pipeline that
+passes it must label the image as partially gated and must never promote it
+beyond its test environment.
 
 The local judge reproduces the evaluation pipeline, so you can check a submission before
 sending it. (Note: the local sandbox is a pass-through shim — never run untrusted
