@@ -108,11 +108,24 @@ WORKDIR /work/lean-kernel-challenge
 # on every problem: a deployment pipeline that passes it must label the image
 # as partially gated and must never promote such an image beyond its test
 # environment. Empty (the default) keeps the full gate.
+# HARNESS_SKIP is the full opt-out: when set to "1", the gate does not run at
+# all (HARNESS_ONLY is not consulted). It exists for non-production deployment
+# builds (test and beta environments) whose iteration time the serial gate
+# dominates; the pinned commit is still green-gated by this repository's CI.
+# An image built with it has NOT been green-gated at build time: a deployment
+# pipeline that consumes it must label the image as not gated and must never
+# promote it to a production environment, whose builds always run the full
+# gate. Empty (the default) keeps the gate.
 ARG HARNESS_JOBS=1
 ARG HARNESS_ONLY=
-RUN TIMING_METRIC=wall_time SANDBOX_MODE=none \
-      python3 scripts/run_harness.py --quick --count 2 --timeout 120 --jobs "$HARNESS_JOBS" \
-        ${HARNESS_ONLY:+--only "$HARNESS_ONLY"} \
+ARG HARNESS_SKIP=
+RUN if [ "$HARNESS_SKIP" = "1" ]; then \
+        echo "HARNESS_SKIP=1: build-time green gate skipped"; \
+    else \
+        TIMING_METRIC=wall_time SANDBOX_MODE=none \
+          python3 scripts/run_harness.py --quick --count 2 --timeout 120 --jobs "$HARNESS_JOBS" \
+            ${HARNESS_ONLY:+--only "$HARNESS_ONLY"}; \
+    fi \
     && rm -rf results
 
 # Non-root user for running untrusted submissions.  Verification tools, problem
