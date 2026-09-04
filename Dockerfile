@@ -100,9 +100,19 @@ WORKDIR /work/lean-kernel-challenge
 # A worker can consume several GiB, so the default avoids adding concurrent
 # peaks; a host with measured spare capacity can opt in with
 # `docker build --build-arg HARNESS_JOBS=2 ...`.
+# HARNESS_ONLY is the one explicit narrowing: when set, the gate judges only
+# the manifest cases whose problem contains the substring (run_harness.py
+# --only; no match fails the build). It exists for development builds and for
+# test-environment rehearsals of a pin advance, where the full gate's wall
+# time dominates every iteration. An image built with it has NOT been proven
+# on every problem: a deployment pipeline that passes it must label the image
+# as partially gated and must never promote such an image beyond its test
+# environment. Empty (the default) keeps the full gate.
 ARG HARNESS_JOBS=1
+ARG HARNESS_ONLY=
 RUN TIMING_METRIC=wall_time SANDBOX_MODE=none \
       python3 scripts/run_harness.py --quick --count 2 --timeout 120 --jobs "$HARNESS_JOBS" \
+        ${HARNESS_ONLY:+--only "$HARNESS_ONLY"} \
     && rm -rf results
 
 # Non-root user for running untrusted submissions.  Verification tools, problem
