@@ -18,33 +18,21 @@
     "axis": {"label": "Rule 110 steps on a seeded 256-cell row", "unit": "steps", "input_encoding": "packed-v1: (steps << 32) | seed"},
     "groups": [
       {
-        "id": "C1", "label": "512 steps", "order": 1,
-        "sampling": {"kind": "packed", "scale": 512, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 4}, {"passed": 2, "points": 8}]},
+        "id": "C1", "label": "2 steps", "order": 1,
+        "sampling": {"kind": "packed", "scale": 2, "seed_bits": 32, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 10}, {"passed": 2, "points": 20}]},
         "limits": {"timeout_seconds": 30}
       },
       {
-        "id": "C2", "label": "2048 steps", "order": 2,
-        "sampling": {"kind": "packed", "scale": 2048, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 6}, {"passed": 2, "points": 12}]},
-        "limits": {"timeout_seconds": 45}
-      },
-      {
-        "id": "C3", "label": "8192 steps", "order": 3,
-        "sampling": {"kind": "packed", "scale": 8192, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 9}, {"passed": 2, "points": 18}]},
+        "id": "C2", "label": "4 steps", "order": 2,
+        "sampling": {"kind": "packed", "scale": 4, "seed_bits": 32, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 15}, {"passed": 2, "points": 30}]},
         "limits": {"timeout_seconds": 60}
       },
       {
-        "id": "C4", "label": "32768 steps", "order": 4,
-        "sampling": {"kind": "packed", "scale": 32768, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 13}, {"passed": 2, "points": 26}]},
-        "limits": {"timeout_seconds": 90}
-      },
-      {
-        "id": "C5", "label": "131072 steps", "order": 5,
-        "sampling": {"kind": "packed", "scale": 131072, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 18}, {"passed": 2, "points": 36}]},
+        "id": "C3", "label": "8 steps", "order": 3,
+        "sampling": {"kind": "packed", "scale": 8, "seed_bits": 32, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 25}, {"passed": 2, "points": 50}]},
         "limits": {"timeout_seconds": 120}
       }
     ],

@@ -35,7 +35,7 @@ DOC_SAMPLER_KINDS = {
     "polydisc": "uniform_int",
 }
 
-EXPECTED_GROUP_COUNT = 5
+EXPECTED_GROUP_COUNT = 3
 EXPECTED_PROBLEM_COUNT = 9
 EXPECTED_TOTAL_POINTS = 100
 
@@ -198,7 +198,7 @@ class TestScoringContractDocs(unittest.TestCase):
             for doc_row, config_group in zip(doc_rows, config_groups):
                 yield problem, doc_row, config_group
 
-    def test_doc_lists_exactly_nine_problems_with_five_groups_each(self):
+    def test_doc_lists_exactly_nine_problems_with_three_groups_each(self):
         self.assertEqual(
             sorted(self.doc),
             sorted(DOC_SAMPLER_KINDS),
@@ -213,7 +213,7 @@ class TestScoringContractDocs(unittest.TestCase):
                 % (problem, len(rows), EXPECTED_GROUP_COUNT),
             )
 
-    def test_configs_list_exactly_nine_problems_with_five_groups_each(self):
+    def test_configs_list_exactly_nine_problems_with_three_groups_each(self):
         self.assertEqual(
             sorted(self.configs),
             sorted(DOC_SAMPLER_KINDS),

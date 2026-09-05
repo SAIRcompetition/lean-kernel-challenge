@@ -19,33 +19,21 @@
     "groups": [
       {
         "id": "Q1", "label": "Small", "order": 1,
-        "sampling": {"kind": "geometric_range", "min": 1000, "max": 3000, "count": 2, "jitter": 0.15},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 5}]},
+        "sampling": {"kind": "geometric_range", "min": 50, "max": 100, "count": 2, "jitter": 0.15},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 20}]},
         "limits": {"timeout_seconds": 30}
       },
       {
         "id": "Q2", "label": "Medium", "order": 2,
-        "sampling": {"kind": "geometric_range", "min": 5000, "max": 10000, "count": 2, "jitter": 0.15},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 10}]},
+        "sampling": {"kind": "geometric_range", "min": 150, "max": 300, "count": 2, "jitter": 0.15},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 30}]},
         "limits": {"timeout_seconds": 60}
       },
       {
         "id": "Q3", "label": "Large", "order": 3,
-        "sampling": {"kind": "geometric_range", "min": 30000, "max": 100000, "count": 2, "jitter": 0.15},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 15}]},
+        "sampling": {"kind": "geometric_range", "min": 600, "max": 1000, "count": 2, "jitter": 0.15},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 50}]},
         "limits": {"timeout_seconds": 120}
-      },
-      {
-        "id": "Q4", "label": "Very Large", "order": 4,
-        "sampling": {"kind": "geometric_range", "min": 300000, "max": 1000000, "count": 2, "jitter": 0.15},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 25}]},
-        "limits": {"timeout_seconds": 300}
-      },
-      {
-        "id": "Q5", "label": "Frontier", "order": 5,
-        "sampling": {"kind": "geometric_range", "min": 3000000, "max": 10000000, "count": 2, "jitter": 0.15},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 45}]},
-        "limits": {"timeout_seconds": 600}
       }
     ],
     "ranking": {"contract": "group-points-v1", "work": "curve", "proof": "last_tiebreak", "profile": "hardest_group_then_slot"}

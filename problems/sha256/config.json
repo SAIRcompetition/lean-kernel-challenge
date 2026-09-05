@@ -18,33 +18,21 @@
     "axis": {"label": "SHA-256 steps on an independently seeded chain", "unit": "steps", "input_encoding": "packed-v1: (steps << 32) | seed"},
     "groups": [
       {
-        "id": "H1", "label": "2 steps", "order": 1,
-        "sampling": {"kind": "packed", "scale": 2, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 3}, {"passed": 2, "points": 6}]},
+        "id": "H1", "label": "4 steps", "order": 1,
+        "sampling": {"kind": "packed", "scale": 4, "seed_bits": 32, "count": 2},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 10}, {"passed": 2, "points": 20}]},
         "limits": {"timeout_seconds": 30}
       },
       {
-        "id": "H2", "label": "8 steps", "order": 2,
-        "sampling": {"kind": "packed", "scale": 8, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 5}, {"passed": 2, "points": 10}]},
-        "limits": {"timeout_seconds": 30}
-      },
-      {
-        "id": "H3", "label": "32 steps", "order": 3,
+        "id": "H2", "label": "32 steps", "order": 2,
         "sampling": {"kind": "packed", "scale": 32, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 8}, {"passed": 2, "points": 16}]},
-        "limits": {"timeout_seconds": 45}
-      },
-      {
-        "id": "H4", "label": "128 steps", "order": 4,
-        "sampling": {"kind": "packed", "scale": 128, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 13}, {"passed": 2, "points": 26}]},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 15}, {"passed": 2, "points": 30}]},
         "limits": {"timeout_seconds": 60}
       },
       {
-        "id": "H5", "label": "512 steps", "order": 5,
+        "id": "H3", "label": "512 steps", "order": 3,
         "sampling": {"kind": "packed", "scale": 512, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 21}, {"passed": 2, "points": 42}]},
+        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 25}, {"passed": 2, "points": 50}]},
         "limits": {"timeout_seconds": 120}
       }
     ],
