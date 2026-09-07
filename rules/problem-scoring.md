@@ -65,9 +65,9 @@ correctness-closure work is the final tie-break.
 
 | Group | Hidden `n` range | Cases | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| F1 | 1,200–2,500 | 2 | 2/2 → 20 | 30 s |
-| F2 | 5,000–10,000 | 2 | 2/2 → 30 | 60 s |
-| F3 | 20,000–40,000 | 2 | 2/2 → 50 | 120 s |
+| F1 | 5,000–10,000 | 2 | 2/2 → 20 | 30 s |
+| F2 | 20,000–40,000 | 2 | 2/2 → 30 | 60 s |
+| F3 | 80,000–150,000 | 2 | 2/2 → 50 | 120 s |
 
 ## `partition` — subtask frontier
 
@@ -76,9 +76,9 @@ correctness-closure work is the final tie-break.
 
 | Group | Hidden `n` range | Cases | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| P1 | 8–12 | 2 | 2/2 → 20 | 30 s |
-| P2 | 14–18 | 2 | 2/2 → 30 | 60 s |
-| P3 | 22–26 | 2 | 2/2 → 50 | 120 s |
+| P1 | 14–18 | 2 | 2/2 → 20 | 30 s |
+| P2 | 22–26 | 2 | 2/2 → 30 | 60 s |
+| P3 | 32–36 | 2 | 2/2 → 50 | 120 s |
 
 ## `mertens` — independent arithmetic cases
 
@@ -88,9 +88,9 @@ correctness-closure work is the final tie-break.
 
 | Group | Hidden `n` range | Cases | Milestones | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| M1 | 8–15 | 2 | 1/2 → 10, 2/2 → 20 | 30 s |
-| M2 | 25–50 | 2 | 1/2 → 15, 2/2 → 30 | 60 s |
-| M3 | 80–150 | 2 | 1/2 → 25, 2/2 → 50 | 120 s |
+| M1 | 25–50 | 2 | 1/2 → 10, 2/2 → 20 | 30 s |
+| M2 | 80–150 | 2 | 1/2 → 15, 2/2 → 30 | 60 s |
+| M3 | 300–500 | 2 | 1/2 → 25, 2/2 → 50 | 120 s |
 
 ## `primecount` — robust scaling frontier
 
@@ -99,9 +99,9 @@ correctness-closure work is the final tie-break.
 
 | Group | Hidden `n` range | Cases | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| Q1 | 15–30 | 2 | 2/2 → 20 | 30 s |
-| Q2 | 50–100 | 2 | 2/2 → 30 | 60 s |
-| Q3 | 150–300 | 2 | 2/2 → 50 | 120 s |
+| Q1 | 50–100 | 2 | 2/2 → 20 | 30 s |
+| Q2 | 150–300 | 2 | 2/2 → 30 | 60 s |
+| Q3 | 600–1,000 | 2 | 2/2 → 50 | 120 s |
 
 ## `permanent` — seeded matrix groups
 
@@ -115,8 +115,8 @@ correctness-closure work is the final tie-break.
 | Group | Dimension | Hidden seeds | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
 | R1 | 6 | 5 | 5/5 → 20 | 30 s |
-| R2 | 10 | 5 | 5/5 → 30 | 60 s |
-| R3 | 12 | 5 | 5/5 → 50 | 120 s |
+| R2 | 12 | 5 | 5/5 → 30 | 60 s |
+| R3 | 16 | 5 | 5/5 → 50 | 120 s |
 
 ## `saw` — seeded-obstacle prefix frontier
 
@@ -131,8 +131,8 @@ plan passes, the tie-break combines the correctness closure and target replays.
 | Group | Walk length | Hidden seeds | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
 | S1 | 4 | 2 | 2/2 → 20 | 30 s |
-| S2 | 5 | 2 | 2/2 → 30 | 60 s |
-| S3 | 6 | 2 | 2/2 → 50 | 120 s |
+| S2 | 6 | 2 | 2/2 → 30 | 60 s |
+| S3 | 8 | 2 | 2/2 → 50 | 120 s |
 
 ## `ca-rule110` — seeded 256-cell evolution
 
@@ -144,9 +144,9 @@ correctness closure and target replays.
 
 | Group | Evolution steps | Hidden seeds | Milestones | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| C1 | 1 | 2 | 1/2 → 10, 2/2 → 20 | 30 s |
-| C2 | 2 | 2 | 1/2 → 15, 2/2 → 30 | 60 s |
-| C3 | 4 | 2 | 1/2 → 25, 2/2 → 50 | 120 s |
+| C1 | 2 | 2 | 1/2 → 10, 2/2 → 20 | 30 s |
+| C2 | 4 | 2 | 1/2 → 15, 2/2 → 30 | 60 s |
+| C3 | 8 | 2 | 1/2 → 25, 2/2 → 50 | 120 s |
 
 ## `sha256` — independent seeded chains
 
@@ -158,9 +158,9 @@ correctness closure and target replays.
 
 | Group | Chain steps | Hidden seeds | Milestones | Per-repetition limit |
 |---|---:|---:|---:|---:|
-| H1 | 2 | 2 | 1/2 → 10, 2/2 → 20 | 30 s |
-| H2 | 8 | 2 | 1/2 → 15, 2/2 → 30 | 60 s |
-| H3 | 64 | 2 | 1/2 → 25, 2/2 → 50 | 120 s |
+| H1 | 4 | 2 | 1/2 → 10, 2/2 → 20 | 30 s |
+| H2 | 32 | 2 | 1/2 → 15, 2/2 → 30 | 60 s |
+| H3 | 512 | 2 | 1/2 → 25, 2/2 → 50 | 120 s |
 
 ## `polydisc` — degree-24 coefficient bands
 

@@ -19,19 +19,19 @@
     "groups": [
       {
         "id": "Q1", "label": "Small", "order": 1,
-        "sampling": {"kind": "geometric_range", "min": 15, "max": 30, "count": 2, "jitter": 0.15},
+        "sampling": {"kind": "geometric_range", "min": 50, "max": 100, "count": 2, "jitter": 0.15},
         "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 20}]},
         "limits": {"timeout_seconds": 30}
       },
       {
         "id": "Q2", "label": "Medium", "order": 2,
-        "sampling": {"kind": "geometric_range", "min": 50, "max": 100, "count": 2, "jitter": 0.15},
+        "sampling": {"kind": "geometric_range", "min": 150, "max": 300, "count": 2, "jitter": 0.15},
         "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 30}]},
         "limits": {"timeout_seconds": 60}
       },
       {
         "id": "Q3", "label": "Large", "order": 3,
-        "sampling": {"kind": "geometric_range", "min": 150, "max": 300, "count": 2, "jitter": 0.15},
+        "sampling": {"kind": "geometric_range", "min": 600, "max": 1000, "count": 2, "jitter": 0.15},
         "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 50}]},
         "limits": {"timeout_seconds": 120}
       }

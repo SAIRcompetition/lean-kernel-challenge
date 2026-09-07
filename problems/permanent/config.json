@@ -24,14 +24,14 @@
         "limits": {"timeout_seconds": 30}
       },
       {
-        "id": "R2", "label": "10 x 10", "order": 2,
-        "sampling": {"kind": "packed", "scale": 10, "seed_bits": 32, "count": 5},
+        "id": "R2", "label": "12 x 12", "order": 2,
+        "sampling": {"kind": "packed", "scale": 12, "seed_bits": 32, "count": 5},
         "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 5, "points": 30}]},
         "limits": {"timeout_seconds": 60}
       },
       {
-        "id": "R3", "label": "12 x 12", "order": 3,
-        "sampling": {"kind": "packed", "scale": 12, "seed_bits": 32, "count": 5},
+        "id": "R3", "label": "16 x 16", "order": 3,
+        "sampling": {"kind": "packed", "scale": 16, "seed_bits": 32, "count": 5},
         "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 5, "points": 50}]},
         "limits": {"timeout_seconds": 120}
       }
