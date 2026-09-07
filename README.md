@@ -224,7 +224,14 @@ manifest cases whose problem contains the substring (`run_harness.py --only`):
 a development and test-rehearsal shortcut, never a release build.  Such an
 image has not been proven on every problem, so a deployment pipeline that
 passes it must label the image as partially gated and must never promote it
-beyond its test environment.
+beyond its test environment.  The full opt-out is
+`docker build --build-arg HARNESS_SKIP=1 ...`: the gate does not run at all.
+It exists for non-production deployment builds (test and beta environments)
+whose iteration time the serial gate dominates; the pinned commit is still
+green-gated by this repository's CI.  Such an image has not been proven at
+build time, so a deployment pipeline that consumes it must label the image as
+not gated and must never promote it to a production environment, whose builds
+always run the full gate.
 
 The local judge reproduces the evaluation pipeline, so you can check a submission before
 sending it. (Note: the local sandbox is a pass-through shim — never run untrusted

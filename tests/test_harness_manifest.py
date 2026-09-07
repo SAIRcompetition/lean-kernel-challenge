@@ -115,6 +115,17 @@ class HarnessManifestTests(unittest.TestCase):
         self.assertIn("--count 2", dockerfile)
         self.assertNotIn("HARNESS_COUNT", dockerfile)
 
+    def test_image_gate_skip_is_an_explicit_nondefault_opt_out(self):
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        # Default empty keeps the gate; only the explicit value "1" skips it,
+        # and an unset build argument on an older Dockerfile collapses to the
+        # default (gate runs), so the opt-out can never fire implicitly.
+        self.assertIn("ARG HARNESS_SKIP=", dockerfile)
+        self.assertIn('"$HARNESS_SKIP" = "1"', dockerfile)
+        # The gate invocation itself must stay unchanged inside the opt-out's
+        # else branch: skipping must not also weaken a run that does happen.
+        self.assertIn('TIMING_METRIC=wall_time SANDBOX_MODE=none \\\n          python3 scripts/run_harness.py --quick --count 2 --timeout 120 --jobs "$HARNESS_JOBS"', dockerfile)
+
 
 if __name__ == "__main__":
     unittest.main()
