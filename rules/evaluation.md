@@ -104,10 +104,21 @@ the seed once from standard input and does not expose it to contestant-controlle
 An unseeded plan is permitted only for deterministic local development and is not an official
 score.
 
-Submissions are evaluated as a batch after the submission cutoff. Raw verdicts and exact inputs
-remain private throughout the evaluation phase. After that cohort closes, its resolution seed,
-exact input plan, results, and benchmark data are released publicly under an open-source license.
-A deliberate re-evaluation uses a new hidden seed and cohort and rescores the comparison set.
+Official results come from one evaluation cohort run as a batch after the submission cutoff.
+Raw verdicts and exact inputs remain private throughout the evaluation phase. After that cohort
+closes, its resolution seed, exact input plan, results, and benchmark data are released publicly
+under an open-source license. A deliberate re-evaluation uses a new hidden seed and cohort and
+rescores the comparison set.
+
+**Provisional standings during the submission window.** Each day the platform evaluates each
+entrant's newest formal submission per problem under a separate hidden reference cohort and
+builds a per-problem temporary board from those results: the board updates once per day, not in
+real time, and an entrant's entry reflects their newest submission's terminal verdict — a rejected
+newer submission replaces an accepted older one. The organizers may publish the temporary board
+during the submission window; it is provisional, it never shows raw verdicts or hidden inputs, an
+incomplete daily edition is never published, and it does not determine the official result. After
+the cutoff the last complete temporary edition may stay visible with a final-evaluation notice
+until the published final leaderboard replaces it.
 
 **Hardcoding and proof cost.** A table or special case is legal only if it is covered by the
 universal correctness proof. Exact inputs remain hidden until their cohort closes, and new cohorts
