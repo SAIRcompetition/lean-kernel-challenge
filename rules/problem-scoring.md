@@ -31,8 +31,8 @@ hidden seed index. Equal partial seeded profiles remain tied; measured work
 breaks ties after the complete seeded plan passes.
 
 The tables below are the public scoring contract. A milestone such as `2/2 →
-15` means that both hidden cases must pass to earn 15 points. `1/2 → 9, 2/2 →
-18` awards the two cases independently. Every official job runs within the
+20` means that both hidden cases must pass to earn 20 points. `1/2 → 10, 2/2 →
+20` awards the two cases independently. Every official job runs within the
 common 4 GiB memory envelope; the tables give the watchdog for each target
 timing repetition. A memory kill during a case's preparation or target replay
 fails that case. Cases are independent in time: one case cannot consume
@@ -166,7 +166,7 @@ correctness closure and target replays.
 
 The degree is always 24. Each group uses the uniform-integer sampler to select
 two distinct seed-derived polynomial inputs from a range that fixes the maximum coefficient width. Cases score
-independently and every band is worth 20 points. Seed indices do not break
+independently; the retained bands D1, D3, and D5 award 20, 30, and 50 points. Seed indices do not break
 partial ties. After the complete plan passes, target-declaration work breaks
 ties and correctness-closure work is the final tie-break.
 
