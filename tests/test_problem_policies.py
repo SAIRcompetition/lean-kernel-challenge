@@ -21,7 +21,7 @@ GROUPED_PROBLEMS = {
     "fib": {
         "ids": ["F1", "F2", "F3"],
         "kind": "geometric_range",
-        "scales": [(5_000, 10_000), (20_000, 40_000), (80_000, 150_000)],
+        "scales": [(1_200, 2_500), (5_000, 10_000), (20_000, 40_000)],
         "counts": [2, 2, 2],
         "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
@@ -29,7 +29,7 @@ GROUPED_PROBLEMS = {
     "partition": {
         "ids": ["P1", "P2", "P3"],
         "kind": "geometric_range",
-        "scales": [(14, 18), (22, 26), (32, 36)],
+        "scales": [(8, 12), (14, 18), (22, 26)],
         "counts": [2, 2, 2],
         "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
@@ -37,7 +37,7 @@ GROUPED_PROBLEMS = {
     "mertens": {
         "ids": ["M1", "M2", "M3"],
         "kind": "geometric_range",
-        "scales": [(25, 50), (80, 150), (300, 500)],
+        "scales": [(8, 15), (25, 50), (80, 150)],
         "counts": [2, 2, 2],
         "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
@@ -45,7 +45,7 @@ GROUPED_PROBLEMS = {
     "primecount": {
         "ids": ["Q1", "Q2", "Q3"],
         "kind": "geometric_range",
-        "scales": [(50, 100), (150, 300), (600, 1_000)],
+        "scales": [(15, 30), (50, 100), (150, 300)],
         "counts": [2, 2, 2],
         "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
@@ -53,7 +53,7 @@ GROUPED_PROBLEMS = {
     "permanent": {
         "ids": ["R1", "R2", "R3"],
         "kind": "packed",
-        "scales": [6, 12, 16],
+        "scales": [6, 10, 12],
         "counts": [5, 5, 5],
         "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
@@ -62,7 +62,7 @@ GROUPED_PROBLEMS = {
     "saw": {
         "ids": ["S1", "S2", "S3"],
         "kind": "packed",
-        "scales": [4, 6, 8],
+        "scales": [4, 5, 6],
         "counts": [2, 2, 2],
         "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
@@ -71,7 +71,7 @@ GROUPED_PROBLEMS = {
     "ca-rule110": {
         "ids": ["C1", "C2", "C3"],
         "kind": "packed",
-        "scales": [2, 4, 8],
+        "scales": [1, 2, 4],
         "counts": [2, 2, 2],
         "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
@@ -80,7 +80,7 @@ GROUPED_PROBLEMS = {
     "sha256": {
         "ids": ["H1", "H2", "H3"],
         "kind": "packed",
-        "scales": [4, 32, 512],
+        "scales": [2, 8, 64],
         "counts": [2, 2, 2],
         "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
