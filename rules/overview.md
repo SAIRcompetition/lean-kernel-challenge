@@ -22,7 +22,7 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 | **Registration and team formation** | Opens August 26, 2026 |
 | **Official launch** | September 15, 2026 |
 | **Submission deadline** | November 20, 2026, 23:59 AoE (UTC−12) |
-| **Stage 2** | Begins December 2026 (exact date TBD) |
+| **Stage 2** | Begins December 2026; the exact date will be announced |
 | **Submission platform** | [SAIR](https://competition.sair.foundation/) |
 
 ---
@@ -69,6 +69,11 @@ Submit exactly one **`Submission.lean`** file, at most **1 MiB**. It must contai
 The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, and `config.json`) are fixed,
 and the judge supplies its own copies. The simplest valid submission defines `impl` as the trusted
 specification and proves correctness with `rfl`. It is correct but intentionally slow.
+
+Formal submissions may be repeated before the cutoff, up to 10 per team per UTC day (the day
+resets at 00:00 UTC); every accepted submission is a new immutable record. At the cutoff the
+platform freezes, for each team and problem, the newest valid formal submission as that team's
+official entry for the final evaluation.
 
 ## Rules
 

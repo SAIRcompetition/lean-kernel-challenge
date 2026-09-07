@@ -58,15 +58,17 @@ verified correctness artifact and the generated checks for judge-selected
 inputs.
 
 The problem set spans areas of computational mathematics including algebra,
-number theory, combinatorics, cryptography, and discrete mathematics. Specific
-problems will be announced at the official launch.
+number theory, combinatorics, cryptography, and discrete mathematics. The nine
+Stage 1 problems and their scoring groups are published in this repository
+(see [`problem-scoring.md`](problem-scoring.md)); submissions open at the
+official launch.
 
 ## Key Dates
 
 - Registration and team formation open: **August 26, 2026**
 - Official launch: **September 15, 2026**
 - Submission deadline: **November 20, 2026, 23:59 AoE (UTC−12)**
-- Stage 2 begins: **December 2026** (exact date TBD)
+- Stage 2 begins: **December 2026**; the exact date will be announced
 
 ## Registration & Teams
 
