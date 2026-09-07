@@ -181,8 +181,8 @@ do not affect ranking.
   kernel replay via Lean's built-in `Lean.Replay`.
 - Attempts to escape the evaluation environment or exploit the judge result in disqualification.
 
-The production measurement and container paths are implemented but still require final validation
-on the official PMU hardware before launch.
+The production measurement and container paths were validated on the official PMU hardware
+before launch.
 
 ## Local development
 
