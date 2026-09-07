@@ -18,7 +18,7 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 | | |
 |---|---|
 | **Stage** | Stage 1 (experimental) |
-| **Status** | Pre-launch |
+| **Status** | Live — submissions open |
 | **Registration and team formation** | Opens August 26, 2026 |
 | **Official launch** | September 15, 2026 |
 | **Submission deadline** | November 20, 2026, 23:59 AoE (UTC−12) |
@@ -107,8 +107,9 @@ groups are listed in [`problem-scoring.md`](problem-scoring.md).
 
 ## Status
 
-Stage 1 is in pre-launch. All problem workspaces compile, and the judge runs the correctness and
-grouped performance pipeline end to end. The nine per-problem group schedules and scoring rules
-are published in [`problem-scoring.md`](problem-scoring.md); there is no cross-problem total.
-Before the official launch, the organizers will validate the complete production evaluation on
-the pinned PMU hardware and isolated container environment.
+Stage 1 launched on September 15, 2026 and accepts formal submissions until the deadline above.
+All problem workspaces compile, and the judge runs the correctness and grouped performance
+pipeline end to end. The nine per-problem group schedules and scoring rules are published in
+[`problem-scoring.md`](problem-scoring.md); there is no cross-problem total. The organizers
+validated the complete production evaluation on the pinned PMU hardware and isolated container
+environment before launch.

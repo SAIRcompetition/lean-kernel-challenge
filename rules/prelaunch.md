@@ -80,8 +80,8 @@ team on SAIR.
 
 ## Official Repository & Playground
 
-The official repository, SAIR Playground, and submission system will become
-available at the official launch.
+The official repository, SAIR Playground, and submission system are available
+on [SAIR](https://competition.sair.foundation/) from the official launch.
 
 ## Team Participation and Anti-Cheating Policy
 
