@@ -19,19 +19,19 @@
     "groups": [
       {
         "id": "M1", "label": "Small", "order": 1,
-        "sampling": {"kind": "geometric_range", "min": 25, "max": 50, "count": 2, "jitter": 0.15},
+        "sampling": {"kind": "geometric_range", "min": 8, "max": 15, "count": 2, "jitter": 0.15},
         "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 10}, {"passed": 2, "points": 20}]},
         "limits": {"timeout_seconds": 30}
       },
       {
         "id": "M2", "label": "Medium", "order": 2,
-        "sampling": {"kind": "geometric_range", "min": 80, "max": 150, "count": 2, "jitter": 0.15},
+        "sampling": {"kind": "geometric_range", "min": 25, "max": 50, "count": 2, "jitter": 0.15},
         "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 15}, {"passed": 2, "points": 30}]},
         "limits": {"timeout_seconds": 60}
       },
       {
         "id": "M3", "label": "Large", "order": 3,
-        "sampling": {"kind": "geometric_range", "min": 300, "max": 500, "count": 2, "jitter": 0.15},
+        "sampling": {"kind": "geometric_range", "min": 80, "max": 150, "count": 2, "jitter": 0.15},
         "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 25}, {"passed": 2, "points": 50}]},
         "limits": {"timeout_seconds": 120}
       }

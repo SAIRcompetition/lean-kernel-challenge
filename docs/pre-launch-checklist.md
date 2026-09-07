@@ -9,11 +9,13 @@ The nine scored problems now have published difficulty groups, generators, case 
 milestones, and limits in [`../rules/problem-scoring.md`](../rules/problem-scoring.md). These are
 the competition contract, not local smoke ranges. `conv` is excluded from the nine leaderboards.
 
-> **Superseded (2026-09-04):** the five-group policy that the items below reference was
-> replaced by a uniform three-group policy arranged by order of magnitude of peak memory
-> (about 0.03 / 0.3 / 3 GiB on the baseline solutions, every case under an 8 GiB cap). Group
-> ids, ranges, and limits quoted below describe the retired layout; `rules/problem-scoring.md`
-> carries the current contract.
+> **Superseded (2026-09-04, lowered 2026-09-07):** the five-group policy that the items below
+> reference was replaced by a uniform three-group policy arranged by peak memory of the baseline
+> solutions. The first three-group ladder (about 0.03 / 0.3 / 3 GiB) was then shifted down one
+> step: the CI gate measured its hardest cases at 2.3–4.9 GiB per case, which does not fit the
+> published 4 GiB job envelope, so every problem's top group is now the former middle group
+> (polydisc, whose cost is flat, is unchanged). Group ids, ranges, and limits quoted below
+> describe the retired layouts; `rules/problem-scoring.md` carries the current contract.
 
 The full grouped plans have not yet been measured with `perf -e instructions` on the official
 bare-metal Linux executor. Local calibration used wall time and cannot validate production
