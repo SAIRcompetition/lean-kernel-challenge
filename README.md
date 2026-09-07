@@ -134,7 +134,7 @@ hidden 32-bit seed into that `Nat`; their generators and encodings are part of t
 | `saw` | seeded-obstacle self-avoiding walks; input packs walk length and seed | exponential in the walk length |
 | `ca-rule110` | a seeded 256-cell Rule 110 evolution; input packs step count and seed | linear in steps, list-based |
 | `sha256` | a seed-specific SHA-256 digest chain; input packs step count and seed | linear in steps, word-per-`Nat` |
-| `polydisc` | the discriminant of a monic degree-24 integer polynomial across five coefficient-scale bands | normal subresultant PRS; reduced Bareiss fallback |
+| `polydisc` | the discriminant of a monic degree-24 integer polynomial across three coefficient-scale bands | normal subresultant PRS; reduced Bareiss fallback |
 
 These nine problems have independent Stage 1 leaderboards. The repository also retains `conv` as
 an experimental development task; it is not part of the nine scored leaderboards.
@@ -174,7 +174,7 @@ open-source license.
 ## Scoring
 
 Stage 1 has **nine independent 100-point problem leaderboards**. There is no cross-problem total
-or relative-placement aggregation, and `conv` is excluded. Each problem publishes five ordered
+or relative-placement aggregation, and `conv` is excluded. Each problem publishes three ordered
 difficulty groups. Passing cases reaches that group's milestones and awards points.
 
 Within one problem, submissions are ranked by:

@@ -61,7 +61,7 @@ Stage 1 has **nine independent 100-point problem leaderboards**. There is no cro
 relative-placement aggregation. `conv` is retained as an experimental development task and is not
 part of these leaderboards.
 
-**Difficulty groups and cases.** Each scored problem's `config.json` defines five ordered groups.
+**Difficulty groups and cases.** Each scored problem's `config.json` defines three ordered groups.
 For every group it publishes the difficulty axis, input generator or range, case count, milestone
 points, target-replay limit, and any prerequisite groups. A case passes when its target replay
 completes in every configured repetition within the published per-repetition watchdog; if the
