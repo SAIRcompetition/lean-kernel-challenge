@@ -32,11 +32,15 @@ jobs:
       - name: Build evaluation image
         # The in-build green gate replays every example serially by default and
         # no longer fits the 90-minute job budget on a hosted runner. Hosted
-        # ubuntu-latest runners have 4 vCPUs and 16 GiB, matching the deploy
-        # host where HARNESS_JOBS=4 is the measured safe setting; a gate worker
+        # ubuntu-latest runners have 4 vCPUs and 16 GiB. Under the three-group
+        # policy every gate case completes and the heaviest peak at 2.3-4.9 GiB
+        # each (permanent 16x16 4.9, sha256 512 3.3, partition 3.1); four
+        # workers exceeded the runner's memory and the agent shut down mid-gate
+        # (exit 143), so two workers keep the worst pair near 8 GiB. The deploy
+        # host builds with more memory and its own worker count. A gate worker
         # that still exhausts memory fails the build loudly (fail-closed), never
         # silently shrinking the gate.
-        run: docker build --build-arg HARNESS_JOBS=4 -t lean-kernel-judge .
+        run: docker build --build-arg HARNESS_JOBS=2 -t lean-kernel-judge .
       - name: Network must be unreachable (IPv4 and IPv6, fail-closed)
         run: |
           # Reuse the judge's own probe so CI and the judge cannot drift, and so this test
