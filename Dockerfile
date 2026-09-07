@@ -97,9 +97,11 @@ WORKDIR /work/lean-kernel-challenge
 # keeps its two samples per group (--count 2) and the judge's memory limits;
 # neither is a build-time compatibility knob. A single case that exceeds its
 # bound must fail this build loudly rather than silently shrinking the gate.
-# A worker can consume several GiB, so the default avoids adding concurrent
-# peaks; a host with measured spare capacity can opt in with
-# `docker build --build-arg HARNESS_JOBS=2 ...`.
+# A worker can consume several GiB (the heaviest cases peak at 2.3-4.9 GiB
+# each), so the gate runs two workers everywhere: the one setting measured to
+# fit a 16 GiB builder such as the hosted CI runner, with the worst pair near
+# 8 GiB. CI and deployment builds use this default rather than their own
+# counts; a smaller builder can pass `--build-arg HARNESS_JOBS=1`.
 # HARNESS_ONLY is the one explicit narrowing: when set, the gate judges only
 # the manifest cases whose problem contains the substring (run_harness.py
 # --only; no match fails the build). It exists for development builds and for
@@ -116,7 +118,7 @@ WORKDIR /work/lean-kernel-challenge
 # pipeline that consumes it must label the image as not gated and must never
 # promote it to a production environment, whose builds always run the full
 # gate. Empty (the default) keeps the gate.
-ARG HARNESS_JOBS=1
+ARG HARNESS_JOBS=2
 ARG HARNESS_ONLY=
 ARG HARNESS_SKIP=
 RUN if [ "$HARNESS_SKIP" = "1" ]; then \

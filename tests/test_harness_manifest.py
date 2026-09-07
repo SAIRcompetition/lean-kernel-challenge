@@ -110,7 +110,7 @@ class HarnessManifestTests(unittest.TestCase):
 
     def test_image_gate_limits_parallelism_without_weakening_the_gate(self):
         dockerfile = (ROOT / "Dockerfile").read_text()
-        self.assertIn("ARG HARNESS_JOBS=1", dockerfile)
+        self.assertIn("ARG HARNESS_JOBS=2", dockerfile)
         self.assertIn('--jobs "$HARNESS_JOBS"', dockerfile)
         self.assertIn("--count 2", dockerfile)
         self.assertNotIn("HARNESS_COUNT", dockerfile)

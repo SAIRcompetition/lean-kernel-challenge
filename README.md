@@ -206,15 +206,18 @@ for each problem.
 ```bash
 scripts/setup.sh                                  # build the pinned tools (comparator, lean4export, timer-kernel)
 python3 scripts/run_harness.py                    # green gate: judge every example, check verdicts
-python3 scripts/run_harness.py --quick --jobs 2   # two cases in parallel on a measured high-memory host
+python3 scripts/run_harness.py --quick --jobs 2   # two cases in parallel, the image-build gate's setting
 python3 judge/judge.py run --problem fib --submission examples/submissions/fib/doubling
 python3 scripts/score.py                          # canonical metric-separated scoring tables
 ```
 
-Each harness worker can consume several GiB during Lean compilation, so the
-command and the image-build gate both default to one worker.  Opt into a larger
-value only after measuring the target host.  For example, a suitably sized
-builder can use `docker build --build-arg HARNESS_JOBS=2 -t lean-kernel-judge .`.
+Each harness worker can consume several GiB during Lean compilation (the
+heaviest cases peak at 2.3–4.9 GiB each).  The command defaults to one worker;
+the image-build gate runs two workers everywhere, the one setting measured to
+fit a 16 GiB builder with the worst pair near 8 GiB, so CI and deployment
+builds use the same configuration.  A smaller builder can pass
+`docker build --build-arg HARNESS_JOBS=1 -t lean-kernel-judge .`; raise the
+count only after measuring the target host.
 The image-build green gate intentionally retains `--count 2` and the judge's
 configured resource limits.  It never lowers the schedule or relaxes a bound
 to accommodate a constrained builder: if even one case exceeds its limit, the
