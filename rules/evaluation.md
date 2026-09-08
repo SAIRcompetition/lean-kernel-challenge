@@ -53,8 +53,9 @@ The universal correctness comparator has a 3,600-second watchdog, and its axiom 
 300-second watchdog. Scoreability also requires all three complete correctness-closure replays to
 finish, each under a 1,800-second per-repetition watchdog. A comparator timeout fails the
 correctness gate; a correctness axiom-audit timeout is an infrastructure error requiring organizer
-review; and a correctness-replay timeout leaves an otherwise accepted submission unscored. Under
-the attested 4 GiB job envelope, a memory kill in the comparator or correctness axiom audit is a
+review; and a correctness-replay timeout leaves an otherwise accepted submission unscored. The
+official job configures no memory limit; a memory kill is a child terminated by the evaluation
+host's out-of-memory killer. A memory kill in the comparator or correctness axiom audit is a
 terminal rejection, while a timed correctness-replay memory kill is accepted but unscored.
 
 Stage 1 has **nine independent 100-point problem leaderboards**. There is no cross-problem total or
@@ -80,11 +81,14 @@ generation failure at one input — the submission's `impl` does not reduce to a
 there, or the evaluation process fails on it — fails that case only; later cases are still
 attempted, and a submission passing no case scores zero points rather than becoming unscored.
 
-The official evaluator job has one common 4 GiB cgroup-v2 envelope. A child SIGKILL is classified
-as memory exhaustion only when the attested `memory.events` OOM counter also increases. If that
-cgroup kills a child while generating a case value, building/exporting its theorem, auditing it, or replaying its
-target, the case fails with `resource-limit` and later cases are still attempted. Non-official
-KTP/3 reports the same outcome under its per-request 4 GiB limit. If resource enforcement
+The official evaluator job configures no memory limit: the rules publish no memory ceiling, and
+a submission may use whatever memory the dedicated evaluation host has available. A child SIGKILL
+is classified as memory exhaustion only when the job cgroup's attested `memory.events` OOM counter
+also increases, which records a termination by the host's out-of-memory killer. If the host kills
+a child while generating a case value, building/exporting its theorem, auditing it, or replaying
+its target, the case fails with `resource-limit` and later cases are still attempted.
+Non-official KTP/3 validation still binds each remote replay to its executor's 4 GiB limit, so a
+Playground replay can fail on memory where the official job does not. If resource enforcement
 terminates the evaluator before it can write a complete case record, the run is investigated and
 rerun against the same sealed plan; an incomplete run never receives a score.
 
@@ -173,10 +177,10 @@ do not affect ranking.
 - Official instruction counts are measured on the pinned Linux PMU host inside the evaluation
   container.
 - Submission validation and elaboration run as a non-root user in a network-disabled container
-  with 4 GiB memory, 2 CPUs, and a 512-process limit.
+  with 2 CPUs and a 512-process limit; no memory limit is configured.
 - Official kernel replay uses that local PMU environment. Non-official KTP/3 validation may send
   only immutable exported artifacts to a remote executor and binds each request and response to
-  the same 4 GiB replay limit.
+  the executor's 4 GiB replay limit, which applies to that non-official validation only.
 - The stage uses Lean **v4.33.1**, comparator `3927ad3`, lean4export `15f6055`, and
   kernel replay via Lean's built-in `Lean.Replay`.
 - Attempts to escape the evaluation environment or exploit the judge result in disqualification.

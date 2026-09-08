@@ -134,10 +134,9 @@ class RunIsolatedTests(unittest.TestCase):
         args = record["args"]
         self.assertEqual(args[:2], ["run", "--rm"])
         self.assert_pair(args, "--network", "none")
-        self.assert_pair(args, "--memory", "4g")
-        # Swap must be pinned to the memory limit (zero extra swap); Docker's
-        # default would grant 4g of additional swap and defeat OOM attribution.
-        self.assert_pair(args, "--memory-swap", "4g")
+        # The official envelope configures no memory cgroup limit at all.
+        self.assertNotIn("--memory", args)
+        self.assertNotIn("--memory-swap", args)
         self.assert_pair(args, "--cpus", "2")
         self.assert_pair(args, "--pids-limit", "512")
         self.assert_pair(args, "--security-opt", "no-new-privileges:true")
@@ -170,7 +169,7 @@ class RunIsolatedTests(unittest.TestCase):
         self.assertEqual(record["OFFICIAL_EVAL"], "1")
         self.assertEqual(record["EVALUATION_COHORT"], "round-2026-01")
         self.assertRegex(record["EVALUATION_RUN_ID"], r"^run-[0-9]+-[0-9]+-[0-9]+$")
-        self.assertEqual(record["EVALUATION_MEMORY"], "4g")
+        self.assertEqual(record["EVALUATION_MEMORY"], "unlimited")
         self.assertEqual(record["EVALUATION_CPUS"], "2")
         self.assertEqual(record["EVALUATION_PIDS_LIMIT"], "512")
         self.assertRegex(record["EVALUATION_IMAGE"], r"^sha256:[0-9a-f]{64}$")
@@ -201,7 +200,7 @@ class RunIsolatedTests(unittest.TestCase):
             "--image",
             "registry.example/judge:v1",
             "--memory",
-            "4g",
+            "unlimited",
             "--cpus",
             "2",
             "--pids-limit",
@@ -266,7 +265,8 @@ class RunIsolatedTests(unittest.TestCase):
 
     def test_rejects_noncanonical_official_resource_envelope(self):
         for option, value, expected in (
-                ("--memory", "768m", "requires --memory 4g"),
+                ("--memory", "4g", "runs without a memory limit"),
+                ("--memory", "64g", "runs without a memory limit"),
                 ("--cpus", "1.5", "requires --cpus 2"),
                 ("--pids-limit", "97", "requires --pids-limit 512")):
             with self.subTest(option=option):

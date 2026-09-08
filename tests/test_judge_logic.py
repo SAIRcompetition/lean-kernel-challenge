@@ -1019,7 +1019,7 @@ def _ok_response(executor="exec-a", version="v1", instructions=100, reps=1,
         "measurement_contract": judge.MEASUREMENT_CONTRACT,
         "boundary": judge._measurement_boundary(target),
         "target": target,
-        "memory_mb": judge.REPLAY_MEMORY_MB,
+        "memory_mb": judge.REMOTE_REPLAY_MEMORY_MB,
         "samples": [
             {"instructions": instructions, "task_clock_ms": 1.25, "wall_ns": 1250}
             for _ in range(reps)
@@ -1112,7 +1112,7 @@ class RemoteTimingTests(unittest.TestCase):
             "status": "failed", "executor": "exec-a", "version": "v1",
             "measurement_contract": judge.MEASUREMENT_CONTRACT,
             "boundary": judge._measurement_boundary(None), "target": None,
-            "memory_mb": judge.REPLAY_MEMORY_MB,
+            "memory_mb": judge.REMOTE_REPLAY_MEMORY_MB,
             "output_tail": "kernel rejected export",
         }
 
@@ -1178,7 +1178,7 @@ class RemoteTimingTests(unittest.TestCase):
         self.assertEqual(query["measurement_contract"], [judge.MEASUREMENT_CONTRACT])
         self.assertEqual(query["boundary"], [judge.TARGET_REPLAY_BOUNDARY])
         self.assertEqual(query["target"], [target])
-        self.assertEqual(query["memory_mb"], [str(judge.REPLAY_MEMORY_MB)])
+        self.assertEqual(query["memory_mb"], [str(judge.REMOTE_REPLAY_MEMORY_MB)])
         headers = {key.lower(): value for key, value in req.header_items()}
         self.assertEqual(
             headers["x-measurement-contract"], judge.MEASUREMENT_CONTRACT)
@@ -1186,7 +1186,7 @@ class RemoteTimingTests(unittest.TestCase):
             headers["x-measurement-boundary"], judge.TARGET_REPLAY_BOUNDARY)
         self.assertEqual(headers["x-measurement-target"], target)
         self.assertEqual(
-            headers["x-replay-memory-mb"], str(judge.REPLAY_MEMORY_MB))
+            headers["x-replay-memory-mb"], str(judge.REMOTE_REPLAY_MEMORY_MB))
 
     def test_remote_resource_limit_is_valid_only_with_bound_memory(self):
         limited = _ok_response()
@@ -1200,7 +1200,7 @@ class RemoteTimingTests(unittest.TestCase):
         self.assertIn(
             "memory limit", judge._remote_response_error(limited, 1))
 
-        limited["memory_mb"] = judge.REPLAY_MEMORY_MB
+        limited["memory_mb"] = judge.REMOTE_REPLAY_MEMORY_MB
         limited["resource"] = "cpu"
         self.assertIn(
             "not identified as memory", judge._remote_response_error(limited, 1))
@@ -1211,16 +1211,47 @@ class RemoteTimingTests(unittest.TestCase):
         self.assertFalse(judge._died_by_sigkill(-11))
         self.assertFalse(judge._attested_local_memory_kill(-9))
         with mock.patch.object(judge, "SANDBOX_MODE", "container"), \
-             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "4g"}), \
+             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "unlimited"}), \
              mock.patch.object(judge, "_LAST_RUN_OOM_KILL", [True]), \
              mock.patch.dict(os.environ, {"ISOLATION_ATTESTATION": "run_isolated.sh"}):
             self.assertTrue(judge._attested_local_memory_kill(-9))
 
         with mock.patch.object(judge, "SANDBOX_MODE", "container"), \
-             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "4g"}), \
+             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "unlimited"}), \
              mock.patch.object(judge, "_LAST_RUN_OOM_KILL", [False]), \
              mock.patch.dict(os.environ, {"ISOLATION_ATTESTATION": "run_isolated.sh"}):
             self.assertFalse(judge._attested_local_memory_kill(-9))
+
+    def test_bounded_launch_is_not_the_attested_official_envelope(self):
+        with mock.patch.object(judge, "SANDBOX_MODE", "container"), \
+             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "4g"}), \
+             mock.patch.object(judge, "_LAST_RUN_OOM_KILL", [True]), \
+             mock.patch.dict(os.environ, {"ISOLATION_ATTESTATION": "run_isolated.sh"}):
+            self.assertFalse(judge._attested_local_memory_kill(-9))
+
+    def test_memory_kill_record_names_the_limit_that_applied(self):
+        self.assertIsNone(judge._memory_mb_from_envelope("unlimited"))
+        self.assertIsNone(judge._memory_mb_from_envelope("local-unspecified"))
+        self.assertIsNone(judge._memory_mb_from_envelope(None))
+        self.assertEqual(judge._memory_mb_from_envelope("4g"), 4096)
+        self.assertEqual(judge._memory_mb_from_envelope("4096m"), 4096)
+        self.assertEqual(judge._memory_mb_from_envelope("2G"), 2048)
+        self.assertEqual(judge._memory_mb_from_envelope("1048576k"), 1024)
+        self.assertEqual(judge._memory_mb_from_envelope("1"), 1)
+        self.assertIsNone(judge.OFFICIAL_MEMORY_MB)
+        self.assertEqual(judge.REMOTE_REPLAY_MEMORY_MB, 4096)
+
+        with mock.patch.object(judge, "CONFIGURED_MEMORY_MB", None):
+            record = judge._resource_limit_measurement(
+                None, "local-container-cgroup", "build-export")
+        self.assertEqual(record["resource"], "memory")
+        self.assertIsNone(record["memory_mb"])
+        self.assertEqual(record["resource_phase"], "build-export")
+
+        with mock.patch.object(judge, "CONFIGURED_MEMORY_MB", 4096):
+            record = judge._resource_limit_measurement(
+                None, "local-container-cgroup", "build-export")
+        self.assertEqual(record["memory_mb"], 4096)
 
     def test_run_binds_and_resets_cgroup_oom_evidence_per_command(self):
         with tempfile.TemporaryDirectory() as td, \
@@ -1375,7 +1406,7 @@ class EnvironmentBoundaryTests(unittest.TestCase):
             "EVALUATION_COHORT": "round-x",
             "EVALUATION_RUN_ID": "run-x",
             "EVALUATION_IMAGE": "judge:test",
-            "EVALUATION_MEMORY": "4g",
+            "EVALUATION_MEMORY": "unlimited",
         }):
             env = judge.tool_env()
 

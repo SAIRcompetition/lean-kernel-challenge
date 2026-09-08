@@ -10,7 +10,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 
 IMAGE="${JUDGE_IMAGE:-lean-kernel-judge}"
-MEMORY="${JUDGE_MEMORY:-4g}"
+# The official job applies no memory cgroup limit: a submission may use whatever memory the
+# dedicated evaluation host has available. "unlimited" is the only accepted value; it is sealed
+# into the cohort policy so a verdict produced under some other envelope is refused by scoring.
+MEMORY="${JUDGE_MEMORY:-unlimited}"
 CPUS="${JUDGE_CPUS:-2}"
 PIDS_LIMIT="${JUDGE_PIDS_LIMIT:-512}"
 PERF_SEED_VALUE="${PERF_SEED:-}"
@@ -32,8 +35,10 @@ Usage:
     --perf-seed SECRET \
     --cohort ROUND_ID \
     [--tag SLUG] [--reps 3] [--image IMAGE] \
-    [--memory 4g] [--cpus 2] [--pids-limit 512] [--perfmon]
+    [--memory unlimited] [--cpus 2] [--pids-limit 512] [--perfmon]
 
+The official envelope configures no memory limit (--memory accepts only
+"unlimited"); CPU and process counts are fixed at 2 and 512.
 PERF_SEED may be supplied in the environment instead of --perf-seed.
 EVALUATION_COHORT may be supplied in the environment instead of --cohort.
 The results directory is bind-mounted read/write and must be writable by the
@@ -183,32 +188,17 @@ fi
 
 [[ "$IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._/@:-]*$ ]] ||
   die "invalid Docker image reference: $IMAGE"
-[[ "$MEMORY" =~ ^[1-9][0-9]*([bBkKmMgGtTpP]|[kKmMgGtTpP][bB])?$ ]] ||
-  die "invalid non-zero --memory value: $MEMORY"
 [[ "$CPUS" =~ ^(0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*([.][0-9]+)?)$ ]] ||
   die "invalid positive --cpus value: $CPUS"
 [[ "$PIDS_LIMIT" =~ ^[1-9][0-9]*$ ]] ||
   die "invalid positive --pids-limit value: $PIDS_LIMIT"
 # Ceilings, not just positivity: these are also settable via JUDGE_* env, so a typo (or a copied
-# command line) could otherwise hand a submission an effectively unbounded envelope.
+# command line) could otherwise hand a submission an unbounded process or CPU envelope.
 (( PIDS_LIMIT <= 4096 )) || die "--pids-limit above the 4096 ceiling: $PIDS_LIMIT"
 awk -v c="$CPUS" 'BEGIN { exit !(c+0 <= 64) }' ||
   die "--cpus above the 64 ceiling: $CPUS"
-awk -v m="$MEMORY" 'BEGIN {
-  u = toupper(substr(m, length(m)));            # last char: unit or digit
-  if (u ~ /[0-9]/) { bytes = m + 0 }            # bare bytes
-  else {
-    n = m + 0;                                  # awk stops at the first non-numeric char
-    if (u == "B") { p = toupper(substr(m, length(m) - 1, 1)); if (p ~ /[0-9]/) u = "B"; else u = p }
-    if (u == "B") bytes = n;
-    else if (u == "K") bytes = n * 1024;
-    else if (u == "M") bytes = n * 1024 * 1024;
-    else if (u == "G") bytes = n * 1024 * 1024 * 1024;
-    else bytes = n * 1024 * 1024 * 1024 * 1024; # T/P — above the ceiling regardless
-  }
-  exit !(bytes <= 64 * 1024 * 1024 * 1024)      # 64 GiB ceiling
-}' || die "--memory above the 64g ceiling: $MEMORY"
-[[ "$MEMORY" == "4g" ]] || die "official Stage 1 evaluation requires --memory 4g"
+[[ "$MEMORY" == "unlimited" ]] ||
+  die "official Stage 1 evaluation runs without a memory limit; use --memory unlimited"
 [[ "$CPUS" == "2" ]] || die "official Stage 1 evaluation requires --cpus 2"
 [[ "$PIDS_LIMIT" == "512" ]] || die "official Stage 1 evaluation requires --pids-limit 512"
 if [[ -n "$REPS" ]]; then
@@ -291,11 +281,10 @@ CONTAINER_RESULTS="/work/lean-kernel-challenge/results"
 DOCKER_ARGS=(
   run --rm
   --network none
-  --memory "$MEMORY"
-  # Swap must equal the memory limit (i.e. zero extra swap): Docker's default grants
-  # memory-limit-sized ADDITIONAL swap, under which an over-limit submission thrashes
-  # instead of OOM-killing and the memory.events attribution never fires.
-  --memory-swap "$MEMORY"
+  # No --memory / --memory-swap: the official job runs without a memory cgroup limit. The
+  # container cgroup still exposes memory.events, and its oom_kill counter records a child
+  # terminated by the host's out-of-memory killer, so the judge's memory-kill attribution
+  # keeps working without a configured ceiling.
   --cpus "$CPUS"
   --pids-limit "$PIDS_LIMIT"
   --security-opt no-new-privileges:true

@@ -94,9 +94,10 @@ WORKDIR /work/lean-kernel-challenge
 # metric configured above.  Running this gate in the runtime stage proves the
 # trimmed image (not the builder) can judge end to end.
 # HARNESS_JOBS controls only cross-case parallelism. The gate intentionally
-# keeps its two samples per group (--count 2) and the judge's memory limits;
-# neither is a build-time compatibility knob. A single case that exceeds its
-# bound must fail this build loudly rather than silently shrinking the gate.
+# keeps its two samples per group (--count 2) and the judge's published case
+# limits; neither is a build-time compatibility knob. A single case that
+# exceeds its bound must fail this build loudly rather than silently shrinking
+# the gate.
 # A worker can consume several GiB (the heaviest cases peak at 2.3-4.9 GiB
 # each), so the gate runs two workers everywhere: the one setting measured to
 # fit a 16 GiB builder such as the hosted CI runner, with the worst pair near

@@ -38,7 +38,10 @@ with open(os.path.join(ROOT, "pipeline", "config.json")) as _config_file:
     _PIPELINE_POLICY = json.load(_config_file)
 _TIMING_POLICY = _PIPELINE_POLICY["timing"]
 STAGE1_OFFICIAL_REPS = _PIPELINE_POLICY["judge"]["timing_reps"]
-REPLAY_MEMORY_MB = _PIPELINE_POLICY["sandbox"]["memory_mb"]
+# The official envelope configures no memory limit, so an official memory-kill record must
+# name no limit either (null); a development record may name the bound its launcher applied.
+OFFICIAL_MEMORY_MB = _PIPELINE_POLICY["sandbox"]["memory_mb"]
+OFFICIAL_MEMORY_ENVELOPE = "unlimited"
 # Official cohorts must seal exactly the checked-in watchdog budgets and toolchain: the public
 # contract publishes these ceilings, and a verdict is otherwise free to carry any self-consistent
 # policy of its own (the seal hashes are unkeyed). Pinning them here fail-closes both a drifted
@@ -608,7 +611,7 @@ def _policy_v2_shape_error(policy):
             f"{STAGE1_OFFICIAL_REPS} repetitions")
     if policy["evaluation_mode"] == "official":
         resources = policy["resource_policy"]
-        if (resources["memory"] != "4g" or resources["cpus"] != "2"
+        if (resources["memory"] != OFFICIAL_MEMORY_ENVELOPE or resources["cpus"] != "2"
                 or resources["pids_limit"] != "512"):
             return "official grouped evaluation has a noncanonical resource envelope"
         if (policy["executor"]["kind"] != "local"
@@ -1026,8 +1029,15 @@ def _score_row(verdict, metric):
                     f"measured slot {slot} lacks a measurement target")
                 return row
         if sample_result == "resource-limit":
+            memory_mb = sample.get("memory_mb")
+            if policy["evaluation_mode"] == "official":
+                canonical_memory = memory_mb == OFFICIAL_MEMORY_MB
+            else:
+                canonical_memory = memory_mb is None or (
+                    isinstance(memory_mb, int) and not isinstance(memory_mb, bool)
+                    and memory_mb > 0)
             if (sample.get("resource") != "memory"
-                    or sample.get("memory_mb") != REPLAY_MEMORY_MB
+                    or not canonical_memory
                     or not isinstance(sample.get("resource_limit_source"), str)
                     or sample.get("resource_phase") not in {
                         "value-eval", "build-export", "axiom-audit", "target-replay",

@@ -22,7 +22,8 @@
     "correctness_boundary": "full-closure-replay-v1",
     "performance_boundary": "target-declaration-replay-v1",
     "target_proof_encoding": "direct-rfl-v1-experimental",
-    "note": "Local dev uses wall_time. Stage 1 official cohorts use in-container local-v2 perf_instructions on the pinned Linux PMU host. KTP/3 is non-official validation only. Metrics are ranked separately. Correctness and target declarations use three replays and record each median. Process startup, export parsing, and per-input dependency preload are excluded; exact output-literal checking remains included. KTP/3 binds each remote target replay to the published memory limit and reports memory exhaustion during that replay as a case resource-limit outcome. Memory exhaustion during timed correctness replay leaves an otherwise accepted submission unscored. Other protocol or boundary versions are legacy/unscored."
+    "remote_replay_memory_mb": 4096,
+    "note": "Local dev uses wall_time. Stage 1 official cohorts use in-container local-v2 perf_instructions on the pinned Linux PMU host. KTP/3 is non-official validation only. Metrics are ranked separately. Correctness and target declarations use three replays and record each median. Process startup, export parsing, and per-input dependency preload are excluded; exact output-literal checking remains included. KTP/3 binds each remote target replay to the executor-side remote_replay_memory_mb bound and reports memory exhaustion during that replay as a case resource-limit outcome; the official job itself configures no memory limit (sandbox.memory_mb is null). Memory exhaustion during timed correctness replay leaves an otherwise accepted submission unscored. Other protocol or boundary versions are legacy/unscored."
   },
   "scoring": {
     "contract": "nine independent problem leaderboards; group_points_desc, then ordered-case profile or interchangeable-case counts, then the eligible configured work/proof tie-break",
@@ -41,8 +42,8 @@
   },
   "sandbox": {
     "mode": "none",
-    "note": "'none' = local dev via the landrun pass-through shim (NO sandboxing). 'container' asserts a real landrun is present and is set by the Docker image. Resource/isolation limits (memory, cpus, pids, network, non-root, kill-all-on-exit) are ENFORCED BY scripts/run_isolated.sh and the container runtime, not by the judge process.",
-    "memory_mb": 4096,
+    "note": "'none' = local dev via the landrun pass-through shim (NO sandboxing). 'container' asserts a real landrun is present and is set by the Docker image. Resource/isolation limits (cpus, pids, network, non-root, kill-all-on-exit) are ENFORCED BY scripts/run_isolated.sh and the container runtime, not by the judge process. memory_mb is null because the official job configures no memory cgroup limit: a child terminated by the host's out-of-memory killer is attributed through the job cgroup's memory.events counter and fails its case.",
+    "memory_mb": null,
     "cpus": 2
   },
   "toolchain": {

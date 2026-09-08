@@ -32,9 +32,10 @@ breaks ties after the complete seeded plan passes.
 
 The tables below are the public scoring contract. A milestone such as `2/2 →
 20` means that both hidden cases must pass to earn 20 points. `1/2 → 10, 2/2 →
-20` awards the two cases independently. Every official job runs within the
-common 4 GiB memory envelope; the tables give the watchdog for each target
-timing repetition. A memory kill during a case's preparation or target replay
+20` awards the two cases independently. Official jobs configure no memory
+limit; the tables give the watchdog for each target timing repetition. A
+memory kill (the evaluation host's out-of-memory killer terminating a child)
+during a case's preparation or target replay
 fails that case. Cases are independent in time: one case cannot consume
 another's watchdog. Unscored value generation, theorem build/export, and axiom audit use
 independent per-case ceilings of 1,800 seconds, 1,800 seconds combined, and

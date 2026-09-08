@@ -258,8 +258,8 @@ scripts/run_isolated.sh \
 ```
 
 `scripts/run_isolated.sh` is the supported production entry point. It always runs one
-submission per container with networking disabled, bounded memory/CPU/process counts,
-`no-new-privileges`, and the non-root `judge` user. The submission is mounted read-only
+submission per container with networking disabled, bounded CPU/process counts (no memory
+limit is configured), `no-new-privileges`, and the non-root `judge` user. The submission is mounted read-only
 and verdicts are written through a persistent results mount. The seed is consumed from a
 one-shot stdin pipe before any untrusted Lean process starts; `--cohort` is the public round
 identifier used to prevent cross-round scores from being mixed. `--perfmon` is optional on

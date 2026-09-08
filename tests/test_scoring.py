@@ -136,7 +136,7 @@ def make_official_grouped(result):
     policy["seed_commitment"] = "a" * 64
     policy["resource_policy"] = {
         "image": "sha256:" + "b" * 64,
-        "memory": "4g",
+        "memory": score.OFFICIAL_MEMORY_ENVELOPE,
         "cpus": "2",
         "pids_limit": "512",
         "sandbox_mode": "container",
@@ -808,7 +808,7 @@ class ScoringTests(unittest.TestCase):
         limited.update({
             "result": "resource-limit",
             "resource": "memory",
-            "memory_mb": score.REPLAY_MEMORY_MB,
+            "memory_mb": None,
             "resource_limit_source": "local-container-cgroup",
             "resource_phase": "target-replay",
         })
@@ -816,10 +816,50 @@ class ScoringTests(unittest.TestCase):
         self.assertTrue(row["scoreable"])
         self.assertEqual(row["completed_slots"], 3)
 
-        limited["memory_mb"] += 1
+        # A development launcher may have applied a bound of its own; the record names it.
+        limited["memory_mb"] = 4096
+        row = score._score_row(item, "perf_instructions")
+        self.assertTrue(row["scoreable"])
+
+        limited["memory_mb"] = "4g"
         row = score._score_row(item, "perf_instructions")
         self.assertFalse(row["scoreable"])
         self.assertIn("canonical memory record", row["reason"])
+
+    def test_official_memory_kill_record_must_name_no_limit(self):
+        item = make_official_grouped(
+            grouped_verdict("official-memory-limit", [100, None, 100, 100]))
+        limited = item["timing"]["scaling"][1]
+        limited.update({
+            "result": "resource-limit",
+            "resource": "memory",
+            "memory_mb": score.OFFICIAL_MEMORY_MB,
+            "resource_limit_source": "local-container-cgroup",
+            "resource_phase": "target-replay",
+            "measurement_contract": score.MEASUREMENT_CONTRACT,
+            "measurement_boundary": score.PERFORMANCE_BOUNDARY,
+            "measurement_target": "Generated.check",
+        })
+        self.assertIsNone(score.OFFICIAL_MEMORY_MB)
+        row = score._score_row(item, "perf_instructions")
+        self.assertTrue(row["scoreable"], row["reason"])
+        self.assertEqual(row["completed_slots"], 3)
+
+        # The official envelope configures no limit, so a bounded record is not the
+        # official evaluator's record.
+        limited["memory_mb"] = 4096
+        row = score._score_row(item, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("canonical memory record", row["reason"])
+
+    def test_official_policy_must_seal_the_unlimited_memory_envelope(self):
+        item = make_official_grouped(grouped_verdict("official-envelope", [100] * 4))
+        self.assertTrue(score._score_row(item, "perf_instructions")["scoreable"])
+        item["evaluation_cohort"]["policy"]["resource_policy"]["memory"] = "4g"
+        _reseal_policy(item)
+        row = score._score_row(item, "perf_instructions")
+        self.assertFalse(row["scoreable"])
+        self.assertIn("noncanonical resource envelope", row["reason"])
 
     def test_grouped_aggregate_budget_is_disabled_and_cannot_affect_a_case(self):
         enabled = grouped_verdict("aggregate-enabled", [100] * 4)
@@ -850,7 +890,7 @@ class ScoringTests(unittest.TestCase):
         policy["seed_commitment"] = "a" * 64
         policy["resource_policy"] = {
             "image": "sha256:" + "b" * 64,
-            "memory": "4g",
+            "memory": score.OFFICIAL_MEMORY_ENVELOPE,
             "cpus": "2",
             "pids_limit": "512",
             "sandbox_mode": "container",
@@ -868,7 +908,7 @@ class ScoringTests(unittest.TestCase):
             "noncanonical resource envelope",
             score._policy_v2_shape_error(policy),
         )
-        policy["resource_policy"]["memory"] = "4g"
+        policy["resource_policy"]["memory"] = score.OFFICIAL_MEMORY_ENVELOPE
         policy["executor"] = {
             "kind": "remote", "executor": "pmu-remote", "version": "pmu-v1",
         }
