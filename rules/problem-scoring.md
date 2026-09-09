@@ -12,16 +12,20 @@ kernel-instruction limit, the median measurement must also stay within that
 limit. Its required preparation must also complete under the common ceilings
 described below. Exact official inputs are hidden during
 the evaluation phase, but every group publishes its scale, generator, number
-of cases, milestones, and limits. The cohort commits to the hidden seed and the
-fully resolved plan; both are released after that cohort's evaluation.
+of cases, milestones, and limits. The final official cohort commits to the hidden
+seed and the fully resolved plan; both are released after that cohort's evaluation.
+This publication commitment does not apply to provisional reference inputs or seeds.
 
 Within a problem, ranking is determined by:
 
 1. total problem points;
 2. points in harder groups, from the highest group downward;
 3. the problem's declared case profile, again from harder groups downward;
-4. when eligible, the problem's declared kernel-work tie-break; and
-5. where declared, correctness-closure work as the final tie-break.
+4. when eligible, the problem's declared target-work or combined-work instruction cost.
+
+Target work is the sum of successful target-declaration replay medians. Combined
+work adds the correctness-closure replay median once. If these ranking values
+tie, the submissions remain tied; there is no additional correctness-cost comparison.
 
 Direct-range problems compare the exact pass/fail profile because later cases
 have larger hidden inputs within the published ranges. Packed and uniformly
@@ -32,11 +36,13 @@ breaks ties after the complete seeded plan passes.
 
 The tables below are the public scoring contract. A milestone such as `2/2 →
 20` means that both hidden cases must pass to earn 20 points. `1/2 → 10, 2/2 →
-20` awards the two cases independently. Every official job runs within the
-common 4 GiB memory envelope; the tables give the watchdog for each target
-timing repetition. A memory kill during a case's preparation or target replay
-fails that case. Cases are independent in time: one case cannot consume
-another's watchdog. Unscored value generation, theorem build/export, and axiom audit use
+20` awards the two cases independently. Each problem has its own memory limit,
+published before it is used for official evaluation. Organizers may revise these
+limits during the competition; each cohort fixes its applicable limit, and a
+revision requires a new cohort and a complete rescore of that problem's comparison
+set. The tables give the watchdog for each target timing repetition. A memory kill
+during a case's preparation or target replay fails that case. Cases are independent in time:
+one case cannot consume another's watchdog. Unscored value generation, theorem build/export, and axiom audit use
 independent per-case ceilings of 1,800 seconds, 1,800 seconds combined, and
 300 seconds, respectively.
 
@@ -61,7 +67,7 @@ sampler. Their two cases are ordered from the smaller resolved input to the larg
 ## `fib` — scaling frontier
 
 Both cases in a group must pass. Target-declaration work breaks ties;
-correctness-closure work is the final tie-break.
+equal target work leaves submissions tied.
 
 | Group | Hidden `n` range | Cases | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
@@ -72,7 +78,7 @@ correctness-closure work is the final tie-break.
 ## `partition` — subtask frontier
 
 Both cases in a group must pass. Target-declaration work breaks ties;
-correctness-closure work is the final tie-break.
+equal target work leaves submissions tied.
 
 | Group | Hidden `n` range | Cases | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
@@ -84,7 +90,7 @@ correctness-closure work is the final tie-break.
 
 Cases score independently because arithmetic inputs can have different
 factorization structure. Target-declaration work breaks ties;
-correctness-closure work is the final tie-break.
+equal target work leaves submissions tied.
 
 | Group | Hidden `n` range | Cases | Milestones | Per-repetition limit |
 |---|---:|---:|---:|---:|
@@ -95,7 +101,7 @@ correctness-closure work is the final tie-break.
 ## `primecount` — robust scaling frontier
 
 Both cases in a group must pass. Target-declaration work breaks ties;
-correctness-closure work is the final tie-break.
+equal target work leaves submissions tied.
 
 | Group | Hidden `n` range | Cases | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
@@ -109,8 +115,7 @@ An input is `(dimension << 32) | seed`. The public generator produces a seeded
 0/1 matrix with exactly three distinct ones per row: the diagonal and two
 seeded off-diagonal columns. All five matrices in a group must pass. Seed
 indices do not break partial ties. After the complete plan passes,
-target-declaration work breaks ties and
-correctness-closure work is the final tie-break.
+target-declaration work breaks ties; equal target work leaves submissions tied.
 
 | Group | Dimension | Hidden seeds | Points | Per-repetition limit |
 |---|---:|---:|---:|---:|
@@ -168,7 +173,7 @@ The degree is always 24. Each group uses the uniform-integer sampler to select
 two distinct seed-derived polynomial inputs from a range that fixes the maximum coefficient width. Cases score
 independently; the retained bands D1, D3, and D5 award 20, 30, and 50 points. Seed indices do not break
 partial ties. After the complete plan passes, target-declaration work breaks
-ties and correctness-closure work is the final tie-break.
+ties; equal target work leaves submissions tied.
 
 | Group | Public input range | Max coefficient width | Milestones | Per-repetition limit |
 |---|---:|---:|---:|---:|

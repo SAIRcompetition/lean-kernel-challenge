@@ -15,15 +15,22 @@ Stage 1 of the Lean Kernel Challenge is co-organized by (in alphabetical order b
 The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 [SAIR Foundation](https://sair.foundation/).
 
+## Schedule
+
 | | |
 |---|---|
 | **Stage** | Stage 1 (experimental) |
-| **Status** | Live — submissions open |
+| **Status** | Pre-launch — submissions open September 15, 2026 |
 | **Registration and team formation** | Opens August 26, 2026 |
-| **Official launch** | September 15, 2026 |
+| **Official launch** | September 15, 2026; exact time and time zone to be announced |
 | **Submission deadline** | November 20, 2026, 23:59 AoE (UTC−12) |
+| **Final evaluation** | After the submission deadline; evaluation window to be announced |
+| **Final results publication** | After final evaluation completes; publication date and time to be announced |
 | **Stage 2** | Begins December 2026; the exact date will be announced |
 | **Submission platform** | [SAIR](https://competition.sair.foundation/) |
+
+Formal submissions and the SAIR Playground open at the official launch. The launch date alone
+does not specify an opening time; the organizers will announce the exact time and time zone.
 
 ---
 
@@ -55,8 +62,10 @@ The judge first checks the proof of correctness. It then measures the work perfo
 Lean kernel when replaying the complete verified correctness artifact and checking `impl` at
 hidden, judge-selected inputs.
 
-Because correctness holds for every input, the judge may select any input. Hardcoded tables and
-special cases are permitted, but their proof and replay costs count toward the score. See
+Because correctness holds for every input, the judge may select any input allowed by the published
+evaluation policy. Hardcoded tables and special cases are permitted when covered by the universal
+proof. Their correctness replays must satisfy the resource limits, and their instruction costs
+enter ranking according to the problem's declared work policy. See
 [`evaluation.md`](evaluation.md) for the common measurement rules and
 [`problem-scoring.md`](problem-scoring.md) for the nine independent leaderboards.
 
@@ -71,9 +80,11 @@ and the judge supplies its own copies. The simplest valid submission defines `im
 specification and proves correctness with `rfl`. It is correct but intentionally slow.
 
 Formal submissions may be repeated before the cutoff, up to 10 per team per UTC day (the day
-resets at 00:00 UTC); every accepted submission is a new immutable record. At the cutoff the
-platform freezes, for each team and problem, the newest valid formal submission as that team's
-official entry for the final evaluation.
+resets at 00:00 UTC). Each formal submission is stored as a new immutable record. At the cutoff,
+the platform selects each team's latest formal submission for each problem, based on the time it
+was recorded by the platform before the deadline. This selection does not fall back to an older
+submission if the latest submission is rejected or unscored. Pending evaluation or infrastructure
+retries apply to the selected submission and do not change that selection.
 
 ## Rules
 
@@ -107,9 +118,10 @@ groups are listed in [`problem-scoring.md`](problem-scoring.md).
 
 ## Status
 
-Stage 1 launched on September 15, 2026 and accepts formal submissions until the deadline above.
+Stage 1 is scheduled to launch on September 15, 2026, with formal submissions open from launch
+until the deadline above.
 All problem workspaces compile, and the judge runs the correctness and grouped performance
 pipeline end to end. The nine per-problem group schedules and scoring rules are published in
 [`problem-scoring.md`](problem-scoring.md); there is no cross-problem total. The organizers
-validated the complete production evaluation on the pinned PMU hardware and isolated container
+must validate the complete production evaluation on the pinned PMU hardware and isolated container
 environment before launch.

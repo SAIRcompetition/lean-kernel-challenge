@@ -1290,7 +1290,7 @@ def main():
         "",
         "Each problem is ranked independently under the scoring contract sealed into its "
         "evaluation cohort. Grouped v2 cohorts rank awarded points, harder-group points, "
-        "the declared case profile, and eligible kernel/proof work tie-breaks. "
+        "the declared case profile, and the eligible measured-work comparison. "
         "This public Stage 1 report includes grouped v2 cohorts only; legacy v1 scoring remains "
         "available for local compatibility but is not published as a Stage 1 leaderboard. "
         f"Only official {LOCAL_PROTOCOL} verdicts under {MEASUREMENT_CONTRACT} enter these "

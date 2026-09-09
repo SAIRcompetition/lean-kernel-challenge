@@ -36,6 +36,6 @@
         "limits": {"timeout_seconds": 120}
       }
     ],
-    "ranking": {"contract": "group-points-v1", "work": "curve", "proof": "last_tiebreak", "profile": "hardest_group_then_count"}
+    "ranking": {"contract": "group-points-v1", "work": "curve", "proof": "gate", "profile": "hardest_group_then_count"}
   }
 }

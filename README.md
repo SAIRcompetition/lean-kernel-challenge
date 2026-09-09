@@ -167,9 +167,10 @@ evaluation cohort receives the same plan. The sealed cohort records the complete
 commitment. Operators rotate the token and cohort id for a new round or deliberate rescore; an
 unset seed is allowed only for deterministic local development. The production wrapper injects
 the seed once over stdin, never into the submission's elaboration environment. Raw verdicts and
-exact inputs remain private throughout the evaluation phase. After the cohort closes, its
-resolution seed, exact input plan, results, and benchmark data are released publicly under an
-open-source license.
+exact inputs remain private throughout the evaluation phase. After the final official cohort closes,
+its resolution seed, exact input plan, results, and benchmark data are released publicly under an
+open-source license. Provisional standings use separate hidden sampled inputs that organizers may
+update; the reference input plans and seeds are outside this publication commitment.
 
 ## Scoring
 
@@ -182,8 +183,12 @@ Within one problem, submissions are ranked by:
 1. total points;
 2. points in harder groups, compared from hardest to easiest;
 3. the problem's declared ordered-case profile or per-group pass counts;
-4. when eligible, the problem's declared measured-kernel-work tie-break; and
-5. where declared, correctness-closure work as the final tie-break.
+4. when eligible, the problem's declared target-work or combined-work instruction cost.
+
+Target work sums the successful target-declaration replay medians. Combined work also includes
+the correctness-closure replay median once; `saw`, `ca-rule110`, and `sha256` use this policy.
+The other six problems use target work. Equal ranking values remain tied, with no additional
+proof-cost comparison.
 
 For packed or uniformly seeded groups, seed indices are interchangeable: equal
 partial pass counts tie, and measured work is compared after the complete plan
@@ -201,12 +206,16 @@ See **[`rules/problem-scoring.md`](rules/problem-scoring.md)** for the published
 generators, case counts, milestone points, resource limits, prerequisites, and tie-break policy
 for each problem.
 
+Each problem's memory limit will be published before it is used for official evaluation.
+Organizers may revise these limits during the competition. A limit is fixed within its evaluation
+cohort; revising it requires a new cohort and a complete rescore of that problem's comparison set.
+
 ## Quick start
 
 ```bash
 scripts/setup.sh                                  # build the pinned tools (comparator, lean4export, timer-kernel)
 python3 scripts/run_harness.py                    # green gate: judge every example, check verdicts
-python3 scripts/run_harness.py --quick --jobs 2   # two cases in parallel, the image-build gate's setting
+python3 scripts/run_harness.py --quick --jobs 2     # same worker count as the image build; shorter smoke checks
 python3 judge/judge.py run --problem fib --submission examples/submissions/fib/doubling
 python3 scripts/score.py                          # canonical metric-separated scoring tables
 ```
@@ -218,10 +227,16 @@ fit a 16 GiB builder with the worst pair near 8 GiB, so CI and deployment
 builds use the same configuration.  A smaller builder can pass
 `docker build --build-arg HARNESS_JOBS=1 -t lean-kernel-judge .`; raise the
 count only after measuring the target host.
-The image-build green gate intentionally retains `--count 2` and the judge's
-configured resource limits.  It never lowers the schedule or relaxes a bound
-to accommodate a constrained builder: if even one case exceeds its limit, the
-build fails and exposes the capacity problem.  The one explicit narrowing is
+The image-build regression check uses `--quick --count 2 --timeout 120`.
+It checks expected submission verdicts, measurement-record structure, and the
+minimum performance coverage declared in `tests/harness_manifest.json`.
+A slow baseline may pass this check even when its performance inputs time out;
+the image build fails when a manifest requirement is not met. These checks run
+in local development mode and do not establish that every performance input
+passes under the official per-problem memory limits. Verify those limits using
+the built image through `scripts/run_isolated.sh` after the per-problem policy
+has been implemented and configured.
+To run a subset of the regression checks, use
 `docker build --build-arg HARNESS_ONLY=mertens ...`, which judges only the
 manifest cases whose problem contains the substring (`run_harness.py --only`):
 a development and test-rehearsal shortcut, never a release build.  Such an
@@ -304,3 +319,10 @@ never exposed to elaboration. `scripts/score.py` applies the sealed group milest
 per-problem tie-break policy. The remaining launch blockers are the production PMU sweep and
 real-container isolation validation. Additional optimized examples are useful but not part of
 the scoring contract. Rule text may still change before launch (see `rules/overview.md`).
+
+The September 9 rules review also requires implementation updates before official evaluation:
+replace the fixed 4 GiB runtime checks with per-problem memory policies, and verify that platform
+entry selection always uses the latest formal submission. The final memory values are not yet set.
+These pending updates are tracked in [`docs/pre-launch-checklist.md`](docs/pre-launch-checklist.md).
+The six target-work problem configurations now use correctness work only as a completion gate;
+the three combined-work problems retain correctness-plus-target ranking.

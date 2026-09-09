@@ -37,8 +37,8 @@ Lean. It checks definitional equality by reducing expressions; when a proof
 depends on a computed result, that computation becomes part of proof
 verification.
 
-After the evaluation phase, all results and benchmark data will be released
-publicly under an open-source license. Together with the algorithms and
+After the final official evaluation phase, its results and benchmark data will be
+released publicly under an open-source license. Together with the algorithms and
 representations developed through the challenge, they will form a collective
 contribution to Lean's development that the global Lean community can
 reproduce, reuse, and build on.
@@ -66,9 +66,13 @@ official launch.
 ## Key Dates
 
 - Registration and team formation open: **August 26, 2026**
-- Official launch: **September 15, 2026**
+- Official launch: **September 15, 2026**; exact time and time zone to be announced
 - Submission deadline: **November 20, 2026, 23:59 AoE (UTC−12)**
+- Final evaluation: after the submission deadline; evaluation window to be announced
+- Final results publication: after final evaluation completes; publication date and time to be announced
 - Stage 2 begins: **December 2026**; the exact date will be announced
+
+The [overview schedule](overview.md#schedule) records these dates and pending announcements.
 
 ## Registration & Teams
 
@@ -80,7 +84,7 @@ team on SAIR.
 
 ## Official Repository & Playground
 
-The official repository, SAIR Playground, and submission system are available
+The official repository, SAIR Playground, and submission system will be available
 on [SAIR](https://competition.sair.foundation/) from the official launch.
 
 ## Team Participation and Anti-Cheating Policy

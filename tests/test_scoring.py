@@ -204,6 +204,8 @@ def grouped_verdict(name, costs, *, correctness=10, groups=None,
                 "slot": len(plan), "group": group["id"], "case": case,
                 "n": n, "limits": dict(group["limits"]),
             })
+            if group["sampling"]["kind"] == "packed":
+                plan[-1]["scale"] = group["sampling"]["scale"]
         offset += count
     if offset != len(inputs):
         raise AssertionError("test groups must account for every input")
@@ -233,7 +235,66 @@ def grouped_verdict(name, costs, *, correctness=10, groups=None,
     return result
 
 
+def configured_grouped_verdict(name, problem, *, correctness, costs=None):
+    """Exercise the shipped problem policy with synthetic replay measurements."""
+    evaluation = json.loads(
+        (ROOT / "problems" / problem / "config.json").read_text())["evaluation"]
+    inputs = []
+    for group in evaluation["groups"]:
+        sampling = group["sampling"]
+        for case in range(sampling["count"]):
+            if sampling["kind"] == "packed":
+                n = (sampling["scale"] << 32) | (case + 1)
+            else:
+                n = sampling["min"] + case
+            inputs.append(n)
+    result = grouped_verdict(
+        name, costs if costs is not None else [100] * len(inputs),
+        correctness=correctness, inputs=inputs, groups=evaluation["groups"],
+        ranking=evaluation["ranking"])
+    result["problem"] = problem
+    result["evaluation_cohort"]["policy"]["problem"] = problem
+    result["evaluation_cohort"]["policy"]["evaluation"] = evaluation
+    _reseal_policy(result)
+    return result
+
+
 class ScoringTests(unittest.TestCase):
+    def test_shipped_problem_policies_use_only_the_declared_work_comparison(self):
+        combined = {"saw", "ca-rule110", "sha256"}
+        target = {"fib", "partition", "mertens", "primecount", "permanent", "polydisc"}
+        for problem in sorted(target | combined):
+            with self.subTest(problem=problem):
+                expensive = configured_grouped_verdict(
+                    "a-expensive-proof", problem, correctness=100)
+                cheap = configured_grouped_verdict(
+                    "z-cheap-proof", problem, correctness=10)
+                rows = score._rows_for(problem, [expensive, cheap], "perf_instructions")
+                self.assertTrue(all(row["scoreable"] for row in rows), rows)
+                self.assertEqual([row["points"] for row in rows], [100, 100])
+                if problem in target:
+                    self.assertEqual(score._competition_ranks(rows), [1, 1])
+                    self.assertEqual([row["sub"] for row in rows],
+                                     ["a-expensive-proof", "z-cheap-proof"])
+                else:
+                    self.assertEqual(score._competition_ranks(rows), [1, 2])
+                    self.assertEqual([row["sub"] for row in rows],
+                                     ["z-cheap-proof", "a-expensive-proof"])
+
+    def test_shipped_combined_policies_tie_when_total_work_is_equal(self):
+        for problem in ("saw", "ca-rule110", "sha256"):
+            with self.subTest(problem=problem):
+                cheap = configured_grouped_verdict("cheap-proof", problem, correctness=10)
+                count = len(cheap["stages"]["perf_inputs"])
+                expensive = configured_grouped_verdict(
+                    "expensive-proof", problem, correctness=100,
+                    costs=[10] + [100] * (count - 1))
+                rows = score._rows_for(problem, [cheap, expensive], "perf_instructions")
+                self.assertTrue(all(row["scoreable"] for row in rows), rows)
+                self.assertEqual(rows[0]["ranking_work"], rows[1]["ranking_work"])
+                self.assertNotEqual(rows[0]["correctness_work"], rows[1]["correctness_work"])
+                self.assertEqual(score._competition_ranks(rows), [1, 1])
+
     def test_configured_toolchain_matches_current_policy_schema(self):
         policy = verdict("configured-toolchain", [100, 200, 300])[
             "evaluation_cohort"]["policy"]
