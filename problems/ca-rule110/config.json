@@ -20,22 +20,19 @@
       {
         "id": "C1", "label": "2 steps", "order": 1,
         "sampling": {"kind": "packed", "scale": 2, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 10}, {"passed": 2, "points": 20}]},
         "limits": {"timeout_seconds": 30}
       },
       {
         "id": "C2", "label": "4 steps", "order": 2,
         "sampling": {"kind": "packed", "scale": 4, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 15}, {"passed": 2, "points": 30}]},
         "limits": {"timeout_seconds": 60}
       },
       {
         "id": "C3", "label": "8 steps", "order": 3,
         "sampling": {"kind": "packed", "scale": 8, "seed_bits": 32, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 25}, {"passed": 2, "points": 50}]},
         "limits": {"timeout_seconds": 120}
       }
     ],
-    "ranking": {"contract": "group-points-v1", "work": "total", "proof": "include", "profile": "hardest_group_then_count"}
+    "ranking": {"contract": "full-plan-v1", "work": "total", "proof": "include", "max_points": 100}
   }
 }

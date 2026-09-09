@@ -20,22 +20,19 @@
       {
         "id": "D1", "label": "15-bit coefficients", "order": 1,
         "sampling": {"kind": "uniform_int", "min": 262144, "max": 33554432, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 10}, {"passed": 2, "points": 20}]},
         "limits": {"timeout_seconds": 30}
       },
       {
         "id": "D3", "label": "205-bit coefficients", "order": 2,
         "sampling": {"kind": "uniform_int", "min": 137438953472, "max": 35184372088832, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 15}, {"passed": 2, "points": 30}]},
         "limits": {"timeout_seconds": 60}
       },
       {
         "id": "D5", "label": "3484-bit coefficients", "order": 3,
         "sampling": {"kind": "uniform_int", "min": 144115188075855872, "max": 9223372036854775808, "count": 2},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 1, "points": 25}, {"passed": 2, "points": 50}]},
         "limits": {"timeout_seconds": 120}
       }
     ],
-    "ranking": {"contract": "group-points-v1", "work": "curve", "proof": "gate", "profile": "hardest_group_then_count"}
+    "ranking": {"contract": "full-plan-v1", "work": "curve", "proof": "gate", "max_points": 100}
   }
 }

@@ -20,6 +20,7 @@ SUBMISSION=""
 RESULTS_DIR=""
 TAG=""
 REPS=""
+REFERENCE_ANSWERS_FILE=""
 ENABLE_PERFMON=0
 
 usage() {
@@ -31,11 +32,14 @@ Usage:
     --results /absolute/path/to/results \
     --perf-seed SECRET \
     --cohort ROUND_ID \
+    --reference-answers /private/path/to/answers.json \
     [--tag SLUG] [--reps 3] [--image IMAGE] \
     [--memory 4g] [--cpus 2] [--pids-limit 512] [--perfmon]
 
 PERF_SEED may be supplied in the environment instead of --perf-seed.
 EVALUATION_COHORT may be supplied in the environment instead of --cohort.
+Prepare the private answer bundle with scripts/prepare_reference.py --official.
+It is streamed over stdin before contestant execution, never mounted in the container.
 The results directory is bind-mounted read/write and must be writable by the
 image's non-root `judge` user (UID 10001 on a native Linux Docker host).
 EOF
@@ -80,6 +84,11 @@ while [[ $# -gt 0 ]]; do
     --perf-seed)
       need_value "$@"
       PERF_SEED_VALUE="$2"
+      shift 2
+      ;;
+    --reference-answers)
+      need_value "$@"
+      REFERENCE_ANSWERS_FILE="$2"
       shift 2
       ;;
     --tag)
@@ -145,6 +154,10 @@ valid_slug "$COHORT" || die "invalid cohort slug: $COHORT"
 [[ -f "$ROOT/problems/$PROBLEM/config.json" ]] || die "unknown problem: $PROBLEM"
 [[ "$SUBMISSION" == /* ]] || die "--submission must be an absolute path"
 [[ "$RESULTS_DIR" == /* ]] || die "--results must be an absolute path"
+if [[ "$PROBLEM" != "conv" || -n "$REFERENCE_ANSWERS_FILE" ]]; then
+  [[ -f "$REFERENCE_ANSWERS_FILE" && -r "$REFERENCE_ANSWERS_FILE" ]] ||
+    die "--reference-answers must name a readable precomputed answer bundle"
+fi
 [[ -d "$SUBMISSION" ]] || die "submission directory does not exist: $SUBMISSION"
 [[ -f "$SUBMISSION/Submission.lean" && ! -L "$SUBMISSION/Submission.lean" ]] ||
   die "submission must contain a regular, non-symlink Submission.lean"
@@ -345,11 +358,24 @@ if [[ -n "$REPS" ]]; then
   JUDGE_ARGS+=(--reps "$REPS")
 fi
 
+STDIN_ENV_ARGS=(--env PERF_SEED_STDIN=1)
+if [[ -n "$REFERENCE_ANSWERS_FILE" ]]; then
+  STDIN_ENV_ARGS+=(--env REFERENCE_ANSWERS_STDIN=1)
+fi
 set +e
-printf '%s\n' "$PERF_SEED_VALUE" | \
-  "$DOCKER_BIN" "${DOCKER_ARGS[@]}" --interactive --env PERF_SEED_STDIN=1 \
+{
+  printf '%s\n' "$PERF_SEED_VALUE"
+  if [[ -n "$REFERENCE_ANSWERS_FILE" ]]; then
+    cat -- "$REFERENCE_ANSWERS_FILE"
+  fi
+} | \
+  "$DOCKER_BIN" "${DOCKER_ARGS[@]}" --interactive "${STDIN_ENV_ARGS[@]}" \
     "$IMAGE_ID" "${JUDGE_ARGS[@]}"
-STATUS=${PIPESTATUS[1]}
+PIPE_STATUSES=("${PIPESTATUS[@]}")
+STATUS=${PIPE_STATUSES[1]}
+if [[ "${PIPE_STATUSES[0]}" != "0" && "$STATUS" == "0" ]]; then
+  STATUS=2
+fi
 set -e
 
 VERDICT="$RESULTS_DIR/$PROBLEM/$VERDICT_NAME.json"

@@ -23,7 +23,6 @@ GROUPED_PROBLEMS = {
         "kind": "geometric_range",
         "scales": [(5_000, 10_000), (20_000, 40_000), (80_000, 150_000)],
         "counts": [2, 2, 2],
-        "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
     },
     "partition": {
@@ -31,7 +30,6 @@ GROUPED_PROBLEMS = {
         "kind": "geometric_range",
         "scales": [(14, 18), (22, 26), (32, 36)],
         "counts": [2, 2, 2],
-        "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
     },
     "mertens": {
@@ -39,7 +37,6 @@ GROUPED_PROBLEMS = {
         "kind": "geometric_range",
         "scales": [(25, 50), (80, 150), (300, 500)],
         "counts": [2, 2, 2],
-        "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
     },
     "primecount": {
@@ -47,7 +44,6 @@ GROUPED_PROBLEMS = {
         "kind": "geometric_range",
         "scales": [(50, 100), (150, 300), (600, 1_000)],
         "counts": [2, 2, 2],
-        "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
     },
     "permanent": {
@@ -55,7 +51,6 @@ GROUPED_PROBLEMS = {
         "kind": "packed",
         "scales": [6, 12, 16],
         "counts": [5, 5, 5],
-        "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
         "profile": "hardest_group_then_count",
     },
@@ -64,7 +59,6 @@ GROUPED_PROBLEMS = {
         "kind": "packed",
         "scales": [4, 6, 8],
         "counts": [2, 2, 2],
-        "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
         "profile": "hardest_group_then_count",
     },
@@ -73,7 +67,6 @@ GROUPED_PROBLEMS = {
         "kind": "packed",
         "scales": [2, 4, 8],
         "counts": [2, 2, 2],
-        "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
         "profile": "hardest_group_then_count",
     },
@@ -82,7 +75,6 @@ GROUPED_PROBLEMS = {
         "kind": "packed",
         "scales": [4, 32, 512],
         "counts": [2, 2, 2],
-        "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
         "profile": "hardest_group_then_count",
     },
@@ -95,7 +87,6 @@ GROUPED_PROBLEMS = {
             (2 ** 57, 2 ** 63),
         ],
         "counts": [2, 2, 2],
-        "points": [20, 30, 50],
         "timeouts": [30, 60, 120],
         "profile": "hardest_group_then_count",
     },
@@ -132,11 +123,9 @@ class PublishedProblemPolicyTests(unittest.TestCase):
                 evaluation = cfg["evaluation"]
                 self.assertEqual(evaluation["schema"], "grouped-evaluation-v1")
                 self.assertEqual(
-                    evaluation["ranking"]["contract"], "group-points-v1")
-                self.assertEqual(
-                    evaluation["ranking"]["profile"],
-                    expected.get("profile", "hardest_group_then_slot"),
-                )
+                    evaluation["ranking"]["contract"], "full-plan-v1")
+                self.assertEqual(evaluation["ranking"]["max_points"], 100)
+                self.assertNotIn("profile", evaluation["ranking"])
 
                 groups = evaluation["groups"]
                 self.assertEqual([group["id"] for group in groups], expected["ids"])
@@ -146,14 +135,9 @@ class PublishedProblemPolicyTests(unittest.TestCase):
                     expected["counts"],
                 )
                 self.assertEqual(
-                    [group["award"]["table"][-1]["points"] for group in groups],
-                    expected["points"],
-                )
-                self.assertEqual(
                     [group["limits"]["timeout_seconds"] for group in groups],
                     expected["timeouts"],
                 )
-                self.assertEqual(sum(expected["points"]), 100)
                 scales = []
                 for index, group in enumerate(groups):
                     sampling = group["sampling"]
@@ -164,13 +148,8 @@ class PublishedProblemPolicyTests(unittest.TestCase):
                     else:
                         scales.append((sampling["min"], sampling["max"]))
 
-                    table = group["award"]["table"]
-                    self.assertEqual(table[0], {"passed": 0, "points": 0})
-                    self.assertEqual(table[-1]["passed"], expected["counts"][index])
-                    self.assertEqual(
-                        [(row["passed"], row["points"]) for row in table],
-                        sorted((row["passed"], row["points"]) for row in table),
-                    )
+                    self.assertNotIn("award", group)
+                    self.assertNotIn("requires", group)
                     self.assertEqual(set(group["limits"]), {"timeout_seconds"})
                     self.assertLessEqual(
                         group["limits"]["timeout_seconds"], global_timeout)

@@ -20,22 +20,19 @@
       {
         "id": "P1", "label": "Small", "order": 1,
         "sampling": {"kind": "geometric_range", "min": 14, "max": 18, "count": 2, "jitter": 0.15},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 20}]},
         "limits": {"timeout_seconds": 30}
       },
       {
         "id": "P2", "label": "Medium", "order": 2,
         "sampling": {"kind": "geometric_range", "min": 22, "max": 26, "count": 2, "jitter": 0.15},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 30}]},
         "limits": {"timeout_seconds": 60}
       },
       {
         "id": "P3", "label": "Large", "order": 3,
         "sampling": {"kind": "geometric_range", "min": 32, "max": 36, "count": 2, "jitter": 0.15},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 50}]},
         "limits": {"timeout_seconds": 120}
       }
     ],
-    "ranking": {"contract": "group-points-v1", "work": "curve", "proof": "gate", "profile": "hardest_group_then_slot"}
+    "ranking": {"contract": "full-plan-v1", "work": "curve", "proof": "gate", "max_points": 100}
   }
 }

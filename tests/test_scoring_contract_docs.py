@@ -41,7 +41,6 @@ EXPECTED_TOTAL_POINTS = 100
 
 _SECTION_RE = re.compile(r"^## `([^`]+)`", re.MULTILINE)
 _SEPARATOR_CELL_RE = re.compile(r":?-{3,}:?")
-_MILESTONE_RE = re.compile(r"(\d+)\s*/\s*(\d+)\s*(?:→|->)\s*(\d+)")
 _LIMIT_RE = re.compile(r"^([\d,]+)\s*s$")
 _POW2_RE = re.compile(r"^2\^(\d+)$")
 
@@ -62,14 +61,6 @@ def _parse_range(text):
             lo, hi = text.split(dash, 1)
             return _parse_scalar(lo), _parse_scalar(hi)
     raise ValueError("not a range cell: %r" % text)
-
-
-def _parse_milestones(text):
-    """Parse 'a/n -> p, b/n -> q' into a list of (passed, of, points)."""
-    entries = [tuple(int(x) for x in m) for m in _MILESTONE_RE.findall(text)]
-    if not entries:
-        raise ValueError("no milestones found in cell: %r" % text)
-    return entries
 
 
 def _parse_doc_sections(text):
@@ -107,10 +98,8 @@ def _doc_row(problem, header, cells):
     """Normalize one table row into a comparable dict.
 
     Column layout (all nine tables): group id first, the scale/range second,
-    the per-repetition limit last, and the points/milestones cell second to
-    last. The case count lives in a 'Cases' or 'Hidden seeds' column when
-    present (polydisc has none; its count is implied by the milestone
-    denominators).
+    the per-repetition limit last. The case count is explicit in the
+    'Cases' or 'Hidden seeds' column.
     """
     named = dict(zip(header, cells))
     kind = DOC_SAMPLER_KINDS[problem]
@@ -123,14 +112,6 @@ def _doc_row(problem, header, cells):
 
     count_cell = named.get("Cases", named.get("Hidden seeds"))
     row["count"] = int(count_cell) if count_cell is not None else None
-
-    points_cell = named.get("Points", named.get("Milestones"))
-    if points_cell is None:
-        raise ValueError(
-            "%s row %s: no Points/Milestones column in %r"
-            % (problem, cells[0], header)
-        )
-    row["milestones"] = _parse_milestones(points_cell)
 
     limit_match = _LIMIT_RE.match(cells[-1])
     if limit_match is None:
@@ -162,18 +143,6 @@ def _load_config_evaluations():
         if "evaluation" in config:
             evaluations[config_path.parent.name] = config["evaluation"]
     return evaluations
-
-
-def _award_milestones(group):
-    """Config award table as sorted (passed, points), zero baseline dropped."""
-    table = group["award"]["table"]
-    return sorted(
-        (entry["passed"], entry["points"]) for entry in table if entry["passed"] > 0
-    )
-
-
-def _max_points(group):
-    return max(entry["points"] for entry in group["award"]["table"])
 
 
 class TestScoringContractDocs(unittest.TestCase):
@@ -305,41 +274,16 @@ class TestScoringContractDocs(unittest.TestCase):
                         "%s %s field 'count': doc says %d, config says %d"
                         % (problem, group["id"], doc_row["count"], config_count),
                     )
-                # Milestone denominators ('x/y -> p') must agree with the
-                # case count too; for polydisc they are the doc's only count.
-                for passed, of, _points in doc_row["milestones"]:
-                    self.assertEqual(
-                        of,
-                        config_count,
-                        "%s %s field 'count': doc milestone %d/%d implies %d "
-                        "cases, config says %d"
-                        % (problem, group["id"], passed, of, of, config_count),
-                    )
+                self.assertIsNotNone(doc_row["count"])
 
-    def test_milestones_match(self):
-        for problem, doc_row, group in self._pairs():
-            with self.subTest(problem=problem, group=group["id"]):
-                doc_milestones = sorted(
-                    (passed, points) for passed, _of, points in doc_row["milestones"]
-                )
-                self.assertEqual(
-                    doc_milestones,
-                    _award_milestones(group),
-                    "%s %s field 'milestones': doc says %r, config award "
-                    "table says %r"
-                    % (
-                        problem,
-                        group["id"],
-                        doc_milestones,
-                        _award_milestones(group),
-                    ),
-                )
-                self.assertEqual(
-                    group["award"]["mode"],
-                    "milestones",
-                    "%s %s field 'award.mode': expected 'milestones', config "
-                    "says %r" % (problem, group["id"], group["award"].get("mode")),
-                )
+    def test_groups_have_no_partial_awards_or_prerequisites(self):
+        for problem, evaluation in self.configs.items():
+            with self.subTest(problem=problem):
+                self.assertEqual(evaluation["ranking"]["contract"], "full-plan-v1")
+                self.assertNotIn("profile", evaluation["ranking"])
+                for group in evaluation["groups"]:
+                    self.assertNotIn("award", group)
+                    self.assertNotIn("requires", group)
 
     def test_watchdog_timeouts_match(self):
         for problem, doc_row, group in self._pairs():
@@ -358,27 +302,9 @@ class TestScoringContractDocs(unittest.TestCase):
                 )
 
     def test_total_points_are_100(self):
-        for problem in sorted(DOC_SAMPLER_KINDS):
+        for problem, evaluation in self.configs.items():
             with self.subTest(problem=problem):
-                doc_total = sum(
-                    max(points for _passed, _of, points in row["milestones"])
-                    for row in self.doc[problem]
-                )
-                config_total = sum(
-                    _max_points(group) for group in self.configs[problem]["groups"]
-                )
-                self.assertEqual(
-                    doc_total,
-                    EXPECTED_TOTAL_POINTS,
-                    "%s: doc milestone maxima total %d points, expected %d"
-                    % (problem, doc_total, EXPECTED_TOTAL_POINTS),
-                )
-                self.assertEqual(
-                    config_total,
-                    EXPECTED_TOTAL_POINTS,
-                    "%s: config award maxima total %d points, expected %d"
-                    % (problem, config_total, EXPECTED_TOTAL_POINTS),
-                )
+                self.assertEqual(evaluation["ranking"]["max_points"], EXPECTED_TOTAL_POINTS)
 
 
 class TestLeanToolchainConsistency(unittest.TestCase):

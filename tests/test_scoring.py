@@ -226,6 +226,11 @@ def grouped_verdict(name, costs, *, correctness=10, groups=None,
         },
         "groups": groups, "ranking": ranking,
     }
+    if ranking["contract"] == "full-plan-v1":
+        policy["reference_answers"] = {
+            "contract": "reference-answers-v1", "sha256": "2" * 64,
+            "spec_sha256": "3" * 64, "count": len(inputs),
+        }
     policy["performance_plan"] = plan
     plan_encoded = json.dumps(
         plan, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
@@ -260,6 +265,65 @@ def configured_grouped_verdict(name, problem, *, correctness, costs=None):
 
 
 class ScoringTests(unittest.TestCase):
+    def test_full_plan_failures_tie_below_passes_for_every_shipped_problem(self):
+        for problem in sorted(score.STAGE1_PROBLEMS):
+            with self.subTest(problem=problem):
+                complete = configured_grouped_verdict("full", problem, correctness=500)
+                count = len(complete["timing"]["scaling"])
+                failures = [configured_grouped_verdict(
+                    name, problem, correctness=proof, costs=costs)
+                    for name, proof, costs in [
+                        ("one-miss", 1, [1] * (count - 1) + [None]),
+                        ("one-pass", 900, [None] * (count - 1) + [100000]),
+                        ("no-pass", 100, [None] * count),
+                    ]]
+                rows = score._rows_for(problem, failures + [complete], "perf_instructions")
+                self.assertTrue(all(row["scoreable"] for row in rows), rows)
+                self.assertEqual([row["points"] for row in rows], [100, 0, 0, 0])
+                self.assertEqual(score._competition_ranks(rows), [1, 2, 2, 2])
+                self.assertTrue(all(row["ranking_work"] == float("inf") for row in rows[1:]))
+                self.assertEqual(score._format_work(rows[-1]["ranking_work"], "perf_instructions"), "∞")
+
+    def test_full_plan_incomplete_record_or_reference_seal_is_not_a_zero(self):
+        original = configured_grouped_verdict("incomplete", "fib", correctness=100)
+        for mutate in (
+                lambda item: item["timing"]["scaling"].pop(),
+                lambda item: item["evaluation_cohort"]["policy"].pop("reference_answers"),
+                lambda item: item["evaluation_cohort"]["policy"]["reference_answers"].update(count=1)):
+            item = json.loads(json.dumps(original))
+            mutate(item)
+            _reseal_policy(item)
+            row = score._score_row(item, "perf_instructions")
+            self.assertFalse(row["scoreable"])
+            self.assertIsNone(row["points"])
+
+    def test_full_plan_reference_preparation_failure_cannot_be_scored(self):
+        for failure in ("value-eval-timeout", "value-eval-error"):
+            item = configured_grouped_verdict("reference-failure", "fib", correctness=100)
+            item["timing"]["scaling"][0]["result"] = failure
+            row = score._score_row(item, "perf_instructions")
+            self.assertFalse(row["scoreable"])
+            self.assertIn("reference-answer preparation", row["reason"])
+
+    def test_full_plan_public_report_shows_infinite_cost_and_utc_generation_time(self):
+        good = make_official_grouped(configured_grouped_verdict("full", "fib", correctness=100))
+        bad = make_official_grouped(configured_grouped_verdict(
+            "failed", "fib", correctness=100, costs=[None] * 6))
+        old_results = score.RESULTS
+        with tempfile.TemporaryDirectory() as temp:
+            try:
+                score.RESULTS = temp
+                directory = pathlib.Path(temp) / "fib"
+                directory.mkdir()
+                for item in (good, bad):
+                    (directory / (item["submission"] + ".json")).write_text(json.dumps(item))
+                score.main()
+                report = (pathlib.Path(temp) / "scoring.md").read_text()
+                self.assertIn("| 2 | failed | 0 | 0/6 | ∞ | scored |", report)
+                self.assertRegex(report, r"Generated: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC")
+            finally:
+                score.RESULTS = old_results
+
     def test_shipped_problem_policies_use_only_the_declared_work_comparison(self):
         combined = {"saw", "ca-rule110", "sha256"}
         target = {"fib", "partition", "mertens", "primecount", "permanent", "polydisc"}

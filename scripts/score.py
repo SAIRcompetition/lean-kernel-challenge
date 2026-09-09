@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Build canonical, per-problem scoring tables from sealed judge verdicts.
 
-``evaluation-policy-v2`` cohorts use the embedded ``grouped-evaluation-v1``
-contract: milestone points, harder-group points, the declared case-profile policy,
-then eligible configured work and proof tie-breaks.  The scorer never consults a live problem
-config and never trusts points copied into a plan or verdict.
+``evaluation-policy-v2`` cohorts use the embedded ranking contract. ``full-plan-v1``
+awards 100 points only for complete passes and compares their configured instruction
+cost; every scoreable failed plan ties at zero points and infinite cost. Previously
+sealed ``group-points-v1`` cohorts retain their milestone and profile semantics.
+The scorer never consults a live problem config or trusts points copied into a verdict.
 
 Legacy ``evaluation-policy-v1`` ranking remains deliberately simple and monotone:
 
@@ -29,6 +30,7 @@ Stdlib only.  See rules/evaluation.md for the binding scoring contract.
 """
 import hashlib
 import json
+from datetime import datetime, timezone
 import math
 import os
 
@@ -374,9 +376,9 @@ def _group_sampling_shape(sampling, *, official):
 def _grouped_evaluation_shape_error(evaluation, performance_plan, *, official):
     """Validate the public grouped-scoring contract embedded in a v2 cohort.
 
-    The scorer intentionally supports only fully specified milestone awards.  In
-    particular, no points are taken from the resolved plan or from a live problem
-    config: the signed cohort policy is the sole source of scoring authority.
+    New full-plan policies have no per-group awards. Previously sealed milestone
+    policies retain their original behavior. The sealed policy, not a live problem
+    config or points copied into a verdict, is the source of scoring authority.
     """
     if not (isinstance(evaluation, dict)
             and set(evaluation) == {"schema", "axis", "groups", "ranking"}
@@ -389,14 +391,21 @@ def _grouped_evaluation_shape_error(evaluation, performance_plan, *, official):
         return "grouped evaluation has an invalid difficulty axis"
 
     ranking = evaluation["ranking"]
+    full_plan = isinstance(ranking, dict) and ranking.get("contract") == "full-plan-v1"
+    ranking_fields = ({"contract", "work", "proof", "max_points"} if full_plan
+                      else {"contract", "work", "proof", "profile"})
     if not (isinstance(ranking, dict)
-            and set(ranking) == {"contract", "work", "proof", "profile"}
-            and ranking.get("contract") == "group-points-v1"
+            and set(ranking) == ranking_fields
+            and ranking.get("contract") in ("group-points-v1", "full-plan-v1")
             and ranking.get("work") in ("total", "curve", "worst_normalized")
             and ranking.get("proof") in ("include", "gate", "last_tiebreak")
-            and ranking.get("profile") in (
-                "hardest_group_then_slot", "hardest_group_then_count")):
+            and (full_plan or ranking.get("profile") in (
+                "hardest_group_then_slot", "hardest_group_then_count"))):
         return "grouped evaluation has an invalid ranking contract"
+    if full_plan and (type(ranking["max_points"]) is not int
+                      or ranking["max_points"] != 100
+                      or ranking["proof"] == "last_tiebreak"):
+        return "full-plan ranking requires 100 points and no separate proof tie-break"
     # A normalization denominator must be calibrated and defined uniformly before this
     # mode can be compared safely.  Fail closed instead of silently guessing from limits.
     if ranking["work"] == "worst_normalized":
@@ -415,10 +424,13 @@ def _grouped_evaluation_shape_error(evaluation, performance_plan, *, official):
     sampling_by_id = {}
     orders = set()
     for group in groups:
-        required = {"id", "label", "order", "sampling", "award", "limits"}
+        required = {"id", "label", "order", "sampling", "limits"}
+        if not full_plan:
+            required.add("award")
+        allowed = required if full_plan else required | {"requires"}
         if not (isinstance(group, dict)
                 and required <= set(group)
-                and set(group) <= required | {"requires"}):
+                and set(group) <= allowed):
             return "grouped evaluation has an invalid group field set"
         group_id = group.get("id")
         order = group.get("order")
@@ -448,27 +460,28 @@ def _grouped_evaluation_shape_error(evaluation, performance_plan, *, official):
                 and group_id not in requires):
             return f"grouped evaluation group {group_id!r} has invalid prerequisites"
 
-        award = group.get("award")
-        table = award.get("table") if isinstance(award, dict) else None
-        if not (isinstance(award, dict)
-                and set(award) == {"mode", "table"}
-                and award.get("mode") == "milestones"
-                and isinstance(table, list) and table):
-            return f"grouped evaluation group {group_id!r} has an invalid award"
-        previous_passed = previous_points = -1
-        for milestone in table:
-            if not (isinstance(milestone, dict)
-                    and set(milestone) == {"passed", "points"}
-                    and type(milestone.get("passed")) is int
-                    and type(milestone.get("points")) is int
-                    and milestone["passed"] >= 0 and milestone["points"] >= 0
-                    and milestone["passed"] > previous_passed
-                    and milestone["points"] > previous_points):
-                return f"grouped evaluation group {group_id!r} has invalid milestones"
-            previous_passed = milestone["passed"]
-            previous_points = milestone["points"]
-        if table[0] != {"passed": 0, "points": 0}:
-            return f"grouped evaluation group {group_id!r} must start at 0 passed / 0 points"
+        if not full_plan:
+            award = group.get("award")
+            table = award.get("table") if isinstance(award, dict) else None
+            if not (isinstance(award, dict)
+                    and set(award) == {"mode", "table"}
+                    and award.get("mode") == "milestones"
+                    and isinstance(table, list) and table):
+                return f"grouped evaluation group {group_id!r} has an invalid award"
+            previous_passed = previous_points = -1
+            for milestone in table:
+                if not (isinstance(milestone, dict)
+                        and set(milestone) == {"passed", "points"}
+                        and type(milestone.get("passed")) is int
+                        and type(milestone.get("points")) is int
+                        and milestone["passed"] >= 0 and milestone["points"] >= 0
+                        and milestone["passed"] > previous_passed
+                        and milestone["points"] > previous_points):
+                    return f"grouped evaluation group {group_id!r} has invalid milestones"
+                previous_passed = milestone["passed"]
+                previous_points = milestone["points"]
+            if table[0] != {"passed": 0, "points": 0}:
+                return f"grouped evaluation group {group_id!r} must start at 0 passed / 0 points"
         sampling_error, sampling_meta = _group_sampling_shape(
             group["sampling"], official=official)
         if sampling_error is not None:
@@ -477,7 +490,7 @@ def _grouped_evaluation_shape_error(evaluation, performance_plan, *, official):
         sampling_by_id[group_id] = sampling_meta
         orders.add(order)
 
-    profile_mode = ranking["profile"]
+    profile_mode = ranking.get("profile")
     interchangeable = {"packed", "uniform_int"}
     sampling_kinds = {sampling["kind"] for sampling in sampling_by_id.values()}
     if (profile_mode == "hardest_group_then_count"
@@ -553,7 +566,7 @@ def _grouped_evaluation_shape_error(evaluation, performance_plan, *, official):
                 and any(left >= right for left, right in zip(
                     plan_values[group_id], plan_values[group_id][1:]))):
             return f"performance plan range cases are not increasing for group {group_id!r}"
-        if group["award"]["table"][-1]["passed"] != sampling_count:
+        if not full_plan and group["award"]["table"][-1]["passed"] != sampling_count:
             return f"group {group_id!r} does not award its final milestone at full coverage"
     return None
 
@@ -564,8 +577,24 @@ def _policy_v2_shape_error(policy):
         "evaluation", "performance_plan", "performance_plan_sha256",
         "seed_commitment",
     }
+    evaluation = policy.get("evaluation")
+    ranking = evaluation.get("ranking") if isinstance(evaluation, dict) else None
+    full_plan = isinstance(ranking, dict) and ranking.get("contract") == "full-plan-v1"
+    if full_plan:
+        required.add("reference_answers")
     if set(policy) != required:
         return "evaluation cohort policy has an incomplete or unknown field set"
+    if full_plan:
+        reference = policy["reference_answers"]
+        if (not isinstance(reference, dict)
+                or set(reference) != {"contract", "sha256", "spec_sha256", "count"}
+                or reference["contract"] != "reference-answers-v1"
+                or not _sha256_string(reference["sha256"])
+                or not _sha256_string(reference["spec_sha256"])
+                or type(reference["count"]) is not int
+                or not isinstance(policy.get("inputs"), list)
+                or reference["count"] != len(policy["inputs"])):
+            return "full-plan evaluation has an invalid reference-answer seal"
 
     # Reuse every v1 environment/measurement check.  Only the schema and the added
     # grouped fields differ in v2.
@@ -825,6 +854,22 @@ def _apply_grouped_scoring(row, policy, slot_values):
             passed_by_group[group_id] += 1
             work_by_group[group_id] += slot_values[slot]
 
+    ranking = evaluation["ranking"]
+    if ranking["contract"] == "full-plan-v1":
+        complete = row["completed_slots"] == row["planned_slots"]
+        row["points"] = ranking["max_points"] if complete else 0
+        row["ranking_policy"] = dict(ranking)
+        row["work_tiebreak_active"] = complete
+        # Failed plans all have infinite competitive cost; successful-subset costs
+        # remain diagnostics only and must never rank one failed plan above another.
+        row["ranking_work"] = (
+            row["total_work"] if ranking["work"] == "total" else row["curve_work"]
+        ) if complete else math.inf
+        row["group_case_detail"] = tuple(
+            (group["id"], passed_by_group[group["id"]], len(slots_by_group[group["id"]]))
+            for group in reversed(groups))
+        return
+
     maximum_passed = {
         group["id"]: group["award"]["table"][-1]["passed"] for group in groups
     }
@@ -936,6 +981,7 @@ def _score_row(verdict, metric):
         return row
     policy = cohort["policy"]
     grouped = policy["schema"] == "evaluation-policy-v2"
+    full_plan = grouped and policy["evaluation"]["ranking"]["contract"] == "full-plan-v1"
     row["scoring_schema"] = (
         "grouped-evaluation-v1" if grouped else "legacy-slot-ranking-v1")
     row["measurement_contract"] = MEASUREMENT_CONTRACT
@@ -1011,6 +1057,10 @@ def _score_row(verdict, metric):
         if grouped and sample_result in ("budget-exhausted", "not-run"):
             row["reason"] = "grouped verdict is incomplete and requires evaluation retry"
             return row
+        if full_plan and (sample_result.startswith("value-eval-")
+                          or sample.get("resource_phase") == "value-eval"):
+            row["reason"] = "reference-answer preparation cannot be a contestant case failure"
+            return row
         if sample_result in ("ok", "timeout"):
             if sample.get("measurement_contract") != MEASUREMENT_CONTRACT:
                 row["reason"] = (
@@ -1084,7 +1134,11 @@ def _score_row(verdict, metric):
         if not _is_cost(row["ranking_work"], integral=(metric == "perf_instructions")):
             # A zero curve is legitimate only when no case passed; the success profile is
             # compared first, so treating it as an exact zero tie-break cannot reward failure.
-            if not (row["ranking_work"] == 0 and not points):
+            full_plan_failure = (
+                row["ranking_policy"]["contract"] == "full-plan-v1"
+                and row["completed_slots"] < row["planned_slots"]
+                and row["ranking_work"] == math.inf)
+            if not (full_plan_failure or (row["ranking_work"] == 0 and not points)):
                 row["reason"] = "grouped ranking work is not a finite nonnegative cost"
                 return row
     row["scoreable"] = True
@@ -1096,6 +1150,8 @@ def _placement_key(row):
     if not row["scoreable"]:
         return None
     if _is_grouped_row(row):
+        if row.get("ranking_policy", {}).get("contract") == "full-plan-v1":
+            return (-row["points"], row["ranking_work"])
         # Profiles are compared before work, so work is only compared for submissions
         # that passed the same cases.  This prevents cheap failures from improving rank.
         key = (
@@ -1204,6 +1260,8 @@ def _stage1_problem_ids():
 
 def _format_work(value, metric):
     integral = metric == "perf_instructions"
+    if value == math.inf:
+        return "∞"
     if value == 0 and not isinstance(value, bool):
         return "0"
     if not _is_cost(value, integral=integral):
@@ -1247,6 +1305,7 @@ def _write_text_atomic(path, text):
 
 
 def main():
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     stage1_problems = _stage1_problem_ids()
     groups = _groups([
         verdict for verdict in _load_verdicts()
@@ -1289,8 +1348,9 @@ def main():
         "# Lean Kernel Challenge — canonical scoring",
         "",
         "Each problem is ranked independently under the scoring contract sealed into its "
-        "evaluation cohort. Grouped v2 cohorts rank awarded points, harder-group points, "
-        "the declared case profile, and the eligible measured-work comparison. "
+        "evaluation cohort. Full-plan cohorts award 100 points only when every case passes; "
+        "other scoreable plans tie at 0 points and infinite cost. Full passes compare the "
+        "declared instruction cost. Previously sealed milestone cohorts retain their own rules. "
         "This public Stage 1 report includes grouped v2 cohorts only; legacy v1 scoring remains "
         "available for local compatibility but is not published as a Stage 1 leaderboard. "
         f"Only official {LOCAL_PROTOCOL} verdicts under {MEASUREMENT_CONTRACT} enter these "
@@ -1311,6 +1371,7 @@ def main():
         md.append(f"## {problem} — {label} — cohort `{cohort_id}`")
         md.append("")
         md.append(f"Round: `{round_id}`")
+        md.append(f"Generated: {generated_at}")
         md.append("")
         rows = _rows_for(problem, groups[(problem, metric, cohort_id)], metric)
         # Keep the shared hidden schedule out of the publishable table. Raw verdicts are
@@ -1318,7 +1379,11 @@ def main():
         grouped = (isinstance(cohort, dict)
                    and isinstance(cohort.get("policy"), dict)
                    and cohort["policy"].get("schema") == "evaluation-policy-v2")
-        if grouped:
+        full_plan = grouped and cohort["policy"]["evaluation"]["ranking"]["contract"] == "full-plan-v1"
+        if full_plan:
+            md.append("| rank | submission | points | cases | ranking cost | status |")
+            md.append("|---|---|---|---|---|---|")
+        elif grouped:
             md.append("| rank | submission | points | group points | case outcomes | "
                       "cases | performance work | proof work | status |")
             md.append("|---|---|---|---|---|---|---|---|---|")
@@ -1336,7 +1401,12 @@ def main():
             alpha = f"{row['alpha']:.3f}" if row["alpha"] is not None else "—"
             beta = f"{row['beta']:.2f}" if row["beta"] is not None else "—"
             coverage = f"{row['completed_slots']}/{row['planned_slots']}"
-            if grouped:
+            if full_plan:
+                md.append(
+                    f"| {rank} | {row['sub']} | "
+                    f"{row['points'] if row['points'] is not None else '—'} | {coverage} | "
+                    f"{_format_work(row['ranking_work'], metric)} | {status} |")
+            elif grouped:
                 group_profile = _format_group_points(row)
                 case_profile = _format_group_cases(row)
                 performance_work = (

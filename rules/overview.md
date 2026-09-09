@@ -22,15 +22,15 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 | **Stage** | Stage 1 (experimental) |
 | **Status** | Pre-launch — submissions open September 15, 2026 |
 | **Registration and team formation** | Opens August 26, 2026 |
-| **Official launch** | September 15, 2026; exact time and time zone to be announced |
+| **Official launch** | September 15, 2026, 22:00 PT (America/Los_Angeles), equivalent to September 16, 2026, 05:00 UTC; tentative and subject to change |
 | **Submission deadline** | November 20, 2026, 23:59 AoE (UTC−12) |
 | **Final evaluation** | After the submission deadline; evaluation window to be announced |
 | **Final results publication** | After final evaluation completes; publication date and time to be announced |
 | **Stage 2** | Begins December 2026; the exact date will be announced |
 | **Submission platform** | [SAIR](https://competition.sair.foundation/) |
 
-Formal submissions and the SAIR Playground open at the official launch. The launch date alone
-does not specify an opening time; the organizers will announce the exact time and time zone.
+Formal submissions and the SAIR Playground open together at the official launch. The time
+above is tentative; any revision will be announced before opening.
 
 ---
 
@@ -79,8 +79,12 @@ The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, and `config.j
 and the judge supplies its own copies. The simplest valid submission defines `impl` as the trusted
 specification and proves correctness with `rfl`. It is correct but intentionally slow.
 
-Formal submissions may be repeated before the cutoff, up to 10 per team per UTC day (the day
-resets at 00:00 UTC). Each formal submission is stored as a new immutable record. At the cutoff,
+Formal submissions may be repeated before the cutoff. Daily mode limits are **2 Standard runs**
+and **5 Light runs**, with the UTC day resetting at 00:00 UTC. Before launch, the organizers will
+clarify whether allowances apply per team across all problems or per team/problem, whether formal
+submissions share the Standard allowance, and how failures or cancellations affect usage.
+
+Each formal submission is stored as a new immutable record. At the cutoff,
 the platform selects each team's latest formal submission for each problem, based on the time it
 was recorded by the platform before the deadline. This selection does not fall back to an older
 submission if the latest submission is rejected or unscored. Pending evaluation or infrastructure
@@ -100,8 +104,9 @@ Participation is also subject to the team, anti-cheating, and participant-cost p
 - **R3 — Universal correctness.** `impl_correct` must prove `∀ n, impl n = spec n`.
 - **R4 — Standard axioms only.** The proof may depend only on `propext`, `Quot.sound`, and
   `Classical.choice`; `sorry` and `native_decide` are rejected.
-- **R5 — Kernel replay is scored.** Each problem awards points through its published difficulty
-  groups and milestones, then applies its own measured-kernel-work tie-break. The judge measures
+- **R5 — Kernel replay is scored.** A complete pass of every hidden case earns 100 points;
+  any failed case gives an otherwise scoreable submission 0 points and infinite ranking cost.
+  Full-plan passes compete on the problem's declared instruction cost. The judge measures
   the complete verified correctness artifact and successful generated checks at hidden inputs.
   Parsing, dependency loading, and process startup are not counted. See
   [`evaluation.md`](evaluation.md) and [`problem-scoring.md`](problem-scoring.md) for the exact
@@ -118,7 +123,7 @@ groups are listed in [`problem-scoring.md`](problem-scoring.md).
 
 ## Status
 
-Stage 1 is scheduled to launch on September 15, 2026, with formal submissions open from launch
+Stage 1 is scheduled to launch at the tentative time in the schedule above, with formal submissions open from launch
 until the deadline above.
 All problem workspaces compile, and the judge runs the correctness and grouped performance
 pipeline end to end. The nine per-problem group schedules and scoring rules are published in

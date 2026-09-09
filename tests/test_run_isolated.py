@@ -83,6 +83,8 @@ class RunIsolatedTests(unittest.TestCase):
             "namespace Submission\nend Submission\n"
         )
 
+        self.reference = self.base / "answers.json"
+        self.reference.write_text('{"private_test_answers": true}')
         self.capture = self.base / "docker.jsonl"
         self.fake_docker = self.base / "fake-docker"
         self.fake_docker.write_text(FAKE_DOCKER)
@@ -112,6 +114,8 @@ class RunIsolatedTests(unittest.TestCase):
             str(self.results),
             "--cohort",
             "round-2026-01",
+            "--reference-answers",
+            str(self.reference),
         ]
         if seed:
             cmd += ["--perf-seed", "hidden seed value"]
@@ -228,7 +232,9 @@ class RunIsolatedTests(unittest.TestCase):
         self.assertNotIn("--entrypoint", evaluation)
         self.assertIn("--interactive", evaluation)
         self.assertIn("PERF_SEED_STDIN=1", evaluation)
-        self.assertEqual(records[1]["seed_stdin"], "hidden seed value\n")
+        self.assertEqual(records[1]["seed_stdin"], "hidden seed value\n" + self.reference.read_text())
+        self.assertNotIn(str(self.reference), evaluation)
+        self.assertIn("REFERENCE_ANSWERS_STDIN=1", evaluation)
         self.assertIsNone(records[0]["seed_stdin"])
         self.assertIn("python3", evaluation)
         self.assertIn("judge/judge.py", evaluation)

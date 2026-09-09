@@ -41,7 +41,10 @@ After the final official evaluation phase, its results and benchmark data will b
 released publicly under an open-source license. Together with the algorithms and
 representations developed through the challenge, they will form a collective
 contribution to Lean's development that the global Lean community can
-reproduce, reuse, and build on.
+reproduce, reuse, and build on. Contestant code will remain private during the
+competition and will be published afterward. The submission versions covered,
+code license, and applicable authorization terms will be specified before launch;
+the repository license alone does not establish the license of platform submissions.
 
 ## Task
 
@@ -66,7 +69,7 @@ official launch.
 ## Key Dates
 
 - Registration and team formation open: **August 26, 2026**
-- Official launch: **September 15, 2026**; exact time and time zone to be announced
+- Official launch: **September 15, 2026, 22:00 PT (America/Los_Angeles)**, equivalent to September 16, 2026, 05:00 UTC; tentative and subject to change
 - Submission deadline: **November 20, 2026, 23:59 AoE (UTC−12)**
 - Final evaluation: after the submission deadline; evaluation window to be announced
 - Final results publication: after final evaluation completes; publication date and time to be announced
@@ -89,7 +92,9 @@ on [SAIR](https://competition.sair.foundation/) from the official launch.
 
 ## Team Participation and Anti-Cheating Policy
 
-- Each individual or organization can participate in only one team.
+- Each individual or organization can participate in only one team. The organizers
+  will clarify the organizational unit before launch, including how independent
+  teams sharing a university or parent institution are treated.
 - Teams must register members and sponsors in advance.
 - If coordinated cheating is detected (including sockpuppet teams), all related teams will be disqualified.
 

@@ -5,9 +5,22 @@ blocker unless marked otherwise.
 
 ## 0. Implement the September 9 rules review
 
-The reviewed rule text includes policy changes whose implementation must be aligned before
-official evaluation. Updating the documents does not complete these items:
+The September 9 organizer decisions are recorded at the start of
+[`wording-review-2026-09-08.md`](wording-review-2026-09-08.md). They supersede the earlier
+partial-credit scoring and contestant-derived output preparation. This follow-up implements
+independent reference answers and `full-plan-v1` scoring in LKC, updates all nine configurations,
+and synchronizes the published rules. Platform integration and production acceptance remain:
 
+- Prepare and validate official answer bundles on the pinned image using
+  [`reference-answers.md`](reference-answers.md). Integrate the wrapper's required
+  `--reference-answers` argument into platform orchestration. Test the private stdin transport
+  in the real container. Local checks compare Python answers with trusted Lean specifications,
+  including the largest polydisc width and a well-founded implementation; they do not establish
+  production acceptance of every official batch.
+- Align platform scoring with the sealed `full-plan-v1` contract. LKC regression tests cover full
+  passes, equal infinite-cost failures with different successful subsets, preserved per-problem
+  work policies, invalid reference seals, and incomplete records. Verify that platform fields and
+  displayed rankings agree with the canonical scorer, and never mix old and new cohorts.
 - Publish and configure a separate memory limit for each problem. The values are not yet set.
   Replace the current fixed 4 GiB assumptions in the wrapper, scorer, OOM attribution, and remote
   validation requests with the applicable problem policy. Each cohort must seal its limit;
@@ -15,14 +28,30 @@ official evaluation. Updating the documents does not complete these items:
 - Verify the platform's entry selection: use the latest formal submission by recorded submission
   time for each team/problem, including when it is rejected or unscored. Pending evaluation and
   infrastructure retries must not cause fallback to an older submission.
-- Announce the exact launch time and time zone before opening submissions or the Playground.
+- Apply the confirmed daily mode limits: Standard 2 and Light 5. First resolve whether limits are
+  per team across all problems or per team/problem, whether formal submissions share the Standard
+  allowance, and how rejected submissions, cancellations, and infrastructure retries affect it.
+- Use UTC calendar days for daily submission cutoffs, including the complete last second
+  `23:59:59`; implement the interval as inclusive midnight to exclusive next midnight. Display
+  each leaderboard edition's generation timestamp with its time zone. Also identify its submission
+  cutoff or coverage date so users can distinguish publication time from submission coverage.
+  Specify the publication lag; a submission cutoff does not imply instant evaluation completion.
+- Complete the published code-release policy by specifying the submission versions covered,
+  license, and applicable participation terms. Private during competition / public afterward is
+  already stated in the rules.
+- Resolve the organization/team scope: the referenced Equational Theories Stage 2 rules use the
+  same sentence as LKC and do not define a university exception or the organizational unit.
+- Align platform opening with the published tentative launch time: September 15, 2026, 22:00 PT
+  (`America/Los_Angeles`), equivalent to September 16, 2026, 05:00 UTC. The time may be revised;
+  update the rules and platform together before opening submissions or the Playground.
   The final evaluation window and publication schedule may remain explicitly pending at launch;
   announce them when determined. Platform answers must not supply a default opening time or an
   early Playground opening.
 
 The six target-work problem configurations use `work: curve, proof: gate`; `saw`, `ca-rule110`,
 and `sha256` retain `work: total, proof: include`. Regression checks exercise these policies
-through the scorer. The official cohort dry run below must also verify their rankings.
+through the full-plan scorer. The official cohort dry run below must verify the production
+rankings and answer-bundle integration.
 
 Then exercise the revised policies through the official wrapper. The image-build harness checks
 manifest verdicts, record structure, and declared minimum performance coverage in development
@@ -30,9 +59,9 @@ mode; passing it does not establish full performance coverage or per-problem mem
 
 ## 1. Official PMU evaluation sweep
 
-The nine scored problems now have published difficulty groups, generators, case counts,
-milestones, and limits in [`../rules/problem-scoring.md`](../rules/problem-scoring.md). These are
-the competition contract, not local smoke ranges. `conv` is excluded from the nine leaderboards.
+The nine scored problems have published input groups, generators, case counts, and limits in
+[`../rules/problem-scoring.md`](../rules/problem-scoring.md). Use the complete competition plans
+rather than local smoke ranges. `conv` is excluded from the nine leaderboards.
 
 Historical scales, memory assumptions, and development measurements are preserved in
 [`history/prelaunch-calibration-2026-09-07.md`](history/prelaunch-calibration-2026-09-07.md).
@@ -51,8 +80,9 @@ three timing repetitions, an official seed, and an official cohort. Confirm that
 - the published replay limits, independent preparation caps, and memory envelope are
   operationally feasible.
 
-Prove the PMU path itself first. The judge now preflights `perf stat -e instructions` before
-elaborating any submission and refuses a user-only (`instructions:u`) downgrade, so a broken
+Prove the PMU path itself first. The judge preflights `perf stat -e instructions` after the
+correctness gate and axiom audit, before timed replay. It refuses a user-only (`instructions:u`)
+downgrade, so a broken
 counter fails loudly — but the host must still pass that preflight: confirm the Ubuntu
 `linux-tools` wrapper has a perf build for the *running* kernel (it resolves via `uname -r`, so a
 host kernel update without an image rebuild breaks it), and that `--perfmon` plus the host
@@ -62,13 +92,14 @@ derivation hashes `/proc/cpuinfo` including microcode, so a routine host securit
 would rotate the cohort id and fork the leaderboard.
 
 Also measure the preparation overhead for every current group using a trivial implementation.
-Check value generation, theorem build/export, axiom audit, and replay separately against their
-applicable limits. Validate that at least one known implementation can score each intended
-milestone, and record the tested commit, problem policy, host, and measurements. Historical
-measurements from retired groups do not establish feasibility for the current policies.
+Check reference-answer preparation, theorem build/export, axiom audit, and replay separately
+against their applicable limits. Validate that at least one known implementation can pass the
+complete plan for each problem, and record the tested commit, problem policy, host, and
+measurements. Historical measurements from retired groups do not establish feasibility for the
+current policies.
 
 If this check reveals an infrastructure defect, fix it and publish any required policy revision
-before creating the first official cohort. Do not silently change a group's cases, points, or
+before creating the first official cohort. Do not silently change the scoring policy, cases, or
 limits after evaluation begins.
 
 ## 2. Resource-failure behavior
@@ -117,8 +148,10 @@ It does not compute a cross-problem standing.
 Regenerate the canonical tables with `scripts/score.py` and verify, for each independent
 leaderboard:
 
-- milestone points match the sealed policy;
-- harder-group points and harder-case outcomes break ties in the documented order;
+- full-plan passes score 100 points with finite cost;
+- a complete, valid plan with any failed case scores 0 points with infinite ranking cost,
+  regardless of how many other cases pass or which groups they belong to;
+- incomplete runs and infrastructure failures remain unscored;
 - the problem-specific target-work or combined-work comparison is applied without an additional
   correctness-cost tie-break; and
 - exact hidden inputs and raw verdicts remain private until the evaluation phase closes.
@@ -134,7 +167,7 @@ seed filter, or repricing of nonexistent C4/C5 groups before launch.
 
 **To close:** review the generators and workloads against the current problem tables during the
 PMU sweep. Record any remaining shortcut or degeneracy that materially affects the current
-milestones; revise and publish the policy before sealing if a change is needed. Do not infer
+full-plan ranking; revise and publish the policy before sealing if a change is needed. Do not infer
 current behavior from the retired Rule 110 scales or the old dimension-4 permanent warm-up.
 
 ## 6. Sealed-verdict authority — remaining hardening
