@@ -2790,6 +2790,25 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         step_timeout = budget(timeout_caps["axiom_audit"])
         if step_timeout <= 0:
             return {"n": n, "result": "budget-exhausted"}, None
+        # Boundary check. The perf export just crossed from the untrusted build/export step
+        # (participant code runs there: module initializers fire on import) into the trusted
+        # consumers. The kernel will only prove the target is a VALID theorem; it cannot tell
+        # whether its `impl` is the same one comparator verified `impl_correct` against. Bind
+        # `Submission.impl`, `Eq` and `Eq.refl` to the comparator-verified solution export and
+        # require the judge's direct-rfl target, so a forged perf export (e.g. `impl := fun _ => v`)
+        # can never reach the timer. Data-only; shares the audit budget with the axiom check.
+        export_audit_deadline = time.monotonic() + step_timeout
+        prc, pout = run([
+            str(COMPARATOR), "--verify-performance", str(work / "config.json"),
+            str(export_file), str(perf_export), perf_target, str(n), str(v),
+        ], work, env, step_timeout)
+        if prc != 0 or not _export_matches(perf_export, perf_bytes):
+            return {"n": n, "result": "identity-error"}, \
+                f"performance export does not match verified implementation at n={n}: {last_line(pout)}"
+        step_timeout = min(budget(timeout_caps["axiom_audit"]),
+                           export_audit_deadline - time.monotonic())
+        if step_timeout <= 0:
+            return {"n": n, "result": "budget-exhausted"}, None
         arc, aout = run([str(TIMER), "--check-axioms", ",".join(axioms), str(perf_export)],
                         work, env, step_timeout)
         if not _export_matches(perf_export, perf_bytes):

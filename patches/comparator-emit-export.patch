@@ -1,4 +1,5 @@
 diff --git a/Main.lean b/Main.lean
+index 37063f8..3b7b39e 100644
 --- a/Main.lean
 +++ b/Main.lean
 @@ -125,7 +125,7 @@ def safeLakeBuild (target : Lean.Name) : M Unit := do
@@ -10,7 +11,7 @@ diff --git a/Main.lean b/Main.lean
      envOverride := #[("LEAN_ABORT_ON_PANIC", some "1")]
      readablePaths := #[projectDir]
      writablePaths := #[dotLakeDir]
-@@ -280,6 +280,13 @@ def compareIt : M Unit := do
+@@ -281,8 +281,46 @@ def compareIt : M Unit := do
  
    verifyMatch challengeExport solutionExport
  
@@ -23,4 +24,54 @@ diff --git a/Main.lean b/Main.lean
 +
    IO.println "Your solution is okay!"
  
++-- A sandboxed exporter may lie on stdout. Bind the performance declaration to
++-- the exact implementation already verified, and to the judge's direct-rfl
++-- target, before the existing kernel/axiom/timing consumers see these bytes.
++def verifyPerformance (verifiedPath perfPath : System.FilePath)
++    (target : Lean.Name) (n : Nat) (v : Int) : M Unit := do
++  let verified ← Export.parseStream (← stringStream (← IO.FS.readFile verifiedPath))
++  let perf ← Export.parseStream (← stringStream (← IO.FS.readFile perfPath))
++  IO.ofExcept <| Comparator.compareAt verified perf #[] #[] #[`Submission.impl, ``Eq, ``Eq.refl]
++  let some (.thmInfo thm) := perf.constMap[target]?
++    | throw <| IO.userError "Missing performance theorem"
++  -- The generator normalizes result type aliases to Nat/Int. The kernel
++  -- later verifies the lhs has this type; do not reject valid aliases here.
++  let some equalityType := thm.type.getAppArgs[0]?
++    | throw <| IO.userError "Invalid performance equality"
++  let some output := thm.value.getAppArgs[0]?
++    | throw <| IO.userError "Invalid direct-rfl proof"
++  let rhs ← if output == Lean.mkConst ``Nat then
++      if v < 0 then throw <| IO.userError "Negative Nat result"
++      else pure <| Lean.mkNatLit v.toNat
++    else if output == Lean.mkConst ``Int then
++      pure <| match v with
++        | .ofNat a => Lean.mkApp (Lean.mkConst ``Int.ofNat) (Lean.mkNatLit a)
++        | .negSucc a => Lean.mkApp (Lean.mkConst ``Int.negSucc) (Lean.mkNatLit a)
++    else throw <| IO.userError "Unsupported implementation output type"
++  let lhs := Lean.mkApp (Lean.mkConst `Submission.impl) (Lean.mkNatLit n)
++  let expectedType := Lean.mkApp3 (Lean.mkConst ``Eq [.succ .zero]) equalityType lhs rhs
++  let expectedProof := Lean.mkApp2 (Lean.mkConst ``Eq.refl [.succ .zero]) output rhs
++  unless thm.levelParams.isEmpty && thm.type == expectedType && thm.value == expectedProof do
++    throw <| IO.userError "Performance target is not the requested direct-rfl theorem"
++  IO.println "Performance export matches the verified implementation and requested target."
++
  structure Config where
+   challenge_module : String
+   solution_module : String
+@@ -317,8 +355,13 @@ def M.run (x : M α) (cfg : Config) : IO α := do
+ end Comparator
+ 
+ def main (args : List String) : IO Unit := do
+-  let some (configPath : String) := args[0]?
+-    | throw <| .userError "Expected config file path as first argument."
++  let (configPath, action) ← match args with
++    | ["--verify-performance", config, verified, perf, target, n, v] => do
++      let some n := n.toNat? | throw <| IO.userError "Invalid performance input"
++      let some v := v.toInt? | throw <| IO.userError "Invalid performance value"
++      pure (config, Comparator.verifyPerformance verified perf target.toName n v)
++    | [config] => pure (config, Comparator.compareIt)
++    | _ => throw <| IO.userError "Expected CONFIG, or: --verify-performance CONFIG VERIFIED_EXPORT PERF_EXPORT TARGET N V"
+   let content ← IO.FS.readFile configPath
+   let config ← IO.ofExcept <| Lean.FromJson.fromJson? <| ← IO.ofExcept <| Lean.Json.parse content
+-  Comparator.M.run Comparator.compareIt config
++  Comparator.M.run action config
