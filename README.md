@@ -334,10 +334,10 @@ acceptance, per-problem memory enforcement, and the platform policies listed in 
 checklist. Additional optimized examples are useful but not part of
 the scoring contract. Rule text may still change before launch (see `rules/overview.md`).
 
-The September 9 review implements independent standard answers and full-plan scoring in this
-repository. Platform integration and other launch work remain:
-replace the fixed 4 GiB runtime checks with per-problem memory policies, and verify that platform
-entry selection always uses the latest formal submission. The final memory values are not yet set.
+The September 9 review implements independent standard answers, full-plan scoring, and
+per-problem memory policies in this repository. Platform integration and other launch work
+remain: verify that platform entry selection always uses the latest formal submission, and
+confirm the eight provisional 4096 MiB memory values (permanent is set at 8192 MiB).
 These pending updates are tracked in [`docs/pre-launch-checklist.md`](docs/pre-launch-checklist.md).
 The six target-work problem configurations now use correctness work only as a completion gate;
 the three combined-work problems retain correctness-plus-target ranking.

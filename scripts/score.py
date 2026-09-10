@@ -424,6 +424,11 @@ def _grouped_evaluation_shape_error(evaluation, performance_plan, *, official):
                       or ranking["max_points"] != 100
                       or ranking["proof"] == "last_tiebreak"):
         return "full-plan ranking requires 100 points and no separate proof tie-break"
+    if full_plan and (ranking["work"] == "total") != (ranking["proof"] == "include"):
+        # The published policy names one comparison: combined work (total/include) or
+        # target work with correctness as a completion gate (curve/gate). A mixed pair
+        # would publish one policy and score another.
+        return "full-plan ranking must pair work=total with proof=include or work=curve with proof=gate"
     # A normalization denominator must be calibrated and defined uniformly before this
     # mode can be compared safely.  Fail closed instead of silently guessing from limits.
     if ranking["work"] == "worst_normalized":

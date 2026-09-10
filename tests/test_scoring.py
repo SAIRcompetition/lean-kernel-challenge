@@ -1211,6 +1211,19 @@ class ScoringTests(unittest.TestCase):
         self.assertIsNotNone(score._grouped_evaluation_shape_error(
             policy["evaluation"], policy["performance_plan"], official=True))
 
+    def test_full_plan_work_and_proof_policies_must_pair(self):
+        # Every shipped policy pairs total/include or curve/gate; a mixed pair would
+        # publish one comparison and score another.
+        for problem, work, proof in (("fib", "curve", "include"), ("saw", "total", "gate")):
+            item = configured_grouped_verdict("mixed", problem, correctness=100)
+            policy = item["evaluation_cohort"]["policy"]
+            self.assertIsNone(score._grouped_evaluation_shape_error(
+                policy["evaluation"], policy["performance_plan"], official=True))
+            policy["evaluation"]["ranking"]["work"] = work
+            policy["evaluation"]["ranking"]["proof"] = proof
+            self.assertIn("must pair", score._grouped_evaluation_shape_error(
+                policy["evaluation"], policy["performance_plan"], official=True))
+
     def test_grouped_plan_and_scaling_identity_are_fail_closed(self):
         stage_mismatch = grouped_verdict("stage-mismatch", [100] * 4)
         stage_mismatch["stages"]["performance_plan"][0]["case"] = 99

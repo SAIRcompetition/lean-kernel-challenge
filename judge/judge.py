@@ -785,6 +785,12 @@ def _consume_perf_seed_stdin():
     global PERF_SEED, _REFERENCE_ANSWERS
     marker = os.environ.pop("PERF_SEED_STDIN", "")
     if not marker:
+        if os.environ.pop("REFERENCE_ANSWERS_STDIN", ""):
+            # The bundle rides behind the seed on the same one-shot stdin channel. Without
+            # the seed marker it would be silently ignored and the judge would recompute
+            # (and seal) its own answers while the operator believes the supplied bundle
+            # was used. Refuse instead of guessing.
+            raise InfraError("REFERENCE_ANSWERS_STDIN requires PERF_SEED_STDIN on the same stdin")
         return
     if marker != "1":
         raise InfraError("PERF_SEED_STDIN must be exactly '1'")

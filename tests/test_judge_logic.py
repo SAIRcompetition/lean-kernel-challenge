@@ -1240,7 +1240,19 @@ class RemoteTimingTests(unittest.TestCase):
         self.assertEqual(judge._memory_mb_from_envelope("2G"), 2048)
         self.assertEqual(judge._memory_mb_from_envelope("1048576k"), 1024)
         self.assertIsNone(judge._memory_mb_from_envelope("1"))
-        self.assertEqual(judge._remote_replay_memory_mb(), 4096)
+        with mock.patch.object(judge, "_PROBLEM_MEMORY_MB", [None]):
+            self.assertEqual(judge._remote_replay_memory_mb(), 4096)
+
+    def test_reference_bundle_marker_without_seed_marker_is_refused(self):
+        # The bundle rides behind the seed on one stdin; a bundle marker alone must not be
+        # silently dropped (the judge would recompute and seal its own answers).
+        env = {"REFERENCE_ANSWERS_STDIN": "1"}
+        with mock.patch.dict(os.environ, env, clear=False), \
+             mock.patch.object(judge, "PERF_SEED", ""):
+            os.environ.pop("PERF_SEED_STDIN", None)
+            with self.assertRaisesRegex(judge.InfraError, "requires PERF_SEED_STDIN"):
+                judge._consume_perf_seed_stdin()
+            self.assertNotIn("REFERENCE_ANSWERS_STDIN", os.environ)
 
         with mock.patch.object(judge, "CONFIGURED_MEMORY_MB", None):
             record = judge._resource_limit_measurement(
