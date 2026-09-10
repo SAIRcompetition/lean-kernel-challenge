@@ -93,9 +93,10 @@ these per-case budgets. A timeout does not by itself prove that `impl` is not ke
 a confirmed violation of R2 is a rejection.
 
 Each problem has its own memory limit, declared in `evaluation.memory_mb` (MiB) in
-`problems/<id>/config.json` and published before official use. The checked-in 4096 MiB entries
-are provisional carry-forward values, pending organizer confirmation and official-host validation;
-they do not establish that every current baseline fits. There is no single global memory limit.
+`problems/<id>/config.json` and published before official use. Matrix permanent (`permanent`)
+has an 8192 MiB (8 GiB) limit. The other eight problems retain provisional 4096 MiB (4 GiB)
+limits pending organizer confirmation. Official-host validation remains required for every
+problem; these allocations do not establish that every current baseline fits.
 Organizers may revise a problem's limit during the competition. The limit is fixed within each
 evaluation cohort and recorded in its sealed resource policy; a revision requires a new cohort
 and a complete rescore of that problem's comparison set. Scores from different memory policies

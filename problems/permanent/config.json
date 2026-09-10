@@ -15,7 +15,7 @@
   "enable_nanoda": false,
   "evaluation": {
     "schema": "grouped-evaluation-v1",
-    "memory_mb": 4096,
+    "memory_mb": 8192,
     "axis": {"label": "seeded fixed-row-degree matrix dimension", "unit": "dimension", "input_encoding": "packed-v1: (dimension << 32) | seed"},
     "groups": [
       {

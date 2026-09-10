@@ -30,9 +30,10 @@ failure and measurement rules.
 
 The groups below define inputs and resource limits, not separate awards or
 prerequisites. Each problem's `evaluation.memory_mb` in `problems/<id>/config.json`
-defines its memory limit in MiB, published before official use. All nine currently contain
-provisional 4096 MiB entries; final values and official-host acceptance remain pending. Organizers may revise it; a revision requires a new cohort and a complete
-rescore of the problem's comparison set. Each target process has the table's
+defines its memory limit in MiB, published before official use. Matrix permanent uses
+8192 MiB (8 GiB); the other eight problems retain provisional 4096 MiB (4 GiB) limits.
+Official-host acceptance remains pending. Organizers may revise a limit; a revision requires
+a new cohort and a complete rescore of the problem's comparison set. Each target process has the table's
 watchdog. Theorem build/export has a separate 1,800-second combined limit per
 case, and its axiom audit has a 300-second limit. One case does not consume
 another's time allowance. The correctness comparator has a 3,600-second limit,
@@ -98,6 +99,8 @@ compare target work.
 | Q3 | 600–1,000 | 2 | 120 s |
 
 ## `permanent`
+
+Memory limit: **8192 MiB (8 GiB)**.
 
 An input is `(dimension << 32) | seed`. The public generator produces a 0/1 matrix with exactly
 three distinct ones per row: the diagonal and two seeded off-diagonal columns. All 15 cases must

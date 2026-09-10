@@ -21,8 +21,9 @@ and synchronizes the published rules. Platform integration and production accept
   passes, equal infinite-cost failures with different successful subsets, preserved per-problem
   work policies, invalid reference seals, and incomplete records. Verify that platform fields and
   displayed rankings agree with the canonical scorer, and never mix old and new cohorts.
-- Confirm and publish the final `evaluation.memory_mb` values for all nine problems. The current
-  4096 MiB entries are transitional values from the earlier envelope, not calibrated approvals.
+- Matrix permanent now has an organizer-confirmed `evaluation.memory_mb` of 8192 MiB (8 GiB).
+  Confirm and publish the final values for the other eight problems; their 4096 MiB entries
+  remain transitional values from the earlier envelope, not calibrated approvals.
   The wrapper now enforces the selected problem's cap with zero extra swap; the judge checks
   the image policy and actual cgroup, remote replay requests use the problem's cap, and the
   scorer checks the sealed limit. Rebuild the image after policy changes; a host/image mismatch

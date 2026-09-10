@@ -18,14 +18,14 @@
 |---|---|---|
 | W14，关联 W01/W06 | 九题独立 Python 标准答案、批次预计算命令、官方 wrapper 私密 stdin 传输、规格与完整计划校验、cohort 答案摘要；kernel 仍直接检查选手实现 | sair-server 接入新参数，官方容器与正式数据验收 |
 | W03/W16/W17 | 九题 `full-plan-v1` 配置、100/0 分和无限成本排序、保留分题 T/T+C、旧契约兼容、规则与表格同步 | 平台排名字段同步，生产批次验证 |
-| W08/W15 | 九题 `evaluation.memory_mb`、wrapper 限额与零额外 swap、judge 实际 cgroup 校验、按封存限额评分、远程 replay 按题请求；初始 4096 MiB 为过渡值 | 主办方确认最终数值、重建镜像、正式主机及顶档可行性验收；sair-server 接入 |
+| W08/W15 | 九题 `evaluation.memory_mb`、wrapper 限额与零额外 swap、judge 实际 cgroup 校验、按封存限额评分、远程 replay 按题请求；Matrix permanent 已按用户确认配置 8192 MiB（8 GiB），其余八题暂为 4096 MiB | 确认其余题目数值、重建镜像、正式主机及顶档可行性验收；sair-server 接入 |
 | W20/W22 | Standard 2 / Light 5 的次数已写入规则，未确定的计数口径显式待公布 | 明确额度范围、正式提交关系及扣退规则后配置平台 |
 | W05/W12 | UTC 日末分界、日榜生成时间和覆盖日期要求已写入规则；本仓库报告显示 UTC 生成时间 | 平台日榜调度与页面同步，确定发布时间与最终评测日程 |
 | W24 | 比赛期间代码保密、赛后公开已写入规则 | 确定公开版本、许可和条款 |
 | W23 | 已核对参考仓库并明确组织范围待澄清 | 主办方定义组织单位；未擅自删除组织限制或宣布大学例外 |
 | W11 | overview/prelaunch 同步暂定 9 月 15 日 22:00 PT / 9 月 16 日 05:00 UTC | 平台开场配置；后续调整时统一更新 |
 
-本 PR 已取消统一硬编码内存限制，但未替主办方确定各题最终额度。九题暂各自配置 4096 MiB；W08/W15 剩余为数值确认与生产验收。以下早期状态和代码行号保留为历史记录。
+本 PR 已取消统一硬编码内存限制。用户进一步明确 Matrix permanent 需要 8 GiB，已将该题配置为 8192 MiB；其余八题保留 4096 MiB 过渡值。W08/W15 剩余为其余题目数值确认与所有题目的生产验收。以下早期状态和代码行号保留为历史记录。
 第二轮原始审核的其他建议不因本次 PR 自动视为已认可或已修复。
 
 验证记录：
@@ -234,7 +234,7 @@ Standard 2 次、Light 5 次这两个数已确认。尚不能据此判断是每�
 
 ## W08 — 取消统一 4 GiB，改为各题独立、可调整的内存政策
 
-- 当前状态：分题内存文案、配置及执行已在统一 PR #25 落实；九题以 4096 MiB 过渡，最终数值与生产验收仍见上线清单第 0 项。
+- 当前状态：分题内存文案、配置及执行已在统一 PR #25 落实；Matrix permanent 已配置 8192 MiB，其余八题暂以 4096 MiB 过渡；待确认数值与生产验收仍见上线清单第 0 项。
 - 2026-09-09 QA 关联：反馈中的 8 GiB/4 GiB 文档混杂继续归本项及 W13；最新决定是分题限额，不是将所有说明统一恢复成 4 GiB 或 8 GiB。规则修改、旧记录归档、实际资源执行同步须分别核对。
 - 用户决定：取消所有题目统一的 4 GiB 限制，改为每道题独立的内存约束，比赛过程中可调整。这里的题目指 fib、saw 等 problem，不是为每个隐藏输入随意选择上限；也不是取消全部内存限制。
 - 新文案方向：Each problem has its own published memory limit. The organizers may revise these limits during the competition. The applicable limit is fixed for each evaluation cohort and recorded in its evaluation policy.
@@ -362,7 +362,7 @@ Standard 2 次、Light 5 次这两个数已确认。尚不能据此判断是每�
 
 ## W15 — 分题内存限额未定值时，顶档与现有硬编码 4 GiB 的关系仍未解决
 
-- 当前状态：实现已按 W08 落实；最终数值和顶档可行性待正式主机验收。以下保留修改前的核对依据。
+- 当前状态：实现已按 W08 落实，Matrix permanent 已确认并配置 8192 MiB（8 GiB）；该题顶档可行性仍待正式主机验收，其余八题数值仍待确认。以下保留修改前的核对依据。
 - 位置：`rules/evaluation.md:58,86-89`、`rules/problem-scoring.md:39-43`、`README.md:325`；实现 `scripts/run_isolated.sh:211`、`judge/judge.py:1145`、`pipeline/config.json:45`。
 - 现状：规则改为"每题独立限额、数值待公布"，但 `run_isolated.sh:211` 仍以 `[[ "$MEMORY" == "4g" ]]` 强制官方运行使用 4 GiB，`judge.py:1145` 的 OOM 归因同样比对 `"4g"`，`pipeline/config.json:45` 仍为 `memory_mb: 4096`。
 - 判定依据：`046f8da`（已被 `b768195` revert）的提交说明记录 CI 实测最重用例 2.3–4.9 GiB，其中 permanent 16×16 为 4.9 GiB，并明确写"基线在 permanent R3 会被杀掉"。`problems/permanent/config.json` 的 R3 仍为 16 维、5 个用例、50 分。`README.md:223-224` 也仍写"heaviest cases peak at 2.3–4.9 GiB"。

@@ -42,7 +42,7 @@
   },
   "sandbox": {
     "mode": "none",
-    "note": "'none' = local dev via the landrun pass-through shim (NO sandboxing). 'container' asserts a real landrun is present and is set by the Docker image. Resource/isolation limits (memory, cpus, pids, network, non-root, kill-all-on-exit) are ENFORCED BY scripts/run_isolated.sh and the container runtime, not by the judge process. Each scored problem declares evaluation.memory_mb in problems/<id>/config.json. The wrapper enforces that job-wide cap with zero extra swap; the judge checks the cgroup values and seals the limit into the cohort. Initial 4096 MiB entries are transitional, pending organizer confirmation and host acceptance. Memory changes require a new cohort and rescoring the comparison set.",
+    "note": "'none' = local dev via the landrun pass-through shim (NO sandboxing). 'container' asserts a real landrun is present and is set by the Docker image. Resource/isolation limits (memory, cpus, pids, network, non-root, kill-all-on-exit) are ENFORCED BY scripts/run_isolated.sh and the container runtime, not by the judge process. Each scored problem declares evaluation.memory_mb in problems/<id>/config.json. The wrapper enforces that job-wide cap with zero extra swap; the judge checks the cgroup values and seals the limit into the cohort. Matrix permanent uses 8192 MiB (8 GiB); the other eight scored problems retain transitional 4096 MiB entries pending organizer confirmation. Official-host acceptance remains required for all problems. Memory changes require a new cohort and rescoring the comparison set.",
     "cpus": 2
   },
   "toolchain": {

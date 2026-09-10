@@ -290,8 +290,8 @@ Memory is configured independently in each `problems/<id>/config.json` as
 `evaluation.memory_mb` (MiB). The wrapper reads the chosen problem, applies the same value to
 `--memory` and `--memory-swap` (zero extra swap), and the judge checks it against both the image's
 problem policy and the actual cgroup. `--memory` / `JUDGE_MEMORY` can only assert that value;
-they cannot override it. The nine initial entries are **provisional 4096 MiB values**, retained
-from the earlier envelope pending organizer calibration; they are not final approved limits.
+they cannot override it. **Matrix permanent (`permanent`) uses 8192 MiB (8 GiB)**. The other
+eight problems retain provisional 4096 MiB (4 GiB) limits pending organizer confirmation.
 See the [launch checklist](docs/pre-launch-checklist.md) for host acceptance. Changing a limit
 requires a rebuilt image, a new cohort, and rescoring that problem's comparison set.
 
