@@ -35,9 +35,9 @@ jobs:
         # budget, and four workers exceeded the hosted runner's 16 GiB (the
         # heaviest cases peak at 2.3-4.9 GiB each; the agent shut down mid-gate
         # with exit 143). Two workers keep the worst pair near 8 GiB, and CI
-        # builds exactly what a deployment build does. A gate worker that still
-        # exhausts memory fails the build loudly (fail-closed), never silently
-        # shrinking the gate.
+        # builds exactly what a deployment build does. This development harness
+        # validates the manifest; the bounded canary below separately checks
+        # container memory enforcement and OOM attribution.
         run: docker build -t lean-kernel-judge .
       - name: Network must be unreachable (IPv4 and IPv6, fail-closed)
         run: |
@@ -80,15 +80,61 @@ jobs:
               print(f'ok: fork refused after {children} children'); sys.exit(0)
           print(f'FAIL: forked {children} children with --pids-limit 64'); sys.exit(1)
           "
+      - name: Resolve the official test problem's memory policy
+        run: echo "LKC_CI_MEMORY=$(python3 scripts/memory_policy.py problems/fib/config.json)" >> "$GITHUB_ENV"
+      - name: Prepare reference answers for the official entry tests
+        run: |
+          # This public CI seed is test data. Prepare with the same image as the
+          # judge; deliver the bundle over stdin, never a contestant-visible mount.
+          printf 'ci-secret-seed\n' | docker run --rm --interactive --network none \
+            --user judge lean-kernel-judge bash -euc '
+              python3 scripts/prepare_reference.py --problem fib --official \
+                --output /tmp/ci-reference.json >&2
+              cat /tmp/ci-reference.json
+            ' > "$RUNNER_TEMP/lkc-ci-reference.json"
+
+      - name: Per-problem memory caps contain OOM and preserve attribution
+        run: |
+          # A bounded canary proves both failure and success for the same allocation.
+          # At most 192 MiB is available to either container; this cannot exhaust the host.
+          for memory_mb in 64 192; do
+            docker run --rm --network none --user judge --pids-limit 64 \
+              --memory "${memory_mb}m" --memory-swap "${memory_mb}m" \
+              -e EVALUATION_MEMORY="${memory_mb}m" \
+              -e ISOLATION_ATTESTATION=run_isolated.sh lean-kernel-judge python3 -c '
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, "judge")
+          import judge
+          limit = judge._memory_mb_from_envelope(os.environ["EVALUATION_MEMORY"])
+          judge._validate_official_memory({"evaluation": {"memory_mb": limit}})
+          rc, output = judge.run(
+              [sys.executable, "-c", "data = bytearray(128 * 1024 * 1024)"],
+              Path.cwd(), os.environ.copy(), 30)
+          exhausted = judge._attested_local_memory_kill(rc)
+          if limit == 64:
+              assert exhausted, (rc, output)
+              record = judge._resource_limit_measurement(None, "local-container-cgroup", "build-export")
+              assert record["memory_mb"] == limit, record
+          else:
+              assert rc == 0 and not exhausted, (rc, output)
+          print(f"ok: {limit} MiB policy enforced; OOM attribution={exhausted}")
+          '
+          done
+
       - name: Judge refuses an official run without the wrapper attestation
         run: |
-          # Supply EVERY other official precondition (seed on stdin, cohort) so the run can only
+          # Supply the seed, reference answers, cohort, and resource envelope so the run can only
           # fail on the missing attestation — otherwise this test passes for the wrong reason and
           # would keep passing even if the attestation check were deleted.
           image_id="$(docker image inspect --format '{{.Id}}' lean-kernel-judge)"
           set +e
-          out=$(printf 'ci-secret-seed\n' | docker run --rm --interactive --network none \
+          out=$({ printf 'ci-secret-seed\n'; cat "$RUNNER_TEMP/lkc-ci-reference.json"; } | \
+                docker run --rm --interactive --network none \
+                  --memory "$LKC_CI_MEMORY" --memory-swap "$LKC_CI_MEMORY" --cpus 2 --pids-limit 512 \
                   --user judge -e OFFICIAL_EVAL=1 -e PERF_SEED_STDIN=1 \
+                  -e REFERENCE_ANSWERS_STDIN=1 -e EVALUATION_MEMORY="$LKC_CI_MEMORY" \
+                  -e EVALUATION_CPUS=2 -e EVALUATION_PIDS_LIMIT=512 \
                   -e EVALUATION_COHORT=ci-cohort -e EVALUATION_RUN_ID=ci-missing-attest \
                   -e EVALUATION_IMAGE="$image_id" -e EVALUATION_EXECUTOR_ID=ci-pmu \
                   -e EVALUATION_EXECUTOR_VERSION=ci-pmu-v1 \
@@ -113,8 +159,12 @@ jobs:
           # this proves the official path reached the correctness gate without requiring PMU
           # access from the hosted runner.
           image_id="$(docker image inspect --format '{{.Id}}' lean-kernel-judge)"
-          out=$(printf 'ci-secret-seed\n' | docker run --rm --interactive --network none \
+          out=$({ printf 'ci-secret-seed\n'; cat "$RUNNER_TEMP/lkc-ci-reference.json"; } | \
+            docker run --rm --interactive --network none \
+            --memory "$LKC_CI_MEMORY" --memory-swap "$LKC_CI_MEMORY" --cpus 2 --pids-limit 512 \
             --user judge -e OFFICIAL_EVAL=1 -e PERF_SEED_STDIN=1 \
+            -e REFERENCE_ANSWERS_STDIN=1 -e EVALUATION_MEMORY="$LKC_CI_MEMORY" \
+            -e EVALUATION_CPUS=2 -e EVALUATION_PIDS_LIMIT=512 \
             -e EVALUATION_COHORT=ci-cohort -e EVALUATION_RUN_ID=ci-attest-ok \
             -e EVALUATION_IMAGE="$image_id" -e EVALUATION_EXECUTOR_ID=ci-pmu \
             -e EVALUATION_EXECUTOR_VERSION=ci-pmu-v1 \

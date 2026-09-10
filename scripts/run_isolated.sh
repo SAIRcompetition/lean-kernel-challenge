@@ -10,7 +10,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 
 IMAGE="${JUDGE_IMAGE:-lean-kernel-judge}"
-MEMORY="${JUDGE_MEMORY:-4g}"
+# Optional caller assertion; the problem config determines the actual limit.
+MEMORY="${JUDGE_MEMORY:-}"
 CPUS="${JUDGE_CPUS:-2}"
 PIDS_LIMIT="${JUDGE_PIDS_LIMIT:-512}"
 PERF_SEED_VALUE="${PERF_SEED:-}"
@@ -20,6 +21,7 @@ SUBMISSION=""
 RESULTS_DIR=""
 TAG=""
 REPS=""
+REFERENCE_ANSWERS_FILE=""
 ENABLE_PERFMON=0
 
 usage() {
@@ -31,11 +33,17 @@ Usage:
     --results /absolute/path/to/results \
     --perf-seed SECRET \
     --cohort ROUND_ID \
+    --reference-answers /private/path/to/answers.json \
     [--tag SLUG] [--reps 3] [--image IMAGE] \
-    [--memory 4g] [--cpus 2] [--pids-limit 512] [--perfmon]
+    [--memory SIZE] [--cpus 2] [--pids-limit 512] [--perfmon]
 
+Memory comes from problems/SLUG/config.json evaluation.memory_mb (MiB), with
+zero extra swap. --memory / JUDGE_MEMORY may only assert the same value.
+CPU and process counts are fixed at 2 and 512.
 PERF_SEED may be supplied in the environment instead of --perf-seed.
 EVALUATION_COHORT may be supplied in the environment instead of --cohort.
+Prepare the private answer bundle with scripts/prepare_reference.py --official.
+It is streamed over stdin before contestant execution, never mounted in the container.
 The results directory is bind-mounted read/write and must be writable by the
 image's non-root `judge` user (UID 10001 on a native Linux Docker host).
 EOF
@@ -80,6 +88,11 @@ while [[ $# -gt 0 ]]; do
     --perf-seed)
       need_value "$@"
       PERF_SEED_VALUE="$2"
+      shift 2
+      ;;
+    --reference-answers)
+      need_value "$@"
+      REFERENCE_ANSWERS_FILE="$2"
       shift 2
       ;;
     --tag)
@@ -145,6 +158,10 @@ valid_slug "$COHORT" || die "invalid cohort slug: $COHORT"
 [[ -f "$ROOT/problems/$PROBLEM/config.json" ]] || die "unknown problem: $PROBLEM"
 [[ "$SUBMISSION" == /* ]] || die "--submission must be an absolute path"
 [[ "$RESULTS_DIR" == /* ]] || die "--results must be an absolute path"
+if [[ "$PROBLEM" != "conv" || -n "$REFERENCE_ANSWERS_FILE" ]]; then
+  [[ -f "$REFERENCE_ANSWERS_FILE" && -r "$REFERENCE_ANSWERS_FILE" ]] ||
+    die "--reference-answers must name a readable precomputed answer bundle"
+fi
 [[ -d "$SUBMISSION" ]] || die "submission directory does not exist: $SUBMISSION"
 [[ -f "$SUBMISSION/Submission.lean" && ! -L "$SUBMISSION/Submission.lean" ]] ||
   die "submission must contain a regular, non-symlink Submission.lean"
@@ -183,32 +200,18 @@ fi
 
 [[ "$IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._/@:-]*$ ]] ||
   die "invalid Docker image reference: $IMAGE"
-[[ "$MEMORY" =~ ^[1-9][0-9]*([bBkKmMgGtTpP]|[kKmMgGtTpP][bB])?$ ]] ||
-  die "invalid non-zero --memory value: $MEMORY"
 [[ "$CPUS" =~ ^(0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*([.][0-9]+)?)$ ]] ||
   die "invalid positive --cpus value: $CPUS"
 [[ "$PIDS_LIMIT" =~ ^[1-9][0-9]*$ ]] ||
   die "invalid positive --pids-limit value: $PIDS_LIMIT"
 # Ceilings, not just positivity: these are also settable via JUDGE_* env, so a typo (or a copied
-# command line) could otherwise hand a submission an effectively unbounded envelope.
+# command line) could otherwise hand a submission an unbounded process or CPU envelope.
 (( PIDS_LIMIT <= 4096 )) || die "--pids-limit above the 4096 ceiling: $PIDS_LIMIT"
 awk -v c="$CPUS" 'BEGIN { exit !(c+0 <= 64) }' ||
   die "--cpus above the 64 ceiling: $CPUS"
-awk -v m="$MEMORY" 'BEGIN {
-  u = toupper(substr(m, length(m)));            # last char: unit or digit
-  if (u ~ /[0-9]/) { bytes = m + 0 }            # bare bytes
-  else {
-    n = m + 0;                                  # awk stops at the first non-numeric char
-    if (u == "B") { p = toupper(substr(m, length(m) - 1, 1)); if (p ~ /[0-9]/) u = "B"; else u = p }
-    if (u == "B") bytes = n;
-    else if (u == "K") bytes = n * 1024;
-    else if (u == "M") bytes = n * 1024 * 1024;
-    else if (u == "G") bytes = n * 1024 * 1024 * 1024;
-    else bytes = n * 1024 * 1024 * 1024 * 1024; # T/P — above the ceiling regardless
-  }
-  exit !(bytes <= 64 * 1024 * 1024 * 1024)      # 64 GiB ceiling
-}' || die "--memory above the 64g ceiling: $MEMORY"
-[[ "$MEMORY" == "4g" ]] || die "official Stage 1 evaluation requires --memory 4g"
+MEMORY="$(python3 "$ROOT/scripts/memory_policy.py" \
+  "$ROOT/problems/$PROBLEM/config.json" --envelope "$MEMORY")" || \
+  die "invalid memory policy for $PROBLEM"
 [[ "$CPUS" == "2" ]] || die "official Stage 1 evaluation requires --cpus 2"
 [[ "$PIDS_LIMIT" == "512" ]] || die "official Stage 1 evaluation requires --pids-limit 512"
 if [[ -n "$REPS" ]]; then
@@ -292,9 +295,6 @@ DOCKER_ARGS=(
   run --rm
   --network none
   --memory "$MEMORY"
-  # Swap must equal the memory limit (i.e. zero extra swap): Docker's default grants
-  # memory-limit-sized ADDITIONAL swap, under which an over-limit submission thrashes
-  # instead of OOM-killing and the memory.events attribution never fires.
   --memory-swap "$MEMORY"
   --cpus "$CPUS"
   --pids-limit "$PIDS_LIMIT"
@@ -345,11 +345,24 @@ if [[ -n "$REPS" ]]; then
   JUDGE_ARGS+=(--reps "$REPS")
 fi
 
+STDIN_ENV_ARGS=(--env PERF_SEED_STDIN=1)
+if [[ -n "$REFERENCE_ANSWERS_FILE" ]]; then
+  STDIN_ENV_ARGS+=(--env REFERENCE_ANSWERS_STDIN=1)
+fi
 set +e
-printf '%s\n' "$PERF_SEED_VALUE" | \
-  "$DOCKER_BIN" "${DOCKER_ARGS[@]}" --interactive --env PERF_SEED_STDIN=1 \
+{
+  printf '%s\n' "$PERF_SEED_VALUE"
+  if [[ -n "$REFERENCE_ANSWERS_FILE" ]]; then
+    cat -- "$REFERENCE_ANSWERS_FILE"
+  fi
+} | \
+  "$DOCKER_BIN" "${DOCKER_ARGS[@]}" --interactive "${STDIN_ENV_ARGS[@]}" \
     "$IMAGE_ID" "${JUDGE_ARGS[@]}"
-STATUS=${PIPESTATUS[1]}
+PIPE_STATUSES=("${PIPESTATUS[@]}")
+STATUS=${PIPE_STATUSES[1]}
+if [[ "${PIPE_STATUSES[0]}" != "0" && "$STATUS" == "0" ]]; then
+  STATUS=2
+fi
 set -e
 
 VERDICT="$RESULTS_DIR/$PROBLEM/$VERDICT_NAME.json"

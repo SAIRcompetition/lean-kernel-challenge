@@ -11,11 +11,11 @@ Pipeline per submission (each contestant job runs in a unique temp workspace):
      sandboxing. The SHA-256 of the verified Submission bytes is pinned for step 4.
   3. Axiom re-audit of the comparator-emitted solution export (whitelisted axioms only).
   4. Scored replay: time the comparator-verified correctness export, then for each
-     judge-chosen input n reduce `impl n` to a literal v via an elaborator-side oracle, confirm the
+     judge-chosen input n look up the independent official output v, confirm the
      Submission is byte-unchanged from step 2, build+export a uniquely named
      `impl n = v` theorem whose direct proof forces kernel reduction, re-audit THAT export,
      and time the official kernel replaying it, N reps. A too-slow input occupies
-     its explicit slot and later slots are still attempted; a deterministic oracle/build/kernel
+     its explicit slot and later slots are still attempted; a reference-data/build/kernel
      fault errors with no score. metric=wall_time (dev) or perf_instructions (Linux host).
      In non-official validation, TIMING_EXECUTOR_URLS runs replays on a remote KTP/3 executor
      with real PMU hardware; each per-input export is uploaded with its SHA-256. An unreachable executor is
@@ -37,6 +37,7 @@ import hashlib
 import hmac
 import importlib.util
 import json
+from datetime import datetime, timezone
 import math
 import os
 import re
@@ -56,16 +57,21 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import reference_answers
+
 # Some approved problems produce exact integer answers far beyond Python's
 # default int<->str digit cap (4300 on 3.11+). The polydisc reference
 # discriminant alone has ~24k digits, and the perf-phase theorem source
 # embeds the full value as a Lean nat literal. This judge only ever renders
-# oracle-verified values, so lift the cap instead of refusing legitimate
+# validated exact reference values, so lift the cap instead of refusing legitimate
 # conversions (Python 3.11+; harmless no-op on older interpreters).
 if hasattr(sys, "set_int_max_str_digits"):
     sys.set_int_max_str_digits(0)
 
 ROOT = Path(__file__).resolve().parent.parent            # lean-kernel-challenge/
+sys.path.insert(0, str(ROOT / "scripts"))
+from memory_policy import memory_mb_from_envelope as _memory_mb_from_envelope, problem_memory_mb
+
 PROBLEMS = ROOT / "problems"
 RESULTS = ROOT / "results"
 
@@ -94,7 +100,15 @@ DEFAULT_REPS = _J["timing_reps"]
 MAX_SUBMISSION_BYTES = _J["max_submission_bytes"]
 MAX_SUBMISSION_FILES = _J["max_submission_files"]
 MAX_TOOL_OUTPUT_BYTES = _J.get("max_tool_output_bytes", 1_048_576)
-REPLAY_MEMORY_MB = _CFG["sandbox"]["memory_mb"]
+# Scored problems bind remote replays to their own policy. Only experimental conv
+# retains the legacy development replay limit. Each judge invocation resets the active value.
+LEGACY_REMOTE_REPLAY_MEMORY_MB = _CFG["timing"]["legacy_remote_replay_memory_mb"]
+_PROBLEM_MEMORY_MB = [None]
+
+
+def _remote_replay_memory_mb():
+    return _PROBLEM_MEMORY_MB[0] or LEGACY_REMOTE_REPLAY_MEMORY_MB
+
 REMOTE_PROTOCOL = _CFG["timing"]["remote_protocol"]
 # Timing metric + sandbox mode; env overrides let the Docker host switch to perf.
 TIMING_METRIC = os.environ.get("TIMING_METRIC", _CFG.get("timing", {}).get("metric", "wall_time"))
@@ -175,6 +189,7 @@ MAX_SLUG_LENGTH = 96
 _PERF_DEFAULTS = _CFG.get("perf_defaults", {"count": 10, "spacing": "geometric", "jitter": 0.15})
 PERF_SEED = os.environ.pop("PERF_SEED", "")
 _PERF_SEED_SOURCE = ["environment" if PERF_SEED else None]
+_REFERENCE_ANSWERS = None
 EVALUATION_COHORT = os.environ.get("EVALUATION_COHORT", "")
 EVALUATION_RUN_ID = os.environ.get("EVALUATION_RUN_ID", "")
 EVALUATION_EXECUTOR_ID = os.environ.get("EVALUATION_EXECUTOR_ID", "local")
@@ -187,6 +202,9 @@ EVALUATION_RESOURCE_POLICY = {
     "pids_limit": os.environ.get("EVALUATION_PIDS_LIMIT", "local-unspecified"),
     "sandbox_mode": SANDBOX_MODE,
 }
+
+
+CONFIGURED_MEMORY_MB = _memory_mb_from_envelope(EVALUATION_RESOURCE_POLICY["memory"])
 
 
 def _official_eval():
@@ -764,7 +782,7 @@ def _consume_perf_seed_stdin():
     exhausted. This keeps the secret out of the elaborator environment and out of the parent
     process's initial `/proc/.../environ` image.
     """
-    global PERF_SEED
+    global PERF_SEED, _REFERENCE_ANSWERS
     marker = os.environ.pop("PERF_SEED_STDIN", "")
     if not marker:
         return
@@ -783,6 +801,17 @@ def _consume_perf_seed_stdin():
         raise InfraError("official PERF_SEED must be nonempty and contain no NUL")
     PERF_SEED = seed
     _PERF_SEED_SOURCE[0] = "stdin"
+    answers_marker = os.environ.pop("REFERENCE_ANSWERS_STDIN", "")
+    if answers_marker:
+        if answers_marker != "1":
+            raise InfraError("REFERENCE_ANSWERS_STDIN must be exactly '1'")
+        payload = sys.stdin.buffer.read(reference_answers.MAX_BUNDLE_BYTES + 1)
+        if len(payload) > reference_answers.MAX_BUNDLE_BYTES:
+            raise InfraError("reference answer bundle is too large")
+        try:
+            _REFERENCE_ANSWERS = json.loads(payload)
+        except (ValueError, UnicodeError):
+            raise InfraError("reference answer bundle is not valid JSON") from None
 
 
 def valid_slug(s: str) -> bool:
@@ -1142,9 +1171,27 @@ def _attested_local_memory_kill(rc):
         evidenced
         and _died_by_sigkill(rc)
         and SANDBOX_MODE == "container"
-        and EVALUATION_RESOURCE_POLICY.get("memory") == "4g"
+        and _memory_mb_from_envelope(EVALUATION_RESOURCE_POLICY.get("memory")) is not None
         and os.environ.get("ISOLATION_ATTESTATION") == "run_isolated.sh"
     )
+
+
+def _validate_official_memory(cfg):
+    """Check the image's problem policy against the declared and actual cgroup cap."""
+    try:
+        expected_mb = problem_memory_mb(cfg)
+    except ValueError as exc:
+        raise InfraError(str(exc)) from exc
+    if _memory_mb_from_envelope(EVALUATION_RESOURCE_POLICY.get("memory")) != expected_mb:
+        raise InfraError("EVALUATION_MEMORY must match this problem's evaluation.memory_mb "
+                         f"({expected_mb} MiB)")
+    try:
+        actual = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+        swap = Path("/sys/fs/cgroup/memory.swap.max").read_text().strip()
+    except OSError as exc:
+        raise InfraError("official evaluation requires readable cgroup-v2 memory limits") from exc
+    if actual != str(expected_mb << 20) or swap != "0":
+        raise InfraError("actual cgroup memory/swap limits do not match the problem policy")
 
 
 def _resolve_lean_runtime(work, env):
@@ -1324,7 +1371,9 @@ def _timeout_measurement(target, source):
 def _resource_limit_measurement(target, source, phase):
     record = {
         "resource": "memory",
-        "memory_mb": REPLAY_MEMORY_MB,
+        # Remote replay and local preparation may run under different envelopes.
+        "memory_mb": (_remote_replay_memory_mb() if source == "remote-executor-cgroup"
+                      else CONFIGURED_MEMORY_MB),
         "resource_limit_source": source,
         "resource_phase": phase,
     }
@@ -1506,7 +1555,7 @@ def _remote_response_error(data, reps, target=None):
         return "missing/invalid executor identity"
     if not isinstance(version, str) or not version.strip():
         return "missing/invalid executor version"
-    if data.get("memory_mb") != REPLAY_MEMORY_MB:
+    if data.get("memory_mb") != _remote_replay_memory_mb():
         return "missing/mismatched executor memory limit"
     if status == "resource-limit":
         if data.get("resource") != "memory":
@@ -1608,7 +1657,7 @@ def _time_remote(export_file, reps, target=None, budget_s=None, deadline=None,
                 "measurement_contract": MEASUREMENT_CONTRACT,
                 "boundary": boundary,
                 "target": target or "",
-                "memory_mb": REPLAY_MEMORY_MB,
+                "memory_mb": _remote_replay_memory_mb(),
             })
             url = f"{base}/ktp/v3/time?{query}"
             req = urllib.request.Request(url, data=export_bytes, method="POST", headers={
@@ -1618,7 +1667,7 @@ def _time_remote(export_file, reps, target=None, budget_s=None, deadline=None,
                 "X-Measurement-Contract": MEASUREMENT_CONTRACT,
                 "X-Measurement-Boundary": boundary,
                 "X-Measurement-Target": target or "",
-                "X-Replay-Memory-MB": str(REPLAY_MEMORY_MB),
+                "X-Replay-Memory-MB": str(_remote_replay_memory_mb()),
             })
             try:
                 with urllib.request.urlopen(req, timeout=request_timeout) as resp:
@@ -1664,7 +1713,8 @@ def _time_remote(export_file, reps, target=None, budget_s=None, deadline=None,
     raise TimingRetry(f"all timing executors unavailable (last: {last_err})")
 
 
-# Reference value v = impl n by ELABORATOR-side reduction (Meta `whnf`), NOT compiled `#eval`.
+# Legacy conv development oracle only. Stage 1 uses independent reference answers.
+# Candidate value v = impl n by ELABORATOR-side reduction (Meta `whnf`), NOT compiled `#eval`.
 # `#eval` runs codegen output, which can be exponential even when the kernel reduction is
 # cheap (the naive fib spec compiles to an exponential tree but reduces via `brecOn` in
 # linear kernel time) — so a submission fast in the kernel could be un-evaluable by #eval.
@@ -2195,6 +2245,8 @@ def _evaluator_bundle_digest():
     paths = [
         ROOT / "Dockerfile",
         ROOT / "judge" / "judge.py",
+        ROOT / "judge" / "reference_answers.py",
+        ROOT / "scripts" / "prepare_reference.py",
         ROOT / "judge" / "timer-kernel" / "Main.lean",
         ROOT / "judge" / "timer-kernel" / "timer_control.c",
         ROOT / "judge" / "timer-kernel" / "lakefile.lean",
@@ -2203,6 +2255,7 @@ def _evaluator_bundle_digest():
         ROOT / "scripts" / "run_isolated.sh",
         ROOT / "scripts" / "setup.sh",
         ROOT / "scripts" / "score.py",
+        ROOT / "scripts" / "memory_policy.py",
         ROOT / "patches" / "comparator-emit-export.patch",
     ]
     digest = hashlib.sha256()
@@ -2216,7 +2269,8 @@ def _evaluator_bundle_digest():
     return digest.hexdigest()
 
 
-def _evaluation_cohort(problem, cfg, inputs, reps, result, performance_plan=None):
+def _evaluation_cohort(problem, cfg, inputs, reps, result, performance_plan=None,
+                       reference_bundle=None):
     """Return the public comparison cohort recorded in every current verdict.
 
     The round label is operator supplied. The derived id commits to the exact schedule, problem
@@ -2284,6 +2338,10 @@ def _evaluation_cohort(problem, cfg, inputs, reps, result, performance_plan=None
             "performance_plan_sha256": hashlib.sha256(plan_encoded).hexdigest(),
             "seed_commitment": _seed_commitment(),
         }
+        if evaluation["ranking"]["contract"] == "full-plan-v1":
+            if reference_bundle is None:
+                raise InfraError("full-plan evaluation requires sealed reference answers")
+            policy["reference_answers"] = reference_answers.seal(reference_bundle)
     encoded = json.dumps(
         policy, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     return {
@@ -2326,6 +2384,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     # A process normally judges one submission, but resetting here also makes repeated in-process
     # invocations safe: executor identity must never leak from a prior job.
     _PINNED_EXECUTOR[0] = None
+    _PROBLEM_MEMORY_MB[0] = None
     _PINNED_EXECUTOR_IDENTITY[0] = None
     if _official_eval() and not PERF_SEED:
         raise InfraError("official evaluation requires a nonempty PERF_SEED")
@@ -2376,6 +2435,28 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
 
     cfg = json.loads((PROBLEMS / problem / "config.json").read_text())
     resolved_plan = _validated_performance_plan(cfg, problem)
+    if resolved_plan is not None:
+        try:
+            _PROBLEM_MEMORY_MB[0] = problem_memory_mb(cfg)
+        except ValueError as exc:
+            raise InfraError(str(exc)) from exc
+    if OFFICIAL_EVAL:
+        _validate_official_memory(cfg)
+    # Resolve organizer data before assembling or executing any contestant source.
+    reference_bundle, standard_values = None, None
+    if resolved_plan is not None:
+        reference_inputs = [case["n"] for case in resolved_plan]
+        spec_digest = hashlib.sha256((PROBLEMS / problem / "Spec.lean").read_bytes()).hexdigest()
+        try:
+            reference_bundle = _REFERENCE_ANSWERS
+            if reference_bundle is None:
+                if OFFICIAL_EVAL:
+                    raise InfraError("official evaluation requires precomputed reference answers")
+                reference_bundle = reference_answers.prepare(problem, reference_inputs, spec_digest)
+            standard_values = reference_answers.validate(
+                reference_bundle, problem, reference_inputs, spec_digest)
+        except (ValueError, KeyError, ArithmeticError) as exc:
+            raise InfraError(f"invalid official reference answers: {exc}") from None
     work = assemble(job_dir, problem, submission_dir)
     axioms = cfg["permitted_axioms"]
     lean_bin, lean_prefix, core_lib = _resolve_lean_runtime(work, env)
@@ -2410,7 +2491,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if _attested_local_memory_kill(rc):
         _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "rejected", \
-            "correctness gate exceeded the 4 GiB memory envelope"
+            "correctness gate was terminated by the problem memory cgroup's out-of-memory killer"
         return finish()
     if _died_by_signal(rc):
         _emit_stage_progress("comparator", "failed", t0)
@@ -2467,7 +2548,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if _attested_local_memory_kill(rc):
         _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "rejected", \
-            "correctness axiom audit exceeded the 4 GiB memory envelope"
+            "correctness axiom audit was terminated by the problem memory cgroup's out-of-memory killer"
         return finish()
     if _died_by_signal(rc):
         _emit_stage_progress("axiom_audit", "failed", axiom_started)
@@ -2584,7 +2665,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if resolved_plan is not None:
         result["stages"]["performance_plan"] = resolved_plan
     result["evaluation_cohort"] = _evaluation_cohort(
-        problem, cfg, inputs, reps, result, performance_plan=resolved_plan)
+        problem, cfg, inputs, reps, result, performance_plan=resolved_plan,
+        reference_bundle=reference_bundle)
 
     # A timed correctness replay is required for every score. Once it times out, running the
     # performance curve cannot change scoreability, so record the complete schedule and stop.
@@ -2628,13 +2710,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     # EvalVal/Perf modules are compiled below, importing the pinned Submission.olean.
     _prepare_generated_workspace(work, artifact_lib)
 
-    # A timeout occupies only its own configured slot. We still probe every later slot because a
-    # valid implementation's reduction cost need not be monotone in n. Deterministic failures of
-    # the VALUE ORACLE (NONLIT, invalid literal, nonzero oracle exit) depend only on how far the
-    # submission's impl reduces, so they fail that case and the plan continues — otherwise a
-    # comparator-legal submission that passed every easier group would lose all its points to a
-    # deterministic elaborator crash at one harder input, ranking strictly worse than timing out
-    # there (non-monotone and contrary to the published "zero cases passed scores 0" rule).
+    # A timeout occupies its own slot, but makes a full-plan submission score zero.
+    # Later cases are still attempted independently to preserve complete diagnostics.
     # Judge-owned faults (identity, generated-theorem build, kernel rejection of a perf export)
     # remain fatal and can never be misread as a slow-but-valid point.
     def probe_point(n, deadline=None):
@@ -2652,7 +2729,10 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         step_timeout = budget(timeout_caps["value_eval"])
         if step_timeout <= 0:
             return {"n": n, "result": "budget-exhausted"}, None
-        vkind, v = _eval_impl_value(work, verified_env, n, step_timeout, lean_bin)
+        # Stage 1 never executes the submitted impl to obtain the expected output.
+        # The legacy conv development task retains its separate value oracle.
+        vkind, v = (("ok", standard_values[n]) if standard_values is not None else
+                    _eval_impl_value(work, verified_env, n, step_timeout, lean_bin))
         if not _artifacts_match(artifact_lib, verified_artifacts):
             return {"n": n, "result": "identity-error"}, \
                 f"comparator-verified build artifacts changed during value evaluation at n={n}"
@@ -2810,7 +2890,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
             result["timing"]["median_s"] = top.get("median_s")
 
     # Grouped policies are scored by the one canonical scorer, including instruction caps and
-    # per-group milestones.  Reusing that view here prevents the immediate verdict summary from
+    # its sealed ranking contract. Reusing that view here prevents the immediate verdict summary from
     # claiming raw slot coverage that the actual leaderboard does not award.
     if resolved_plan is not None:
         if correctness_timing["result"] != "ok":
@@ -2895,7 +2975,10 @@ def _score_key(r):
 
 def _grouped_max_points(result):
     try:
-        groups = result["evaluation_cohort"]["policy"]["evaluation"]["groups"]
+        evaluation = result["evaluation_cohort"]["policy"]["evaluation"]
+        if evaluation["ranking"]["contract"] == "full-plan-v1":
+            return evaluation["ranking"]["max_points"]
+        groups = evaluation["groups"]
         return sum(group["award"]["table"][-1]["points"] for group in groups)
     except (KeyError, TypeError, IndexError):
         return None
@@ -2909,6 +2992,8 @@ def _grouped_score_summary(result, view):
         f"{view['completed_slots']}/{view['planned_slots']} passed cases"
     )
     if not view.get("work_tiebreak_active"):
+        if view.get("ranking_policy", {}).get("contract") == "full-plan-v1":
+            return base + "; ∞ ranking cost; incomplete passes remain tied"
         return base + "; interchangeable partial profiles remain tied"
     scorer = _canonical_scorer()
     work = scorer._format_work(view.get("ranking_work"), view.get("metric"))
@@ -2978,7 +3063,9 @@ def leaderboard():
                     legacy_rows.append(r)
                     continue
             rows.append(r)
-    lines = ["# Lean Kernel Challenge — leaderboard (local dev)", ""]
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    lines = ["# Lean Kernel Challenge — leaderboard (local dev)", "",
+             f"Generated: {generated_at}", ""]
     problem_sections = {}
     for problem in sorted({r["problem"] for r in rows}):
         section_start = len(lines)
@@ -3026,9 +3113,13 @@ def leaderboard():
                     for r in grp
                 )
                 if grouped:
+                    full_plan = any(view.get("ranking_policy", {}).get("contract") == "full-plan-v1"
+                                    for _, view in ranked)
                     lines.append(
                         f"**canonical {label} ranking — cohort `{md_cell(cohort_id)}`:** "
-                        "points, harder-group/case profile, then configured ranking work")
+                        + ("full-plan passes, then configured ranking work; failed plans tie at ∞"
+                           if full_plan else
+                           "points, harder-group/case profile, then configured ranking work"))
                     lines.append("")
                     lines.append(
                         "| rank | submission | points | passed cases | group profile | case outcomes | "
@@ -3041,7 +3132,7 @@ def leaderboard():
                         cases = _grouped_cases(view)
                         work = (
                             scorer._format_work(view["ranking_work"], metric)
-                            if view.get("work_tiebreak_active") else "not compared")
+                            if full_plan or view.get("work_tiebreak_active") else "not compared")
                         summary = _grouped_score_summary(r, view)
                         lines.append(
                             f"| {placement} | {md_cell(r['submission'])} | "

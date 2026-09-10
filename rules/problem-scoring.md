@@ -1,177 +1,160 @@
 # Lean Kernel Challenge Stage 1 — Problem Leaderboards
 
 Stage 1 has nine independent 100-point problem leaderboards. There is no
-cross-problem total and no relative-placement aggregation. `conv` is not part
-of these nine leaderboards.
+cross-problem total or relative-placement aggregation. `conv` is an experimental
+development task and is excluded.
 
-Every submission must first pass the universal correctness and axiom gate. A
-performance case passes when every configured target replay completes within
-the case's published per-repetition watchdog. Stage 1 uses three repetitions
-and records their median. If a group declares a
-kernel-instruction limit, the median measurement must also stay within that
-limit. Its required preparation must also complete under the common ceilings
-described below. Exact official inputs are hidden during
-the evaluation phase, but every group publishes its scale, generator, number
-of cases, milestones, and limits. The cohort commits to the hidden seed and the
-fully resolved plan; both are released after that cohort's evaluation.
+Every submission must pass the universal correctness and axiom gate. For each
+problem, an otherwise scoreable submission receives **100 points only if every
+case in the complete hidden plan passes**. Any failed case gives **0 points and
+infinite ranking cost**. There is no partial credit, group-point comparison,
+case-profile tie-break, or separate correctness-cost tie-break. Zero-point
+submissions remain tied regardless of which or how many cases passed.
 
-Within a problem, ranking is determined by:
+Among full-plan passes, lower instruction cost wins:
 
-1. total problem points;
-2. points in harder groups, from the highest group downward;
-3. the problem's declared case profile, again from harder groups downward;
-4. when eligible, the problem's declared kernel-work tie-break; and
-5. where declared, correctness-closure work as the final tie-break.
+- **Target work (`T`):** the sum of all target-declaration replay medians.
+- **Combined work (`T + C`):** target work plus the correctness-closure replay median once.
 
-Direct-range problems compare the exact pass/fail profile because later cases
-have larger hidden inputs within the published ranges. Packed and uniformly
-seeded cases within one group
-are interchangeable: they compare only the number passed, never the arbitrary
-hidden seed index. Equal partial seeded profiles remain tied; measured work
-breaks ties after the complete seeded plan passes.
+Equal costs remain tied. `saw`, `ca-rule110`, and `sha256` use combined work;
+the other six problems use target work. A baseline that passes every case may
+score 100; contestants compete by reducing instruction cost.
 
-The tables below are the public scoring contract. A milestone such as `2/2 →
-20` means that both hidden cases must pass to earn 20 points. `1/2 → 10, 2/2 →
-20` awards the two cases independently. Every official job runs within the
-common 4 GiB memory envelope; the tables give the watchdog for each target
-timing repetition. A memory kill during a case's preparation or target replay
-fails that case. Cases are independent in time: one case cannot consume
-another's watchdog. Unscored value generation, theorem build/export, and axiom audit use
-independent per-case ceilings of 1,800 seconds, 1,800 seconds combined, and
-300 seconds, respectively.
+A case passes only when its preparation succeeds and all three target replays
+finish within the published per-repetition watchdog. The cost is their median.
+Any published instruction limit also applies to that median. All three correctness
+replays must finish for the submission to be scoreable. Infrastructure failures
+and incomplete evaluations require investigation or re-evaluation; they are not
+scored as contestant failures. See [`evaluation.md`](evaluation.md) for the full
+failure and measurement rules.
 
-The universal comparator has a 3,600-second watchdog and the correctness axiom
-audit has a 300-second watchdog. A submission is scoreable only when all three
-correctness-closure replays also finish; each replay has a 1,800-second
-watchdog. A correctness-gate memory kill rejects the submission; a memory kill
-during timed correctness replay leaves it accepted but unscored.
+The groups below define inputs and resource limits, not separate awards or
+prerequisites. Each problem's `evaluation.memory_mb` in `problems/<id>/config.json`
+defines its memory limit in MiB, published before official use. Matrix permanent uses
+8192 MiB (8 GiB); the other eight problems retain provisional 4096 MiB (4 GiB) limits.
+Official-host acceptance remains pending. Organizers may revise a limit; a revision requires
+a new cohort and a complete rescore of the problem's comparison set. Each target process has the table's
+watchdog. Theorem build/export has a separate 1,800-second combined limit per
+case, and its axiom audit has a 300-second limit. One case does not consume
+another's time allowance. The correctness comparator has a 3,600-second limit,
+its axiom audit a 300-second limit, and each correctness replay a 1,800-second
+limit. Official standard outputs are prepared independently before judging and
+are outside the measured work.
 
-Sampler terms used below have these exact meanings:
+Exact official inputs stay hidden during evaluation. The final official cohort's
+seed and complete plan are released after its evaluation. This commitment does
+not apply to provisional reference inputs or seeds.
 
-- **geometric range:** distinct, strictly increasing integers selected across
-  the inclusive published range, with deterministic 15% seed-derived jitter;
+Sampler terms:
+
+- **geometric range:** distinct, strictly increasing integers with deterministic
+  15% seed-derived jitter within the inclusive range. With two cases, one starts
+  at each endpoint and is jittered inward; unseeded local runs use the endpoints.
 - **uniform integer:** distinct seed-derived integers sampled without bias from
-  the inclusive published range; and
-- **packed:** the published scale in the high bits and a distinct seed-derived
+  the inclusive range.
+- **packed:** the public scale in the high bits and a distinct seed-derived
   32-bit instance seed in the low bits.
 
-The `fib`, `partition`, `mertens`, and `primecount` tables use the geometric-range
-sampler. Their two cases are ordered from the smaller resolved input to the larger.
+## `fib`
 
-## `fib` — scaling frontier
+The input is the Fibonacci index. All six cases must pass; full-plan passes compare target work.
 
-Both cases in a group must pass. Target-declaration work breaks ties;
-correctness-closure work is the final tie-break.
+| Group | Hidden `n` range | Cases | Per-repetition limit |
+| --- | ---: | ---: | ---: |
+| F1 | 5,000–10,000 | 2 | 30 s |
+| F2 | 20,000–40,000 | 2 | 60 s |
+| F3 | 80,000–150,000 | 2 | 120 s |
 
-| Group | Hidden `n` range | Cases | Points | Per-repetition limit |
-|---|---:|---:|---:|---:|
-| F1 | 5,000–10,000 | 2 | 2/2 → 20 | 30 s |
-| F2 | 20,000–40,000 | 2 | 2/2 → 30 | 60 s |
-| F3 | 80,000–150,000 | 2 | 2/2 → 50 | 120 s |
+## `partition`
 
-## `partition` — subtask frontier
+The input is the integer whose partitions are counted. All six cases must pass; full-plan passes
+compare target work.
 
-Both cases in a group must pass. Target-declaration work breaks ties;
-correctness-closure work is the final tie-break.
+| Group | Hidden `n` range | Cases | Per-repetition limit |
+| --- | ---: | ---: | ---: |
+| P1 | 14–18 | 2 | 30 s |
+| P2 | 22–26 | 2 | 60 s |
+| P3 | 32–36 | 2 | 120 s |
 
-| Group | Hidden `n` range | Cases | Points | Per-repetition limit |
-|---|---:|---:|---:|---:|
-| P1 | 14–18 | 2 | 2/2 → 20 | 30 s |
-| P2 | 22–26 | 2 | 2/2 → 30 | 60 s |
-| P3 | 32–36 | 2 | 2/2 → 50 | 120 s |
+## `mertens`
 
-## `mertens` — independent arithmetic cases
+The input is the upper bound of the Möbius sum. All six cases must pass; full-plan passes
+compare target work.
 
-Cases score independently because arithmetic inputs can have different
-factorization structure. Target-declaration work breaks ties;
-correctness-closure work is the final tie-break.
+| Group | Hidden `n` range | Cases | Per-repetition limit |
+| --- | ---: | ---: | ---: |
+| M1 | 25–50 | 2 | 30 s |
+| M2 | 80–150 | 2 | 60 s |
+| M3 | 300–500 | 2 | 120 s |
 
-| Group | Hidden `n` range | Cases | Milestones | Per-repetition limit |
-|---|---:|---:|---:|---:|
-| M1 | 25–50 | 2 | 1/2 → 10, 2/2 → 20 | 30 s |
-| M2 | 80–150 | 2 | 1/2 → 15, 2/2 → 30 | 60 s |
-| M3 | 300–500 | 2 | 1/2 → 25, 2/2 → 50 | 120 s |
+## `primecount`
 
-## `primecount` — robust scaling frontier
+The input is the inclusive prime-counting bound. All six cases must pass; full-plan passes
+compare target work.
 
-Both cases in a group must pass. Target-declaration work breaks ties;
-correctness-closure work is the final tie-break.
+| Group | Hidden `n` range | Cases | Per-repetition limit |
+| --- | ---: | ---: | ---: |
+| Q1 | 50–100 | 2 | 30 s |
+| Q2 | 150–300 | 2 | 60 s |
+| Q3 | 600–1,000 | 2 | 120 s |
 
-| Group | Hidden `n` range | Cases | Points | Per-repetition limit |
-|---|---:|---:|---:|---:|
-| Q1 | 50–100 | 2 | 2/2 → 20 | 30 s |
-| Q2 | 150–300 | 2 | 2/2 → 30 | 60 s |
-| Q3 | 600–1,000 | 2 | 2/2 → 50 | 120 s |
+## `permanent`
 
-## `permanent` — seeded matrix groups
+Memory limit: **8192 MiB (8 GiB)**.
 
-An input is `(dimension << 32) | seed`. The public generator produces a seeded
-0/1 matrix with exactly three distinct ones per row: the diagonal and two
-seeded off-diagonal columns. All five matrices in a group must pass. Seed
-indices do not break partial ties. After the complete plan passes,
-target-declaration work breaks ties and
-correctness-closure work is the final tie-break.
+An input is `(dimension << 32) | seed`. The public generator produces a 0/1 matrix with exactly
+three distinct ones per row: the diagonal and two seeded off-diagonal columns. All 15 cases must
+pass; full-plan passes compare target work.
 
-| Group | Dimension | Hidden seeds | Points | Per-repetition limit |
-|---|---:|---:|---:|---:|
-| R1 | 6 | 5 | 5/5 → 20 | 30 s |
-| R2 | 12 | 5 | 5/5 → 30 | 60 s |
-| R3 | 16 | 5 | 5/5 → 50 | 120 s |
+| Group | Dimension | Hidden seeds | Per-repetition limit |
+| --- | ---: | ---: | ---: |
+| R1 | 6 | 5 | 30 s |
+| R2 | 12 | 5 | 60 s |
+| R3 | 16 | 5 | 120 s |
 
-## `saw` — seeded-obstacle prefix frontier
+## `saw`
 
-An input is `(length << 32) | seed`. The public generator creates a sparse
-obstacle field and leaves the non-negative x-axis open, so every instance has
-at least one valid self-avoiding walk. Both cases in a group must pass. A group
-scores only after every lower group has passed. Seed indices do not break
-partial ties. An ineligible group earns no points and contributes zero to the
-ranking case-count profile, even if its cases complete. After the complete
-plan passes, the tie-break combines the correctness closure and target replays.
+An input is `(length << 32) | seed`. The obstacle generator leaves the non-negative x-axis open,
+so every instance has at least one valid self-avoiding walk. All six cases must pass; full-plan
+passes compare combined work.
 
-| Group | Walk length | Hidden seeds | Points | Per-repetition limit |
-|---|---:|---:|---:|---:|
-| S1 | 4 | 2 | 2/2 → 20 | 30 s |
-| S2 | 6 | 2 | 2/2 → 30 | 60 s |
-| S3 | 8 | 2 | 2/2 → 50 | 120 s |
+| Group | Walk length | Hidden seeds | Per-repetition limit |
+| --- | ---: | ---: | ---: |
+| S1 | 4 | 2 | 30 s |
+| S2 | 6 | 2 | 60 s |
+| S3 | 8 | 2 | 120 s |
 
-## `ca-rule110` — seeded 256-cell evolution
+## `ca-rule110`
 
-An input is `(steps << 32) | seed`. Each seed creates a seed-specific,
-approximately half-dense 256-cell initial row, eliminating the old fixed
-32-cell short orbit. Cases score independently, but seed indices do not break
-partial ties. After the complete plan passes, the tie-break combines the
-correctness closure and target replays.
+An input is `(steps << 32) | seed`. Each seed determines a 256-cell initial row. All six cases
+must pass; full-plan passes compare combined work.
 
-| Group | Evolution steps | Hidden seeds | Milestones | Per-repetition limit |
-|---|---:|---:|---:|---:|
-| C1 | 2 | 2 | 1/2 → 10, 2/2 → 20 | 30 s |
-| C2 | 4 | 2 | 1/2 → 15, 2/2 → 30 | 60 s |
-| C3 | 8 | 2 | 1/2 → 25, 2/2 → 50 | 120 s |
+| Group | Evolution steps | Hidden seeds | Per-repetition limit |
+| --- | ---: | ---: | ---: |
+| C1 | 2 | 2 | 30 s |
+| C2 | 4 | 2 | 60 s |
+| C3 | 8 | 2 | 120 s |
 
-## `sha256` — independent seeded chains
+## `sha256`
 
-An input is `(steps << 32) | seed`. The 32-bit seed deterministically expands
-to a seed-specific 256-bit initial digest, so cases do not deliberately share
-a chain prefix. Cases score independently, but seed indices do not break
-partial ties. After the complete plan passes, the tie-break combines the
-correctness closure and target replays.
+An input is `(steps << 32) | seed`. The seed expands to a 256-bit initial digest for a SHA-256
+chain. All six cases must pass; full-plan passes compare combined work.
 
-| Group | Chain steps | Hidden seeds | Milestones | Per-repetition limit |
-|---|---:|---:|---:|---:|
-| H1 | 4 | 2 | 1/2 → 10, 2/2 → 20 | 30 s |
-| H2 | 32 | 2 | 1/2 → 15, 2/2 → 30 | 60 s |
-| H3 | 512 | 2 | 1/2 → 25, 2/2 → 50 | 120 s |
+| Group | Chain steps | Hidden seeds | Per-repetition limit |
+| --- | ---: | ---: | ---: |
+| H1 | 4 | 2 | 30 s |
+| H2 | 32 | 2 | 60 s |
+| H3 | 512 | 2 | 120 s |
 
-## `polydisc` — degree-24 coefficient bands
+## `polydisc`
 
-The degree is always 24. Each group uses the uniform-integer sampler to select
-two distinct seed-derived polynomial inputs from a range that fixes the maximum coefficient width. Cases score
-independently; the retained bands D1, D3, and D5 award 20, 30, and 50 points. Seed indices do not break
-partial ties. After the complete plan passes, target-declaration work breaks
-ties and correctness-closure work is the final tie-break.
+The polynomial degree is always 24. Stage 1 samples three of the five width bands supported by
+the specification: D1, D3, and D5 correspond to levels 0, 2, and 4. Each range fixes the maximum
+coefficient width and uses the uniform-integer sampler. All six cases must pass; full-plan
+passes compare target work.
 
-| Group | Public input range | Max coefficient width | Milestones | Per-repetition limit |
-|---|---:|---:|---:|---:|
-| D1 | 2^18–2^25 | 15 bits | 1/2 → 10, 2/2 → 20 | 30 s |
-| D3 | 2^37–2^45 | 205 bits | 1/2 → 15, 2/2 → 30 | 60 s |
-| D5 | 2^57–2^63 | 3,484 bits | 1/2 → 25, 2/2 → 50 | 120 s |
+| Group | Public input range | Max coefficient width | Cases | Per-repetition limit |
+| --- | ---: | ---: | ---: | ---: |
+| D1 | 2^18–2^25 | 15 bits | 2 | 30 s |
+| D3 | 2^37–2^45 | 205 bits | 2 | 60 s |
+| D5 | 2^57–2^63 | 3,484 bits | 2 | 120 s |

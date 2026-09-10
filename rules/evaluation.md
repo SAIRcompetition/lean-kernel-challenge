@@ -12,7 +12,8 @@ A submission defines `impl : Nat → Output` and proves
 2. builds the locked solution and checks the universal correctness proof and permitted axioms;
 3. measures repeated complete replays of the verified correctness closure and records their
    median cost;
-4. for each hidden input `n`, generates and checks a direct theorem `impl n = v`, then measures
+4. for each hidden input `n`, uses the official standard output `v` to generate and check
+   a direct theorem `impl n = v`, then measures
    replay of that target declaration; and
 5. records the measurements and verdict.
 
@@ -24,9 +25,17 @@ The definition of `impl` is charged once in the correctness replay rather than o
 
 Correctness timing uses the immutable export produced by the correctness gate. For each performance
 input, the judge creates a separate immutable export from the exact verified build; contestant
-source is not re-elaborated. The judge obtains the candidate literal `v` through Lean's
-elaborator-side reduction. This step is neither trusted nor scored: if the value is wrong or
-unsupported, the generated theorem cannot pass kernel checking and the run is not scored.
+source is not re-elaborated. Before submissions are evaluated, the organizers prepare the standard
+outputs independently with a reference program, a precomputed table, or another method consistent
+with the trusted specification. The same cohort uses the same input/output pairs. This preparation
+is outside the counter and never executes a contestant's `impl`.
+
+The judge validates the answer bundle against the problem, specification version, and complete
+input plan before running contestant code. Its digest is sealed into the cohort. These answers
+are not trusted proofs: the direct target theorem still forces kernel reduction of `impl n` and
+comparison with the exact literal. Missing, malformed, or incorrect official answers are evaluation
+errors, not contestant failures. If the generated theorem fails kernel checking, the run is treated
+as an evaluation error and is not scored.
 
 These boundaries are versioned as measurement contract `kernel-replay-v2`, with
 `full-closure-replay-v1` for correctness and `target-declaration-replay-v1` for each input.
@@ -36,7 +45,8 @@ evaluation cohort.
 ## Verdicts
 
 - **accepted** — the correctness gate passed. The submission is scored when its timed correctness
-  replay and sealed cohort record are valid; passing no performance case yields zero points.
+  replay and sealed cohort record are valid; any failed performance case yields zero points
+  and infinite ranking cost.
 - **rejected** — submission validation, a competition rule, or the correctness gate failed.
 - **retry** — the timing service is temporarily unavailable. The run is requeued and not scored.
 - **error** — the judge or evaluation infrastructure failed. The run is not scored and requires
@@ -54,37 +64,51 @@ The universal correctness comparator has a 3,600-second watchdog, and its axiom 
 finish, each under a 1,800-second per-repetition watchdog. A comparator timeout fails the
 correctness gate; a correctness axiom-audit timeout is an infrastructure error requiring organizer
 review; and a correctness-replay timeout leaves an otherwise accepted submission unscored. Under
-the attested 4 GiB job envelope, a memory kill in the comparator or correctness axiom audit is a
-terminal rejection, while a timed correctness-replay memory kill is accepted but unscored.
+the attested memory limit for that problem, a memory kill in the comparator or correctness axiom
+audit is a terminal rejection, while a timed correctness-replay memory kill is accepted but unscored.
 
 Stage 1 has **nine independent 100-point problem leaderboards**. There is no cross-problem total or
 relative-placement aggregation. `conv` is retained as an experimental development task and is not
 part of these leaderboards.
 
-**Difficulty groups and cases.** Each scored problem's `config.json` defines three ordered groups.
-For every group it publishes the difficulty axis, input generator or range, case count, milestone
-points, target-replay limit, and any prerequisite groups. A case passes when its target replay
-completes in every configured repetition within the published per-repetition watchdog; if the
-group declares a kernel-instruction limit, the median measurement must also stay within it.
-Reaching a milestone awards that group's corresponding points. The exact tables are the public
-contract in
-[`problem-scoring.md`](problem-scoring.md).
+**Complete-plan scoring.** Each problem publishes three input groups with an input generator or
+range, case count, and target-replay limit. Groups specify workloads, not separate point awards.
+A case passes when every target repetition completes within its watchdog and any published
+instruction limit is satisfied by the median. All required case preparation must also succeed.
+The exact plans are described in [`problem-scoring.md`](problem-scoring.md).
+
+An otherwise scoreable submission earns **100 points only if every case in its complete hidden
+plan passes**. If even one case fails, it earns **0 points and its ranking cost is infinite**.
+There is no partial credit or ranking by harder groups, number of passes, or pass/fail order.
+A baseline may earn 100 points; full-plan passes compete by reducing instruction cost.
 
 The published watchdog applies separately to each target-timing process. It includes that
 process's untimed parsing and preload overhead, while the ranking metric itself covers only the
-target-declaration kernel replay. Earlier value generation, generated-theorem build/export, and
-axiom audit use separate per-case ceilings: 1,800 seconds for value generation, 1,800 seconds
-shared by theorem build and export, and 300 seconds for axiom audit. A timeout in any required
-step fails that case, but cannot consume another case's limit. Likewise, a deterministic value
-generation failure at one input — the submission's `impl` does not reduce to an integer literal
-there, or the evaluation process fails on it — fails that case only; later cases are still
-attempted, and a submission passing no case scores zero points rather than becoming unscored.
+target-declaration kernel replay. Generated-theorem build/export and axiom audit use separate
+per-case ceilings: 1,800 seconds shared by build and export, and 300 seconds for the audit.
+A contestant-dependent timeout in a required step fails that case and therefore gives the
+submission zero points, but cannot consume another case's limit; later cases are still attempted.
+Official reference-answer preparation is independent of the submission and is not charged to
+these per-case budgets. A timeout does not by itself prove that `impl` is not kernel-reducible;
+a confirmed violation of R2 is a rejection.
 
-The official evaluator job has one common 4 GiB cgroup-v2 envelope. A child SIGKILL is classified
+Each problem has its own memory limit, declared in `evaluation.memory_mb` (MiB) in
+`problems/<id>/config.json` and published before official use. Matrix permanent (`permanent`)
+has an 8192 MiB (8 GiB) limit. The other eight problems retain provisional 4096 MiB (4 GiB)
+limits pending organizer confirmation. Official-host validation remains required for every
+problem; these allocations do not establish that every current baseline fits.
+Organizers may revise a problem's limit during the competition. The limit is fixed within each
+evaluation cohort and recorded in its sealed resource policy; a revision requires a new cohort
+and a complete rescore of that problem's comparison set. Scores from different memory policies
+are never mixed in one ranking.
+
+The official evaluator job enforces the problem's limit through a cgroup-v2 envelope covering
+the correctness gate, correctness replay, and performance cases, with zero extra swap. The judge
+checks that the declared limit, image policy, and actual cgroup memory/swap settings agree. A child SIGKILL is classified
 as memory exhaustion only when the attested `memory.events` OOM counter also increases. If that
-cgroup kills a child while generating a case value, building/exporting its theorem, auditing it, or replaying its
+cgroup kills a child while building/exporting a case theorem, auditing it, or replaying its
 target, the case fails with `resource-limit` and later cases are still attempted. Non-official
-KTP/3 reports the same outcome under its per-request 4 GiB limit. If resource enforcement
+KTP/3 binds each replay request to the applicable problem memory limit. If resource enforcement
 terminates the evaluator before it can write a complete case record, the run is investigated and
 rerun against the same sealed plan; an incomplete run never receives a score.
 
@@ -93,8 +117,9 @@ performance plan. The cohort seals that plan, its hash, and the grouped evaluati
 verdict records an explicit outcome for every planned case. A timeout does not by itself stop the
 plan: every later case is still attempted under its own limits. Grouped evaluation has no shared
 aggregate deadline, so one case's work does not reduce another case's configured time allowance. A platform interruption
-or fatal evaluator error makes the run incomplete and requires retry; it cannot turn unattempted
-cases into zero-point results. The legacy `conv` development schedule retains its separate
+or fatal evaluator error makes the run incomplete and requires re-evaluation; fatal evaluator
+errors require organizer review before the run is repeated. Unattempted cases cannot be turned
+into zero-point results. The legacy `conv` development schedule retains its separate
 aggregate development budget and is not eligible for a Stage 1 leaderboard.
 
 Official evaluation requires a secret `PERF_SEED`, rotated between evaluation cohorts. Hidden
@@ -105,83 +130,87 @@ An unseeded plan is permitted only for deterministic local development and is no
 score.
 
 Official results come from one evaluation cohort run as a batch after the submission cutoff.
-Raw verdicts and exact inputs remain private throughout the evaluation phase. After that cohort
-closes, its resolution seed, exact input plan, results, and benchmark data are released publicly
-under an open-source license. A deliberate re-evaluation uses a new hidden seed and cohort and
-rescores the comparison set.
+The evaluation window and final results publication date and time are to be announced in the
+[overview schedule](overview.md#schedule). No fixed evaluation duration is specified.
+Raw verdicts and exact inputs remain private throughout the evaluation phase. After the final
+official cohort closes, its resolution seed, exact input plan, results, and benchmark data are
+released publicly under an open-source license. Contestant code is private during the competition
+and is published afterward; its version scope and licensing terms will be specified before launch
+as described in [`prelaunch.md`](prelaunch.md). A deliberate re-evaluation uses a new hidden
+seed and cohort and rescores the comparison set.
 
 **Provisional standings during the submission window.** Each day the platform evaluates each
-entrant's newest formal submission per problem under a separate hidden reference cohort and
-builds a per-problem temporary board from those results: the board updates once per day, not in
-real time, and an entrant's entry reflects their newest submission's terminal verdict — a rejected
-newer submission replaces an accepted older one. The organizers may publish the temporary board
-during the submission window; it is provisional, it never shows raw verdicts or hidden inputs, an
-incomplete daily edition is never published, and it does not determine the official result. After
-the cutoff the last complete temporary edition may stay visible with a final-evaluation notice
+team's latest formal submission per problem as of the daily cutoff, using hidden inputs sampled
+under the published problem policy, separately from the final official evaluation. Organizers may update these
+reference inputs; their input plans and seeds are not subject to the final-results publication
+commitment above. The platform builds a per-problem temporary board from those results:
+the board updates once per day, not in real time. Submission days end at **23:59:59 UTC**,
+including the whole final second; a day is the interval from 00:00 UTC inclusive to the next
+00:00 UTC exclusive. Each edition must display its **generation timestamp and time zone**,
+and identify its submission cutoff or coverage date. A cutoff assigns submissions to an edition;
+it does not promise that evaluation and publication finish at that instant. The publication lag
+will be announced before launch. A team's entry reflects their latest
+submission's terminal verdict — a rejected or unscored newer submission replaces an accepted
+older one. Selection uses the platform's recorded submission time, regardless of when evaluation
+finishes. The same latest-submission rule selects
+the official entry at the cutoff, as specified in [`overview.md`](overview.md#submission).
+The organizers may publish the temporary board during the submission window. It is provisional,
+never shows raw verdicts or hidden inputs, and does not determine the official result.
+An incomplete daily edition is never published. After the cutoff the last complete temporary
+edition may stay visible with a final-evaluation notice
 until the published final leaderboard replaces it.
 
 **Hardcoding and proof cost.** A table or special case is legal only if it is covered by the
-universal correctness proof. Exact inputs remain hidden until their cohort closes, and new cohorts
-use new hidden inputs.
+universal correctness proof. Exact inputs remain hidden during evaluation. Final official inputs
+are released as described above; no publication of provisional reference inputs or seeds is promised.
 Both the complete verified correctness closure and every successful target replay are measured.
-Each problem's published tie-break policy states whether proof work is included with performance
-work or used only as the final tie-break, so constants, tables, and their proofs inside the
-verified artifact are not free.
+Every submission must complete the correctness replays within the applicable resource limits.
+Each problem's published work policy states whether correctness-closure work also contributes to
+ranking: combined-work problems include it, while target-work problems use only the successful
+target replays for the work comparison. Neither policy adds a separate proof-cost tie-break.
 
 **Canonical ranking within one problem, metric, measurement contract, and evaluation cohort.**
 
-1. Higher total points wins.
-2. If totals tie, compare group points from the hardest group to the easiest.
-3. If group points tie, apply the problem's declared case profile. Ordered range samplers compare
-   the complete pass/fail bitmap from larger inputs to smaller inputs. Interchangeable seeded
-   samplers compare only the number passed in each group, never the hidden seed index.
-4. Ordered profiles then use lower measured kernel work. For interchangeable samplers, equal
-   partial profiles remain tied and measured work applies only after the complete plan passes.
-5. If declared, lower correctness-closure work is the final tie-break.
+1. A full-plan pass (100 points) ranks above a failed plan (0 points).
+2. Among full-plan passes, lower instruction cost wins under the problem's declared policy:
+   **target work** is the sum of every target-declaration median; **combined work** adds the
+   correctness-closure median once.
+3. Equal costs remain tied. All scoreable failed plans have infinite ranking cost and remain
+   tied; neither successful subsets nor correctness costs break their tie.
 
-The common work policies are:
-
-- **target work, then proof:** compare the sum of successful target-declaration medians, followed
-  by the correctness-closure median; and
-- **combined work:** compare the correctness-closure median plus the sum of successful
-  target-declaration medians.
-
-This prevents arbitrary seed numbering or a cheaper subset of hidden instances from deciding a
-partial tie. The per-problem policy is listed in [`problem-scoring.md`](problem-scoring.md). If all
-competitive values tie, submission name determines display order but does not break the competitive
-tie.
+The per-problem work policy is listed in [`problem-scoring.md`](problem-scoring.md).
+There is no separate correctness-cost comparison. Submission name may determine display order
+but does not break the competitive tie. The sealed ranking contract is `full-plan-v1`;
+previously sealed milestone policies retain their original semantics and cannot share its cohort.
 
 **Scoreability and versioning.** Only accepted verdicts with a successful correctness replay, a
 complete case record, a valid sealed policy, and one consistent metric are scoreable. A valid
-submission that passes no case receives zero points. Stage 1 official cohorts require in-container
-**local-v2** PMU timing. Resource-bound **KTP/3** is available only for non-official validation.
+submission with any failed case receives zero points and infinite ranking cost. Stage 1 official
+cohorts require in-container **local-v2** PMU timing. Resource-bound **KTP/3** is available only for non-official validation.
 Rankings never mix
 metrics, evaluation cohorts, executors, timing protocols, or measurement-contract versions. Any
 change to these fields requires a new cohort and complete rescore.
 
-The cohort id commits to the exact performance plan, group policy, repetition count, evaluation
-budgets, resource policy, toolchain, metric, measurement contract, target-proof encoding, and
+The cohort id commits to the exact performance plan, reference-answer digest and specification
+version, scoring policy, repetition count, evaluation budgets, resource policy, toolchain, metric,
+measurement contract, target-proof encoding, and
 timing-executor identity. A correct submission whose timed correctness replay does not finish is
 accepted but unscored.
-
-**Report-only diagnostics.** The scorer may report a log-log fit
-`log cost ≈ α log n + β` over successful cases. These values help describe scaling behavior but
-do not affect ranking.
 
 ## Evaluation environment
 
 - Official instruction counts are measured on the pinned Linux PMU host inside the evaluation
   container.
 - Submission validation and elaboration run as a non-root user in a network-disabled container
-  with 4 GiB memory, 2 CPUs, and a 512-process limit.
+  with the problem's published memory limit, 2 CPUs, and a 512-process limit.
 - Official kernel replay uses that local PMU environment. Non-official KTP/3 validation may send
   only immutable exported artifacts to a remote executor and binds each request and response to
-  the same 4 GiB replay limit.
+  the applicable problem memory limit.
 - The stage uses Lean **v4.33.1**, comparator `3927ad3`, lean4export `15f6055`, and
   kernel replay via Lean's built-in `Lean.Replay`.
 - Attempts to escape the evaluation environment or exploit the judge result in disqualification.
 
-The production measurement and container paths were validated on the official PMU hardware
+The production measurement and container paths must be validated on the official PMU hardware
 before launch.
 
 ## Local development
