@@ -152,6 +152,7 @@ def _grouped_cfg(*groups):
     return {
         "evaluation": {
             "schema": "grouped-evaluation-v1",
+            "memory_mb": 4096,
             "axis": {"label": "encoded input", "unit": "case", "input_encoding": "packed-v1"},
             "groups": list(groups),
             "ranking": {
@@ -1019,7 +1020,7 @@ def _ok_response(executor="exec-a", version="v1", instructions=100, reps=1,
         "measurement_contract": judge.MEASUREMENT_CONTRACT,
         "boundary": judge._measurement_boundary(target),
         "target": target,
-        "memory_mb": judge.REMOTE_REPLAY_MEMORY_MB,
+        "memory_mb": judge._remote_replay_memory_mb(),
         "samples": [
             {"instructions": instructions, "task_clock_ms": 1.25, "wall_ns": 1250}
             for _ in range(reps)
@@ -1112,7 +1113,7 @@ class RemoteTimingTests(unittest.TestCase):
             "status": "failed", "executor": "exec-a", "version": "v1",
             "measurement_contract": judge.MEASUREMENT_CONTRACT,
             "boundary": judge._measurement_boundary(None), "target": None,
-            "memory_mb": judge.REMOTE_REPLAY_MEMORY_MB,
+            "memory_mb": judge._remote_replay_memory_mb(),
             "output_tail": "kernel rejected export",
         }
 
@@ -1165,7 +1166,8 @@ class RemoteTimingTests(unittest.TestCase):
             captured.append((req, timeout))
             return _Response(_ok_response(target=target))
 
-        with mock.patch.object(judge, "TIMING_EXECUTOR_URLS", ["https://exec"]), \
+        with mock.patch.object(judge, "_PROBLEM_MEMORY_MB", [8192]), \
+             mock.patch.object(judge, "TIMING_EXECUTOR_URLS", ["https://exec"]), \
              mock.patch.object(judge, "_EXECUTOR_ATTEMPT_SLEEPS", [0]), \
              mock.patch.object(judge.urllib.request, "urlopen", side_effect=urlopen):
             result = judge._time_remote(self.export, 1, target=target)
@@ -1178,7 +1180,7 @@ class RemoteTimingTests(unittest.TestCase):
         self.assertEqual(query["measurement_contract"], [judge.MEASUREMENT_CONTRACT])
         self.assertEqual(query["boundary"], [judge.TARGET_REPLAY_BOUNDARY])
         self.assertEqual(query["target"], [target])
-        self.assertEqual(query["memory_mb"], [str(judge.REMOTE_REPLAY_MEMORY_MB)])
+        self.assertEqual(query["memory_mb"], ["8192"])
         headers = {key.lower(): value for key, value in req.header_items()}
         self.assertEqual(
             headers["x-measurement-contract"], judge.MEASUREMENT_CONTRACT)
@@ -1186,7 +1188,7 @@ class RemoteTimingTests(unittest.TestCase):
             headers["x-measurement-boundary"], judge.TARGET_REPLAY_BOUNDARY)
         self.assertEqual(headers["x-measurement-target"], target)
         self.assertEqual(
-            headers["x-replay-memory-mb"], str(judge.REMOTE_REPLAY_MEMORY_MB))
+            headers["x-replay-memory-mb"], "8192")
 
     def test_remote_resource_limit_is_valid_only_with_bound_memory(self):
         limited = _ok_response()
@@ -1200,7 +1202,7 @@ class RemoteTimingTests(unittest.TestCase):
         self.assertIn(
             "memory limit", judge._remote_response_error(limited, 1))
 
-        limited["memory_mb"] = judge.REMOTE_REPLAY_MEMORY_MB
+        limited["memory_mb"] = judge._remote_replay_memory_mb()
         limited["resource"] = "cpu"
         self.assertIn(
             "not identified as memory", judge._remote_response_error(limited, 1))
@@ -1211,20 +1213,20 @@ class RemoteTimingTests(unittest.TestCase):
         self.assertFalse(judge._died_by_sigkill(-11))
         self.assertFalse(judge._attested_local_memory_kill(-9))
         with mock.patch.object(judge, "SANDBOX_MODE", "container"), \
-             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "unlimited"}), \
+             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "8192m"}), \
              mock.patch.object(judge, "_LAST_RUN_OOM_KILL", [True]), \
              mock.patch.dict(os.environ, {"ISOLATION_ATTESTATION": "run_isolated.sh"}):
             self.assertTrue(judge._attested_local_memory_kill(-9))
 
         with mock.patch.object(judge, "SANDBOX_MODE", "container"), \
-             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "unlimited"}), \
+             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "8192m"}), \
              mock.patch.object(judge, "_LAST_RUN_OOM_KILL", [False]), \
              mock.patch.dict(os.environ, {"ISOLATION_ATTESTATION": "run_isolated.sh"}):
             self.assertFalse(judge._attested_local_memory_kill(-9))
 
-    def test_bounded_launch_is_not_the_attested_official_envelope(self):
+    def test_unlimited_launch_is_not_the_attested_official_envelope(self):
         with mock.patch.object(judge, "SANDBOX_MODE", "container"), \
-             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "4g"}), \
+             mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "unlimited"}), \
              mock.patch.object(judge, "_LAST_RUN_OOM_KILL", [True]), \
              mock.patch.dict(os.environ, {"ISOLATION_ATTESTATION": "run_isolated.sh"}):
             self.assertFalse(judge._attested_local_memory_kill(-9))
@@ -1237,9 +1239,8 @@ class RemoteTimingTests(unittest.TestCase):
         self.assertEqual(judge._memory_mb_from_envelope("4096m"), 4096)
         self.assertEqual(judge._memory_mb_from_envelope("2G"), 2048)
         self.assertEqual(judge._memory_mb_from_envelope("1048576k"), 1024)
-        self.assertEqual(judge._memory_mb_from_envelope("1"), 1)
-        self.assertIsNone(judge.OFFICIAL_MEMORY_MB)
-        self.assertEqual(judge.REMOTE_REPLAY_MEMORY_MB, 4096)
+        self.assertIsNone(judge._memory_mb_from_envelope("1"))
+        self.assertEqual(judge._remote_replay_memory_mb(), 4096)
 
         with mock.patch.object(judge, "CONFIGURED_MEMORY_MB", None):
             record = judge._resource_limit_measurement(
@@ -1252,6 +1253,35 @@ class RemoteTimingTests(unittest.TestCase):
             record = judge._resource_limit_measurement(
                 None, "local-container-cgroup", "build-export")
         self.assertEqual(record["memory_mb"], 4096)
+
+    def test_official_memory_checks_the_image_policy_and_actual_cgroup(self):
+        cfg = {"evaluation": {"memory_mb": 8192}}
+        with mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": "8g"}):
+            with mock.patch.object(Path, "read_text", side_effect=[str(8192 << 20), "0"]):
+                judge._validate_official_memory(cfg)
+            for memory, swap in (("max", "0"), (str(4096 << 20), "0"),
+                                 (str(8192 << 20), "max"), (str(8192 << 20), "1024")):
+                with mock.patch.object(Path, "read_text", side_effect=[memory, swap]):
+                    with self.assertRaisesRegex(judge.InfraError, "actual cgroup"):
+                        judge._validate_official_memory(cfg)
+            with mock.patch.object(Path, "read_text", side_effect=OSError()):
+                with self.assertRaisesRegex(judge.InfraError, "readable cgroup"):
+                    judge._validate_official_memory(cfg)
+        for envelope in ("unlimited", "4g", "local-unspecified"):
+            with mock.patch.object(judge, "EVALUATION_RESOURCE_POLICY", {"memory": envelope}):
+                with self.assertRaisesRegex(judge.InfraError, "EVALUATION_MEMORY must match"):
+                    judge._validate_official_memory(cfg)
+
+    def test_remote_replay_uses_problem_limit_instead_of_local_preparation_limit(self):
+        with mock.patch.object(judge, "_PROBLEM_MEMORY_MB", [8192]), \
+             mock.patch.object(judge, "CONFIGURED_MEMORY_MB", 2048):
+            self.assertEqual(judge._remote_replay_memory_mb(), 8192)
+            record = judge._resource_limit_measurement(
+                "Generated.check", "remote-executor-cgroup", "target-replay")
+            self.assertEqual(record["memory_mb"], 8192)
+            record = judge._resource_limit_measurement(
+                None, "local-container-cgroup", "build-export")
+            self.assertEqual(record["memory_mb"], 2048)
 
     def test_run_binds_and_resets_cgroup_oom_evidence_per_command(self):
         with tempfile.TemporaryDirectory() as td, \

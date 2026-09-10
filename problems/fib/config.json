@@ -25,27 +25,24 @@
       {
         "id": "F1", "label": "Small", "order": 1,
         "sampling": {"kind": "geometric_range", "min": 5000, "max": 10000, "count": 2, "jitter": 0.15},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 20}]},
         "limits": {"timeout_seconds": 30}
       },
       {
         "id": "F2", "label": "Medium", "order": 2,
         "sampling": {"kind": "geometric_range", "min": 20000, "max": 40000, "count": 2, "jitter": 0.15},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 30}]},
         "limits": {"timeout_seconds": 60}
       },
       {
         "id": "F3", "label": "Large", "order": 3,
         "sampling": {"kind": "geometric_range", "min": 80000, "max": 150000, "count": 2, "jitter": 0.15},
-        "award": {"mode": "milestones", "table": [{"passed": 0, "points": 0}, {"passed": 2, "points": 50}]},
         "limits": {"timeout_seconds": 120}
       }
     ],
     "ranking": {
-      "contract": "group-points-v1",
+      "contract": "full-plan-v1",
       "work": "curve",
-      "proof": "last_tiebreak",
-      "profile": "hardest_group_then_slot"
+      "proof": "gate",
+      "max_points": 100
     }
   }
 }

@@ -8,11 +8,11 @@ from pathlib import Path
 
 def valid_memory_mb(value):
     # Docker requires at least 6 MiB; its byte limit is a signed 64-bit integer.
-    return type(value) is int and 6 <= value <= ((1 << 63) - 1) >> 20
+    return type(value) is int and 6 <= value <= (((1 << 63) - 1) >> 20)
 
 
 def problem_memory_mb(config):
-    evaluation = config.get("evaluation")
+    evaluation = config.get("evaluation") if isinstance(config, dict) else None
     value = evaluation.get("memory_mb") if isinstance(evaluation, dict) else None
     if not valid_memory_mb(value):
         raise ValueError("evaluation.memory_mb must be an integer of at least 6 MiB "

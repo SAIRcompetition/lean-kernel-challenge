@@ -7,6 +7,7 @@ Docker daemon while still checking the exact argv passed to `docker run`.
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -21,6 +22,7 @@ LANDRUN_SHIM = ROOT / "scripts" / "shims" / "landrun"
 FAKE_DOCKER = r"""#!/usr/bin/env python3
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -73,6 +75,7 @@ if "judge/judge.py" in args and os.environ.get("FAKE_WRITE_VERDICT") == "1":
 
 class RunIsolatedTests(unittest.TestCase):
     def setUp(self):
+        self.wrapper = WRAPPER
         self.temp = tempfile.TemporaryDirectory()
         self.base = Path(self.temp.name)
         self.submission = self.base / "entry-dir"
@@ -83,6 +86,8 @@ class RunIsolatedTests(unittest.TestCase):
             "namespace Submission\nend Submission\n"
         )
 
+        self.reference = self.base / "answers.json"
+        self.reference.write_text('{"private_test_answers": true}')
         self.capture = self.base / "docker.jsonl"
         self.fake_docker = self.base / "fake-docker"
         self.fake_docker.write_text(FAKE_DOCKER)
@@ -103,7 +108,7 @@ class RunIsolatedTests(unittest.TestCase):
 
     def run_wrapper(self, *extra, seed=True):
         cmd = [
-            str(WRAPPER),
+            str(self.wrapper),
             "--problem",
             "fib",
             "--submission",
@@ -112,6 +117,8 @@ class RunIsolatedTests(unittest.TestCase):
             str(self.results),
             "--cohort",
             "round-2026-01",
+            "--reference-answers",
+            str(self.reference),
         ]
         if seed:
             cmd += ["--perf-seed", "hidden seed value"]
@@ -134,9 +141,8 @@ class RunIsolatedTests(unittest.TestCase):
         args = record["args"]
         self.assertEqual(args[:2], ["run", "--rm"])
         self.assert_pair(args, "--network", "none")
-        # The official envelope configures no memory cgroup limit at all.
-        self.assertNotIn("--memory", args)
-        self.assertNotIn("--memory-swap", args)
+        self.assert_pair(args, "--memory", "4096m")
+        self.assert_pair(args, "--memory-swap", "4096m")
         self.assert_pair(args, "--cpus", "2")
         self.assert_pair(args, "--pids-limit", "512")
         self.assert_pair(args, "--security-opt", "no-new-privileges:true")
@@ -169,7 +175,7 @@ class RunIsolatedTests(unittest.TestCase):
         self.assertEqual(record["OFFICIAL_EVAL"], "1")
         self.assertEqual(record["EVALUATION_COHORT"], "round-2026-01")
         self.assertRegex(record["EVALUATION_RUN_ID"], r"^run-[0-9]+-[0-9]+-[0-9]+$")
-        self.assertEqual(record["EVALUATION_MEMORY"], "unlimited")
+        self.assertEqual(record["EVALUATION_MEMORY"], "4096m")
         self.assertEqual(record["EVALUATION_CPUS"], "2")
         self.assertEqual(record["EVALUATION_PIDS_LIMIT"], "512")
         self.assertRegex(record["EVALUATION_IMAGE"], r"^sha256:[0-9a-f]{64}$")
@@ -200,7 +206,7 @@ class RunIsolatedTests(unittest.TestCase):
             "--image",
             "registry.example/judge:v1",
             "--memory",
-            "unlimited",
+            "4g",
             "--cpus",
             "2",
             "--pids-limit",
@@ -227,7 +233,9 @@ class RunIsolatedTests(unittest.TestCase):
         self.assertNotIn("--entrypoint", evaluation)
         self.assertIn("--interactive", evaluation)
         self.assertIn("PERF_SEED_STDIN=1", evaluation)
-        self.assertEqual(records[1]["seed_stdin"], "hidden seed value\n")
+        self.assertEqual(records[1]["seed_stdin"], "hidden seed value\n" + self.reference.read_text())
+        self.assertNotIn(str(self.reference), evaluation)
+        self.assertIn("REFERENCE_ANSWERS_STDIN=1", evaluation)
         self.assertIsNone(records[0]["seed_stdin"])
         self.assertIn("python3", evaluation)
         self.assertIn("judge/judge.py", evaluation)
@@ -265,8 +273,8 @@ class RunIsolatedTests(unittest.TestCase):
 
     def test_rejects_noncanonical_official_resource_envelope(self):
         for option, value, expected in (
-                ("--memory", "4g", "runs without a memory limit"),
-                ("--memory", "64g", "runs without a memory limit"),
+                ("--memory", "unlimited", "must match this problem"),
+                ("--memory", "64g", "must match this problem"),
                 ("--cpus", "1.5", "requires --cpus 2"),
                 ("--pids-limit", "97", "requires --pids-limit 512")):
             with self.subTest(option=option):
@@ -274,6 +282,43 @@ class RunIsolatedTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 2)
                 self.assertIn(expected, proc.stderr)
                 self.assertFalse(self.capture.exists())
+
+    def test_different_problems_apply_different_limits_and_seal_them(self):
+        # Isolate fixture policies from the checked-in, provisional numeric values.
+        scripts = self.base / "repo" / "scripts"
+        scripts.mkdir(parents=True)
+        for name in ("run_isolated.sh", "memory_policy.py"):
+            shutil.copy2(ROOT / "scripts" / name, scripts / name)
+        self.wrapper = scripts / "run_isolated.sh"
+        for problem, memory in (("fib", 2048), ("permanent", 8192)):
+            cfg_path = scripts.parent / "problems" / problem / "config.json"
+            cfg_path.parent.mkdir(parents=True)
+            cfg_path.write_text(json.dumps({"evaluation": {"memory_mb": memory}}))
+            with self.subTest(problem=problem):
+                proc = self.run_wrapper("--problem", problem)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                for record in self.records()[-2:]:
+                    self.assert_pair(record["args"], "--memory", f"{memory}m")
+                    self.assert_pair(record["args"], "--memory-swap", f"{memory}m")
+                    self.assertEqual(record["EVALUATION_MEMORY"], f"{memory}m")
+
+        self.capture.unlink()
+        proc = self.run_wrapper("--problem", "permanent", "--memory", "4g")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("8192 MiB", proc.stderr)
+        self.assertFalse(self.capture.exists())
+        cfg_path.write_text('{"evaluation": {}}')
+        proc = self.run_wrapper("--problem", "permanent")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("evaluation.memory_mb", proc.stderr)
+        self.assertFalse(self.capture.exists())
+
+    def test_environment_memory_cannot_override_problem_policy(self):
+        self.env["JUDGE_MEMORY"] = "8g"
+        proc = self.run_wrapper()
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("must match this problem", proc.stderr)
+        self.assertFalse(self.capture.exists())
 
     def test_rejects_slug_longer_than_judge_limit(self):
         proc = self.run_wrapper("--tag", "a" * 97)

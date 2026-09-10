@@ -22,11 +22,11 @@
     "correctness_boundary": "full-closure-replay-v1",
     "performance_boundary": "target-declaration-replay-v1",
     "target_proof_encoding": "direct-rfl-v1-experimental",
-    "remote_replay_memory_mb": 4096,
-    "note": "Local dev uses wall_time. Stage 1 official cohorts use in-container local-v2 perf_instructions on the pinned Linux PMU host. KTP/3 is non-official validation only. Metrics are ranked separately. Correctness and target declarations use three replays and record each median. Process startup, export parsing, and per-input dependency preload are excluded; exact output-literal checking remains included. KTP/3 binds each remote target replay to the executor-side remote_replay_memory_mb bound and reports memory exhaustion during that replay as a case resource-limit outcome; official jobs instead use the per-problem evaluation.memory_mb container limit. Memory exhaustion during timed correctness replay leaves an otherwise accepted submission unscored. Other protocol or boundary versions are legacy/unscored."
+    "legacy_remote_replay_memory_mb": 4096,
+    "note": "Local dev uses wall_time. Stage 1 official cohorts use in-container local-v2 perf_instructions on the pinned Linux PMU host. KTP/3 is non-official validation only. Metrics are ranked separately. Correctness and target declarations use three replays and record each median. Process startup, export parsing, and per-input dependency preload are excluded; exact output-literal checking remains included. KTP/3 binds each remote target replay to the per-problem evaluation.memory_mb bound (legacy_remote_replay_memory_mb for experimental conv) and reports memory exhaustion during that replay as a case resource-limit outcome; official jobs instead use the per-problem evaluation.memory_mb container limit. Memory exhaustion during timed correctness replay leaves an otherwise accepted submission unscored. Other protocol or boundary versions are legacy/unscored."
   },
   "scoring": {
-    "contract": "nine independent problem leaderboards; group_points_desc, then ordered-case profile or interchangeable-case counts, then the eligible configured work/proof tie-break",
+    "contract": "nine independent problem leaderboards; full-plan passes score 100 and rank by configured target work or combined work; any failed case gives 0 points and infinite cost, with all such failures tied",
     "policy_source": "problems/<id>/config.json evaluation (grouped-evaluation-v1), sealed into each evaluation-policy-v2 cohort",
     "legacy_conv_contract": "completed_slots_desc, coverage_desc, harder_slot_profile_desc, total_work_asc",
     "total_work": "full_correctness_closure_replay_median + sum(successful_target_declaration_replay_medians)",
@@ -38,7 +38,7 @@
       "alpha",
       "beta"
     ],
-    "note": "There is no cross-problem total. Each scored problem publishes its three groups, hidden-case count, milestones, resource limits, and proof/work tie-break. All work terms must use the verdict's one metric, protocol, measurement contract, boundary versions, and target-proof encoding. Alpha and beta never affect rank. Rankings never cross problem, metric, cohort, or measurement version."
+    "note": "There is no cross-problem total. Each scored problem publishes its three input groups, hidden-case count, resource limits, and target-work or combined-work policy. Full-plan passes score 100 points; any failed case gives an otherwise scoreable submission 0 points and infinite ranking cost. No partial profile or extra proof-cost tie-break applies. All work terms must use the verdict's one metric, protocol, measurement contract, boundary versions, and target-proof encoding. Alpha and beta never affect rank. Rankings never cross problem, metric, cohort, or measurement version."
   },
   "sandbox": {
     "mode": "none",

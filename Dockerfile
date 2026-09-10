@@ -93,11 +93,12 @@ WORKDIR /work/lean-kernel-challenge
 # requiring PMU access in the Docker build sandbox; official runs still use the
 # metric configured above.  Running this gate in the runtime stage proves the
 # trimmed image (not the builder) can judge end to end.
-# HARNESS_JOBS controls only cross-case parallelism. The gate intentionally
-# keeps its two samples per group (--count 2) and the judge's published case
-# limits; neither is a build-time compatibility knob. A single case that
-# exceeds its bound must fail this build loudly rather than silently shrinking
-# the gate.
+# HARNESS_JOBS controls only cross-submission parallelism. The regression check
+# caps each group's samples at two and uses the explicit development time budget
+# below. It checks the manifest's verdict and coverage requirements; individual
+# performance-input timeouts may be expected, particularly for slow baselines.
+# This local-mode build check does not enforce official per-problem memory limits.
+# Validate those limits in wrapper-launched containers after the policy is configured.
 # A worker can consume several GiB (the heaviest cases peak at 2.3-4.9 GiB
 # each), so the gate runs two workers everywhere: the one setting measured to
 # fit a 16 GiB builder such as the hosted CI runner, with the worst pair near

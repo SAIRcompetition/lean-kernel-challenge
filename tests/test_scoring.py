@@ -136,7 +136,7 @@ def make_official_grouped(result):
     policy["seed_commitment"] = "a" * 64
     policy["resource_policy"] = {
         "image": "sha256:" + "b" * 64,
-        "memory": score.OFFICIAL_MEMORY_ENVELOPE,
+        "memory": "4096m",
         "cpus": "2",
         "pids_limit": "512",
         "sandbox_mode": "container",
@@ -204,6 +204,8 @@ def grouped_verdict(name, costs, *, correctness=10, groups=None,
                 "slot": len(plan), "group": group["id"], "case": case,
                 "n": n, "limits": dict(group["limits"]),
             })
+            if group["sampling"]["kind"] == "packed":
+                plan[-1]["scale"] = group["sampling"]["scale"]
         offset += count
     if offset != len(inputs):
         raise AssertionError("test groups must account for every input")
@@ -219,11 +221,17 @@ def grouped_verdict(name, costs, *, correctness=10, groups=None,
     policy["budgets"]["perf_phase_budget_seconds"] = 0
     policy["evaluation"] = {
         "schema": "grouped-evaluation-v1",
+        "memory_mb": 4096,
         "axis": {
             "label": "test input size", "unit": "n", "input_encoding": "direct Nat input",
         },
         "groups": groups, "ranking": ranking,
     }
+    if ranking["contract"] == "full-plan-v1":
+        policy["reference_answers"] = {
+            "contract": "reference-answers-v1", "sha256": "2" * 64,
+            "spec_sha256": "3" * 64, "count": len(inputs),
+        }
     policy["performance_plan"] = plan
     plan_encoded = json.dumps(
         plan, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
@@ -233,7 +241,125 @@ def grouped_verdict(name, costs, *, correctness=10, groups=None,
     return result
 
 
+def configured_grouped_verdict(name, problem, *, correctness, costs=None):
+    """Exercise the shipped problem policy with synthetic replay measurements."""
+    evaluation = json.loads(
+        (ROOT / "problems" / problem / "config.json").read_text())["evaluation"]
+    inputs = []
+    for group in evaluation["groups"]:
+        sampling = group["sampling"]
+        for case in range(sampling["count"]):
+            if sampling["kind"] == "packed":
+                n = (sampling["scale"] << 32) | (case + 1)
+            else:
+                n = sampling["min"] + case
+            inputs.append(n)
+    result = grouped_verdict(
+        name, costs if costs is not None else [100] * len(inputs),
+        correctness=correctness, inputs=inputs, groups=evaluation["groups"],
+        ranking=evaluation["ranking"])
+    result["problem"] = problem
+    result["evaluation_cohort"]["policy"]["problem"] = problem
+    result["evaluation_cohort"]["policy"]["evaluation"] = evaluation
+    _reseal_policy(result)
+    return result
+
+
 class ScoringTests(unittest.TestCase):
+    def test_full_plan_failures_tie_below_passes_for_every_shipped_problem(self):
+        for problem in sorted(score.STAGE1_PROBLEMS):
+            with self.subTest(problem=problem):
+                complete = configured_grouped_verdict("full", problem, correctness=500)
+                count = len(complete["timing"]["scaling"])
+                failures = [configured_grouped_verdict(
+                    name, problem, correctness=proof, costs=costs)
+                    for name, proof, costs in [
+                        ("one-miss", 1, [1] * (count - 1) + [None]),
+                        ("one-pass", 900, [None] * (count - 1) + [100000]),
+                        ("no-pass", 100, [None] * count),
+                    ]]
+                rows = score._rows_for(problem, failures + [complete], "perf_instructions")
+                self.assertTrue(all(row["scoreable"] for row in rows), rows)
+                self.assertEqual([row["points"] for row in rows], [100, 0, 0, 0])
+                self.assertEqual(score._competition_ranks(rows), [1, 2, 2, 2])
+                self.assertTrue(all(row["ranking_work"] == float("inf") for row in rows[1:]))
+                self.assertEqual(score._format_work(rows[-1]["ranking_work"], "perf_instructions"), "∞")
+
+    def test_full_plan_incomplete_record_or_reference_seal_is_not_a_zero(self):
+        original = configured_grouped_verdict("incomplete", "fib", correctness=100)
+        for mutate in (
+                lambda item: item["timing"]["scaling"].pop(),
+                lambda item: item["evaluation_cohort"]["policy"].pop("reference_answers"),
+                lambda item: item["evaluation_cohort"]["policy"]["reference_answers"].update(count=1)):
+            item = json.loads(json.dumps(original))
+            mutate(item)
+            _reseal_policy(item)
+            row = score._score_row(item, "perf_instructions")
+            self.assertFalse(row["scoreable"])
+            self.assertIsNone(row["points"])
+
+    def test_full_plan_reference_preparation_failure_cannot_be_scored(self):
+        for failure in ("value-eval-timeout", "value-eval-error"):
+            item = configured_grouped_verdict("reference-failure", "fib", correctness=100)
+            item["timing"]["scaling"][0]["result"] = failure
+            row = score._score_row(item, "perf_instructions")
+            self.assertFalse(row["scoreable"])
+            self.assertIn("reference-answer preparation", row["reason"])
+
+    def test_full_plan_public_report_shows_infinite_cost_and_utc_generation_time(self):
+        good = make_official_grouped(configured_grouped_verdict("full", "fib", correctness=100))
+        bad = make_official_grouped(configured_grouped_verdict(
+            "failed", "fib", correctness=100, costs=[None] * 6))
+        old_results = score.RESULTS
+        with tempfile.TemporaryDirectory() as temp:
+            try:
+                score.RESULTS = temp
+                directory = pathlib.Path(temp) / "fib"
+                directory.mkdir()
+                for item in (good, bad):
+                    (directory / (item["submission"] + ".json")).write_text(json.dumps(item))
+                score.main()
+                report = (pathlib.Path(temp) / "scoring.md").read_text()
+                self.assertIn("| 2 | failed | 0 | 0/6 | ∞ | scored |", report)
+                self.assertRegex(report, r"Generated: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC")
+            finally:
+                score.RESULTS = old_results
+
+    def test_shipped_problem_policies_use_only_the_declared_work_comparison(self):
+        combined = {"saw", "ca-rule110", "sha256"}
+        target = {"fib", "partition", "mertens", "primecount", "permanent", "polydisc"}
+        for problem in sorted(target | combined):
+            with self.subTest(problem=problem):
+                expensive = configured_grouped_verdict(
+                    "a-expensive-proof", problem, correctness=100)
+                cheap = configured_grouped_verdict(
+                    "z-cheap-proof", problem, correctness=10)
+                rows = score._rows_for(problem, [expensive, cheap], "perf_instructions")
+                self.assertTrue(all(row["scoreable"] for row in rows), rows)
+                self.assertEqual([row["points"] for row in rows], [100, 100])
+                if problem in target:
+                    self.assertEqual(score._competition_ranks(rows), [1, 1])
+                    self.assertEqual([row["sub"] for row in rows],
+                                     ["a-expensive-proof", "z-cheap-proof"])
+                else:
+                    self.assertEqual(score._competition_ranks(rows), [1, 2])
+                    self.assertEqual([row["sub"] for row in rows],
+                                     ["z-cheap-proof", "a-expensive-proof"])
+
+    def test_shipped_combined_policies_tie_when_total_work_is_equal(self):
+        for problem in ("saw", "ca-rule110", "sha256"):
+            with self.subTest(problem=problem):
+                cheap = configured_grouped_verdict("cheap-proof", problem, correctness=10)
+                count = len(cheap["stages"]["perf_inputs"])
+                expensive = configured_grouped_verdict(
+                    "expensive-proof", problem, correctness=100,
+                    costs=[10] + [100] * (count - 1))
+                rows = score._rows_for(problem, [cheap, expensive], "perf_instructions")
+                self.assertTrue(all(row["scoreable"] for row in rows), rows)
+                self.assertEqual(rows[0]["ranking_work"], rows[1]["ranking_work"])
+                self.assertNotEqual(rows[0]["correctness_work"], rows[1]["correctness_work"])
+                self.assertEqual(score._competition_ranks(rows), [1, 1])
+
     def test_configured_toolchain_matches_current_policy_schema(self):
         policy = verdict("configured-toolchain", [100, 200, 300])[
             "evaluation_cohort"]["policy"]
@@ -826,40 +952,75 @@ class ScoringTests(unittest.TestCase):
         self.assertFalse(row["scoreable"])
         self.assertIn("canonical memory record", row["reason"])
 
-    def test_official_memory_kill_record_must_name_no_limit(self):
+    def test_official_memory_kill_record_must_name_the_sealed_problem_limit(self):
         item = make_official_grouped(
             grouped_verdict("official-memory-limit", [100, None, 100, 100]))
         limited = item["timing"]["scaling"][1]
         limited.update({
             "result": "resource-limit",
             "resource": "memory",
-            "memory_mb": score.OFFICIAL_MEMORY_MB,
+            "memory_mb": 4096,
             "resource_limit_source": "local-container-cgroup",
             "resource_phase": "target-replay",
             "measurement_contract": score.MEASUREMENT_CONTRACT,
             "measurement_boundary": score.PERFORMANCE_BOUNDARY,
             "measurement_target": "Generated.check",
         })
-        self.assertIsNone(score.OFFICIAL_MEMORY_MB)
         row = score._score_row(item, "perf_instructions")
         self.assertTrue(row["scoreable"], row["reason"])
         self.assertEqual(row["completed_slots"], 3)
 
-        # The official envelope configures no limit, so a bounded record is not the
-        # official evaluator's record.
-        limited["memory_mb"] = 4096
+        # A record from a different problem limit cannot pass under this cohort.
+        limited["memory_mb"] = 8192
         row = score._score_row(item, "perf_instructions")
         self.assertFalse(row["scoreable"])
         self.assertIn("canonical memory record", row["reason"])
 
-    def test_official_policy_must_seal_the_unlimited_memory_envelope(self):
+    def test_official_policy_must_seal_the_problem_memory_envelope(self):
         item = make_official_grouped(grouped_verdict("official-envelope", [100] * 4))
         self.assertTrue(score._score_row(item, "perf_instructions")["scoreable"])
-        item["evaluation_cohort"]["policy"]["resource_policy"]["memory"] = "4g"
+        item["evaluation_cohort"]["policy"]["resource_policy"]["memory"] = "unlimited"
         _reseal_policy(item)
         row = score._score_row(item, "perf_instructions")
         self.assertFalse(row["scoreable"])
         self.assertIn("noncanonical resource envelope", row["reason"])
+
+    def test_memory_policy_revisions_are_scored_from_the_seal_and_never_mixed(self):
+        first = make_official_grouped(grouped_verdict("before", [100] * 4))
+        second = make_official_grouped(grouped_verdict("after", [100] * 4))
+        policy = second["evaluation_cohort"]["policy"]
+        policy["evaluation"]["memory_mb"] = 8192
+        policy["resource_policy"]["memory"] = "8192m"
+        _reseal_policy(second)
+        with mock.patch("builtins.open", side_effect=AssertionError("live config read")):
+            for item in (first, second):
+                row = score._score_row(item, "perf_instructions")
+                self.assertTrue(row["scoreable"], row["reason"])
+        self.assertNotEqual(first["evaluation_cohort"]["id"], second["evaluation_cohort"]["id"])
+        rows = score._rows_for("fib", [first, second], "perf_instructions")
+        self.assertEqual(len({row["cohort"] for row in rows}), 2)
+
+    def test_official_missing_or_invalid_problem_memory_is_unscored(self):
+        for memory in (None, True, 0, -1, 1, 4096.0, "4096", 1 << 80):
+            item = make_official_grouped(configured_grouped_verdict("bad-memory", "fib", correctness=10))
+            item["evaluation_cohort"]["policy"]["evaluation"]["memory_mb"] = memory
+            _reseal_policy(item)
+            self.assertFalse(score._score_row(item, "perf_instructions")["scoreable"])
+        del item["evaluation_cohort"]["policy"]["evaluation"]["memory_mb"]
+        _reseal_policy(item)
+        self.assertFalse(score._score_row(item, "perf_instructions")["scoreable"])
+
+    def test_historical_milestone_cohorts_keep_their_original_memory_contract(self):
+        item = make_official_grouped(grouped_verdict("historical", [100] * 4))
+        policy = item["evaluation_cohort"]["policy"]
+        del policy["evaluation"]["memory_mb"]
+        policy["resource_policy"]["memory"] = "4g"
+        _reseal_policy(item)
+        row = score._score_row(item, "perf_instructions")
+        self.assertTrue(row["scoreable"], row["reason"])
+        policy["resource_policy"]["memory"] = "8g"
+        _reseal_policy(item)
+        self.assertFalse(score._score_row(item, "perf_instructions")["scoreable"])
 
     def test_grouped_aggregate_budget_is_disabled_and_cannot_affect_a_case(self):
         enabled = grouped_verdict("aggregate-enabled", [100] * 4)
@@ -890,7 +1051,7 @@ class ScoringTests(unittest.TestCase):
         policy["seed_commitment"] = "a" * 64
         policy["resource_policy"] = {
             "image": "sha256:" + "b" * 64,
-            "memory": score.OFFICIAL_MEMORY_ENVELOPE,
+            "memory": "4096m",
             "cpus": "2",
             "pids_limit": "512",
             "sandbox_mode": "container",
@@ -908,7 +1069,7 @@ class ScoringTests(unittest.TestCase):
             "noncanonical resource envelope",
             score._policy_v2_shape_error(policy),
         )
-        policy["resource_policy"]["memory"] = score.OFFICIAL_MEMORY_ENVELOPE
+        policy["resource_policy"]["memory"] = "4096m"
         policy["executor"] = {
             "kind": "remote", "executor": "pmu-remote", "version": "pmu-v1",
         }
