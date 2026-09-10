@@ -15,6 +15,7 @@
   "enable_nanoda": false,
   "evaluation": {
     "schema": "grouped-evaluation-v1",
+    "memory_mb": 4096,
     "axis": {"label": "maximum coefficient width", "unit": "bits", "input_encoding": "the Nat selects a degree-24 polynomial seed within a fixed width band"},
     "groups": [
       {

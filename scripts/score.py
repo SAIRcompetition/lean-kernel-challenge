@@ -31,17 +31,16 @@ import hashlib
 import json
 import math
 import os
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESULTS = os.path.join(ROOT, "results")
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+from memory_policy import memory_mb_from_envelope, valid_memory_mb
 with open(os.path.join(ROOT, "pipeline", "config.json")) as _config_file:
     _PIPELINE_POLICY = json.load(_config_file)
 _TIMING_POLICY = _PIPELINE_POLICY["timing"]
 STAGE1_OFFICIAL_REPS = _PIPELINE_POLICY["judge"]["timing_reps"]
-# The official envelope configures no memory limit, so an official memory-kill record must
-# name no limit either (null); a development record may name the bound its launcher applied.
-OFFICIAL_MEMORY_MB = _PIPELINE_POLICY["sandbox"]["memory_mb"]
-OFFICIAL_MEMORY_ENVELOPE = "unlimited"
 # Official cohorts must seal exactly the checked-in watchdog budgets and toolchain: the public
 # contract publishes these ceilings, and a verdict is otherwise free to carry any self-consistent
 # policy of its own (the seal hashes are unkeyed). Pinning them here fail-closes both a drifted
@@ -382,9 +381,13 @@ def _grouped_evaluation_shape_error(evaluation, performance_plan, *, official):
     config: the signed cohort policy is the sole source of scoring authority.
     """
     if not (isinstance(evaluation, dict)
-            and set(evaluation) == {"schema", "axis", "groups", "ranking"}
+            and set(evaluation) in ({"schema", "axis", "groups", "ranking"},
+                                    {"schema", "axis", "groups", "ranking", "memory_mb"})
             and evaluation.get("schema") == "grouped-evaluation-v1"):
         return "evaluation cohort policy has an invalid grouped evaluation contract"
+    if ((official or "memory_mb" in evaluation)
+            and not valid_memory_mb(evaluation.get("memory_mb"))):
+        return "grouped evaluation requires a valid per-problem memory_mb limit"
     axis = evaluation["axis"]
     if not (isinstance(axis, dict)
             and set(axis) == {"label", "unit", "input_encoding"}
@@ -611,7 +614,11 @@ def _policy_v2_shape_error(policy):
             f"{STAGE1_OFFICIAL_REPS} repetitions")
     if policy["evaluation_mode"] == "official":
         resources = policy["resource_policy"]
-        if (resources["memory"] != OFFICIAL_MEMORY_ENVELOPE or resources["cpus"] != "2"
+        evaluation = policy.get("evaluation")
+        declared_memory = evaluation.get("memory_mb") if isinstance(evaluation, dict) else None
+        if (not valid_memory_mb(declared_memory)
+                or memory_mb_from_envelope(resources["memory"]) != declared_memory
+                or resources["cpus"] != "2"
                 or resources["pids_limit"] != "512"):
             return "official grouped evaluation has a noncanonical resource envelope"
         if (policy["executor"]["kind"] != "local"
@@ -1031,7 +1038,8 @@ def _score_row(verdict, metric):
         if sample_result == "resource-limit":
             memory_mb = sample.get("memory_mb")
             if policy["evaluation_mode"] == "official":
-                canonical_memory = memory_mb == OFFICIAL_MEMORY_MB
+                canonical_memory = (valid_memory_mb(memory_mb)
+                                    and memory_mb == policy["evaluation"]["memory_mb"])
             else:
                 canonical_memory = memory_mb is None or (
                     isinstance(memory_mb, int) and not isinstance(memory_mb, bool)

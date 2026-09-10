@@ -66,6 +66,9 @@ if hasattr(sys, "set_int_max_str_digits"):
     sys.set_int_max_str_digits(0)
 
 ROOT = Path(__file__).resolve().parent.parent            # lean-kernel-challenge/
+sys.path.insert(0, str(ROOT / "scripts"))
+from memory_policy import memory_mb_from_envelope as _memory_mb_from_envelope, problem_memory_mb
+
 PROBLEMS = ROOT / "problems"
 RESULTS = ROOT / "results"
 
@@ -94,9 +97,7 @@ DEFAULT_REPS = _J["timing_reps"]
 MAX_SUBMISSION_BYTES = _J["max_submission_bytes"]
 MAX_SUBMISSION_FILES = _J["max_submission_files"]
 MAX_TOOL_OUTPUT_BYTES = _J.get("max_tool_output_bytes", 1_048_576)
-# The official job configures no memory limit (pipeline sandbox.memory_mb is null). KTP/3
-# remote replays keep the executor-side bound, which the executor enforces per request.
-OFFICIAL_MEMORY_MB = _CFG["sandbox"]["memory_mb"]
+# Non-official KTP/3 retains its independent executor-side replay bound.
 REMOTE_REPLAY_MEMORY_MB = _CFG["timing"]["remote_replay_memory_mb"]
 REMOTE_PROTOCOL = _CFG["timing"]["remote_protocol"]
 # Timing metric + sandbox mode; env overrides let the Docker host switch to perf.
@@ -190,22 +191,6 @@ EVALUATION_RESOURCE_POLICY = {
     "pids_limit": os.environ.get("EVALUATION_PIDS_LIMIT", "local-unspecified"),
     "sandbox_mode": SANDBOX_MODE,
 }
-
-
-def _memory_mb_from_envelope(value):
-    """MiB of the container memory limit the launcher declared, or ``None`` without one.
-
-    ``unlimited`` (the official envelope) and an undeclared envelope both yield ``None``;
-    a Docker-style size such as ``4g`` or ``4096m`` yields its MiB value so a memory-kill
-    record names the limit that actually applied."""
-    if not isinstance(value, str):
-        return None
-    match = re.fullmatch(r"([1-9][0-9]*)([bBkKmMgG]?)", value.strip())
-    if match is None:
-        return None
-    amount = int(match.group(1))
-    scale = {"": 0, "b": 0, "k": 10, "m": 20, "g": 30}[match.group(2).lower()]
-    return max(1, (amount << scale) >> 20)
 
 
 CONFIGURED_MEMORY_MB = _memory_mb_from_envelope(EVALUATION_RESOURCE_POLICY["memory"])
@@ -1164,9 +1149,27 @@ def _attested_local_memory_kill(rc):
         evidenced
         and _died_by_sigkill(rc)
         and SANDBOX_MODE == "container"
-        and EVALUATION_RESOURCE_POLICY.get("memory") == "unlimited"
+        and _memory_mb_from_envelope(EVALUATION_RESOURCE_POLICY.get("memory")) is not None
         and os.environ.get("ISOLATION_ATTESTATION") == "run_isolated.sh"
     )
+
+
+def _validate_official_memory(cfg):
+    """Check the image's problem policy against the declared and actual cgroup cap."""
+    try:
+        expected_mb = problem_memory_mb(cfg)
+    except ValueError as exc:
+        raise InfraError(str(exc)) from exc
+    if _memory_mb_from_envelope(EVALUATION_RESOURCE_POLICY.get("memory")) != expected_mb:
+        raise InfraError("EVALUATION_MEMORY must match this problem's evaluation.memory_mb "
+                         f"({expected_mb} MiB)")
+    try:
+        actual = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+        swap = Path("/sys/fs/cgroup/memory.swap.max").read_text().strip()
+    except OSError as exc:
+        raise InfraError("official evaluation requires readable cgroup-v2 memory limits") from exc
+    if actual != str(expected_mb << 20) or swap != "0":
+        raise InfraError("actual cgroup memory/swap limits do not match the problem policy")
 
 
 def _resolve_lean_runtime(work, env):
@@ -1347,7 +1350,6 @@ def _resource_limit_measurement(target, source, phase):
     record = {
         "resource": "memory",
         # The limit that actually applied: None under the official envelope, which
-        # configures no memory cgroup limit and relies on the host OOM killer.
         "memory_mb": CONFIGURED_MEMORY_MB,
         "resource_limit_source": source,
         "resource_phase": phase,
@@ -2227,6 +2229,7 @@ def _evaluator_bundle_digest():
         ROOT / "scripts" / "run_isolated.sh",
         ROOT / "scripts" / "setup.sh",
         ROOT / "scripts" / "score.py",
+        ROOT / "scripts" / "memory_policy.py",
         ROOT / "patches" / "comparator-emit-export.patch",
     ]
     digest = hashlib.sha256()
@@ -2378,11 +2381,6 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                          "(missing or invalid ISOLATION_ATTESTATION)")
     if OFFICIAL_EVAL and _read_cgroup_oom_kills() is None:
         raise InfraError("official evaluation requires cgroup-v2 memory.events OOM accounting")
-    if OFFICIAL_EVAL and EVALUATION_RESOURCE_POLICY.get("memory") != "unlimited":
-        # The published contract configures no memory limit; a bounded launch would seal a
-        # different envelope into the cohort and be refused by scoring anyway.
-        raise InfraError("official evaluation runs without a memory limit "
-                         "(EVALUATION_MEMORY must be 'unlimited')")
     if OFFICIAL_EVAL and os.environ.get("TIMING_TIMEOUT_SECONDS"):
         # The dev knob would be silently sealed into the cohort budgets, contradicting the
         # published watchdog ceilings. Official runs take the checked-in value only.
@@ -2405,6 +2403,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
 
     cfg = json.loads((PROBLEMS / problem / "config.json").read_text())
     resolved_plan = _validated_performance_plan(cfg, problem)
+    if OFFICIAL_EVAL:
+        _validate_official_memory(cfg)
     work = assemble(job_dir, problem, submission_dir)
     axioms = cfg["permitted_axioms"]
     lean_bin, lean_prefix, core_lib = _resolve_lean_runtime(work, env)
@@ -2439,7 +2439,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if _attested_local_memory_kill(rc):
         _emit_stage_progress("comparator", "failed", t0)
         result["status"], result["reason"] = "rejected", \
-            "correctness gate was terminated by the evaluation host's out-of-memory killer"
+            "correctness gate was terminated by the problem memory cgroup's out-of-memory killer"
         return finish()
     if _died_by_signal(rc):
         _emit_stage_progress("comparator", "failed", t0)
@@ -2496,7 +2496,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if _attested_local_memory_kill(rc):
         _emit_stage_progress("axiom_audit", "failed", axiom_started)
         result["status"], result["reason"] = "rejected", \
-            "correctness axiom audit was terminated by the evaluation host's out-of-memory killer"
+            "correctness axiom audit was terminated by the problem memory cgroup's out-of-memory killer"
         return finish()
     if _died_by_signal(rc):
         _emit_stage_progress("axiom_audit", "failed", axiom_started)

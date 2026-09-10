@@ -15,6 +15,7 @@
   "enable_nanoda": false,
   "evaluation": {
     "schema": "grouped-evaluation-v1",
+    "memory_mb": 4096,
     "axis": {"label": "seeded obstacle SAW length", "unit": "steps", "input_encoding": "packed-v1: (length << 32) | seed"},
     "groups": [
       {

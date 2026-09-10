@@ -15,6 +15,7 @@
   "enable_nanoda": false,
   "evaluation": {
     "schema": "grouped-evaluation-v1",
+    "memory_mb": 4096,
     "axis": {"label": "Rule 110 steps on a seeded 256-cell row", "unit": "steps", "input_encoding": "packed-v1: (steps << 32) | seed"},
     "groups": [
       {

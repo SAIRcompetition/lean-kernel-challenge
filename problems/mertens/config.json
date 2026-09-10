@@ -15,6 +15,7 @@
   "enable_nanoda": false,
   "evaluation": {
     "schema": "grouped-evaluation-v1",
+    "memory_mb": 4096,
     "axis": {"label": "Mertens summation bound", "unit": "n", "input_encoding": "direct Nat input"},
     "groups": [
       {

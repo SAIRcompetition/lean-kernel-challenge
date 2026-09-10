@@ -10,10 +10,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 
 IMAGE="${JUDGE_IMAGE:-lean-kernel-judge}"
-# The official job applies no memory cgroup limit: a submission may use whatever memory the
-# dedicated evaluation host has available. "unlimited" is the only accepted value; it is sealed
-# into the cohort policy so a verdict produced under some other envelope is refused by scoring.
-MEMORY="${JUDGE_MEMORY:-unlimited}"
+# Optional caller assertion; the problem config determines the actual limit.
+MEMORY="${JUDGE_MEMORY:-}"
 CPUS="${JUDGE_CPUS:-2}"
 PIDS_LIMIT="${JUDGE_PIDS_LIMIT:-512}"
 PERF_SEED_VALUE="${PERF_SEED:-}"
@@ -35,10 +33,11 @@ Usage:
     --perf-seed SECRET \
     --cohort ROUND_ID \
     [--tag SLUG] [--reps 3] [--image IMAGE] \
-    [--memory unlimited] [--cpus 2] [--pids-limit 512] [--perfmon]
+    [--memory SIZE] [--cpus 2] [--pids-limit 512] [--perfmon]
 
-The official envelope configures no memory limit (--memory accepts only
-"unlimited"); CPU and process counts are fixed at 2 and 512.
+Memory comes from problems/SLUG/config.json evaluation.memory_mb (MiB), with
+zero extra swap. --memory / JUDGE_MEMORY may only assert the same value.
+CPU and process counts are fixed at 2 and 512.
 PERF_SEED may be supplied in the environment instead of --perf-seed.
 EVALUATION_COHORT may be supplied in the environment instead of --cohort.
 The results directory is bind-mounted read/write and must be writable by the
@@ -197,8 +196,9 @@ fi
 (( PIDS_LIMIT <= 4096 )) || die "--pids-limit above the 4096 ceiling: $PIDS_LIMIT"
 awk -v c="$CPUS" 'BEGIN { exit !(c+0 <= 64) }' ||
   die "--cpus above the 64 ceiling: $CPUS"
-[[ "$MEMORY" == "unlimited" ]] ||
-  die "official Stage 1 evaluation runs without a memory limit; use --memory unlimited"
+MEMORY="$(python3 "$ROOT/scripts/memory_policy.py" \
+  "$ROOT/problems/$PROBLEM/config.json" --envelope "$MEMORY")" || \
+  die "invalid memory policy for $PROBLEM"
 [[ "$CPUS" == "2" ]] || die "official Stage 1 evaluation requires --cpus 2"
 [[ "$PIDS_LIMIT" == "512" ]] || die "official Stage 1 evaluation requires --pids-limit 512"
 if [[ -n "$REPS" ]]; then
@@ -281,10 +281,8 @@ CONTAINER_RESULTS="/work/lean-kernel-challenge/results"
 DOCKER_ARGS=(
   run --rm
   --network none
-  # No --memory / --memory-swap: the official job runs without a memory cgroup limit. The
-  # container cgroup still exposes memory.events, and its oom_kill counter records a child
-  # terminated by the host's out-of-memory killer, so the judge's memory-kill attribution
-  # keeps working without a configured ceiling.
+  --memory "$MEMORY"
+  --memory-swap "$MEMORY"
   --cpus "$CPUS"
   --pids-limit "$PIDS_LIMIT"
   --security-opt no-new-privileges:true
