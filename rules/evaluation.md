@@ -248,6 +248,13 @@ before launch.
 
 ## Local development
 
+For `fib`, run `python3 scripts/prepare_problem_dependencies.py --problem fib` once
+before testing. It prepares the pinned Mathlib Fibonacci import closure; the judge
+uses the prepared offline artifacts, not a network dependency resolver. The other
+eight scored tasks do not require Mathlib. The dependency lock is part of fib's
+specification identity, so a dependency change requires fresh reference answers
+and a new evaluation cohort.
+
 `scripts/quick_test.py` builds a submission and compares compiled executions of `impl` and the
 trusted specification on small, fixed, public inputs. It is a quick functional check only: it does
 not invoke the judge, hidden plan, PMU counter, production isolation, axiom audit, verdict, or

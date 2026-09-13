@@ -17,6 +17,44 @@ sys.path.insert(0, str(ROOT / "judge"))
 import judge
 
 
+# The boundary tests need a tiny reducible function, not the published fib
+# dependency graph. Keep the fixture self-contained rather than copying its
+# potentially multi-gigabyte .lake directory into each test workspace.
+CORE_FIB_SPEC = """def fibSpec : Nat → Nat
+  | 0 => 0
+  | 1 => 1
+  | n + 2 => fibSpec n + fibSpec (n + 1)
+"""
+CORE_FIB_BASELINE = """import Spec
+namespace Submission
+def impl : Nat → Nat := fibSpec
+theorem impl_correct : ∀ n, impl n = fibSpec n := fun _ => rfl
+end Submission
+"""
+CORE_FIB_CHALLENGE = """import Spec
+def impl : Nat → Nat := sorry
+theorem impl_correct : ∀ n, impl n = fibSpec n := sorry
+"""
+CORE_FIB_SOLUTION = """import Spec
+import Submission
+@[reducible] def impl : Nat → Nat := Submission.impl
+theorem impl_correct : ∀ n, impl n = fibSpec n := Submission.impl_correct
+"""
+CORE_FIB_LAKEFILE = """name = "perfBoundaryFixture"
+defaultTargets = ["Challenge", "Solution"]
+[leanOptions]
+autoImplicit = false
+[[lean_lib]]
+name = "Spec"
+[[lean_lib]]
+name = "Challenge"
+[[lean_lib]]
+name = "Solution"
+[[lean_lib]]
+name = "Submission"
+"""
+
+
 @unittest.skipUnless(os.environ.get("LKC_REAL_TOOLS") == "1", "requires isolated judge image")
 class PerfExportBoundaryTests(unittest.TestCase):
     def setUp(self):
@@ -24,9 +62,18 @@ class PerfExportBoundaryTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.work = self.root / "workspace"
-        shutil.copytree(ROOT / "problems/fib", self.work)
-        self.baseline = (ROOT / "examples/submissions/fib/baseline/Submission.lean").read_text()
-        (self.work / "Submission.lean").write_text(self.baseline)
+        self.work.mkdir()
+        self.baseline = CORE_FIB_BASELINE
+        for name, source in {
+            "Spec.lean": CORE_FIB_SPEC,
+            "Challenge.lean": CORE_FIB_CHALLENGE,
+            "Solution.lean": CORE_FIB_SOLUTION,
+            "Submission.lean": self.baseline,
+            "lakefile.toml": CORE_FIB_LAKEFILE,
+        }.items():
+            (self.work / name).write_text(source)
+        shutil.copy2(ROOT / "lean-toolchain", self.work / "lean-toolchain")
+        shutil.copy2(ROOT / "problems/fib/config.json", self.work / "config.json")
         self.env = judge.tool_env()
         self.lean, prefix, core = judge._resolve_lean_runtime(self.work, self.env)
         self.lib = self.work / ".lake/build/lib/lean"

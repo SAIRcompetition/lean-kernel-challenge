@@ -9,6 +9,7 @@ __pycache__/
 *.pyc
 .DS_Store
 lake-manifest.json
+!problems/fib/lake-manifest.json
 
 # Host-prebuilt verification tools (scripts/prebuild-tools.sh)
 prebuilt-tools/

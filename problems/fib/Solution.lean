@@ -5,4 +5,4 @@ import Submission
 
 @[reducible] def impl : Nat → Nat := Submission.impl
 
-theorem impl_correct : ∀ n, impl n = fibSpec n := Submission.impl_correct
+theorem impl_correct : ∀ n, impl n = Nat.fib n := Submission.impl_correct

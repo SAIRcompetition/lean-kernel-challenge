@@ -116,8 +116,11 @@ Participation is also subject to the team, anti-cheating, and participant-cost p
 
 - **R1 — Submission format.** Submit exactly one `Submission.lean` file, at most 1 MiB. All other
   workspace files are locked.
-- **R2 — Reducible total function.** `impl` must be total, written in core Lean without Mathlib,
-  and reducible by the kernel to an output literal for every input. It may not be `partial` or
+- **R2 — Reducible total function.** `impl` must be total, use only the dependencies supplied by
+  the locked problem workspace, and be reducible by the kernel to an output literal for every
+  input. `fib` includes the pinned Mathlib Fibonacci import closure described in its
+  [problem statement](problems/fib.md); the other eight scored tasks remain core-Lean-only.
+  It may not be `partial` or
   `unsafe`. Well-founded recursion is permitted only if the resulting definition remains
   kernel-reducible.
 - **R3 — Universal correctness.** `impl_correct` must prove `∀ n, impl n = spec n`.

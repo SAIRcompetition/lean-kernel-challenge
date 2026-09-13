@@ -99,15 +99,25 @@ class ReferenceAnswerTests(unittest.TestCase):
             self.assertEqual(output.stat().st_mode & 0o777, 0o600)
             bundle = json.loads(output.read_text())
             self.assertEqual(len(bundle["answers"]), 6)
-            self.assertEqual(bundle["spec_sha256"], hashlib.sha256(
-                (ROOT / "problems/fib/Spec.lean").read_bytes()).hexdigest())
+            self.assertEqual(
+                bundle["spec_sha256"],
+                judge.specification_fingerprint(ROOT / "problems/fib"),
+            )
             self.assertNotIn("test-only-seed", proc.stdout + proc.stderr)
 
     @unittest.skipUnless(shutil.which("lean"), "Lean toolchain is not installed")
     def test_direct_kernel_check_accepts_wf_implementation_and_rejects_wrong_answer(self):
         # The default Meta oracle cannot unfold wfId. Standard answers avoid it,
         # but the generated theorem must still compute and check the actual impl.
-        source = (ROOT / "problems/fib/Spec.lean").read_text() + """
+        # This checks the generated-theorem boundary, not the published fib task.
+        # Keep a standalone core fixture so importing Mathlib in that task does
+        # not require dependency setup for this generic regression.
+        source = """
+def fibSpec : Nat → Nat
+  | 0 => 0
+  | 1 => 1
+  | n + 2 => fibSpec n + fibSpec (n + 1)
+
 namespace Submission
 def wfId (n : Nat) : Nat :=
   if h : n = 0 then 0 else wfId (n - 1) + 1

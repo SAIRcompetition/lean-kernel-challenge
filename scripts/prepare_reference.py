@@ -2,7 +2,6 @@
 """Prepare a private, submission-independent answer bundle for one complete plan."""
 
 import argparse
-import hashlib
 import os
 from pathlib import Path
 import sys
@@ -11,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "judge"))
 import judge
 import reference_answers
+from problem_dependencies import specification_fingerprint
 
 
 def main():
@@ -33,7 +33,7 @@ def main():
         problem_dir = ROOT / "problems" / args.problem
         cfg = json.loads((problem_dir / "config.json").read_text())
         plan = judge._validated_performance_plan(cfg, args.problem)
-        spec_digest = hashlib.sha256((problem_dir / "Spec.lean").read_bytes()).hexdigest()
+        spec_digest = specification_fingerprint(problem_dir)
         bundle = reference_answers.prepare(args.problem, [row["n"] for row in plan], spec_digest)
         payload = reference_answers.canonical_bytes(bundle)
         fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

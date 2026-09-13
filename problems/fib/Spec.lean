@@ -1,15 +1,16 @@
+import Mathlib.Data.Nat.Fib.Basic
+
 /-!
 # Lean Kernel Challenge problem `fib` — SPEC (trusted, locked)
 
-Textbook Fibonacci. The source reads like an exponential call tree, but Lean's
-equation compiler elaborates it via course-of-values recursion (`Nat.brecOn`), so
-the kernel reduces it in time linear in n — cheap for small n, but linear cost
-still grows without bound. A logarithmic algorithm (fast doubling) beats it by a
-wide margin at large n. Submissions provide a fast function `impl : Nat -> Nat`
-plus a proof it agrees with this spec on every input.
+The correctness target is Mathlib's official `Nat.fib`, imported from the
+pinned Mathlib v4.33.1 release. There is no challenge-specific Fibonacci
+algorithm in the trusted specification.
+
+`Nat.fib` satisfies `F(0) = 0`, `F(1) = 1`, and
+`F(n + 2) = F(n) + F(n + 1)`. Implementations may use any permitted algorithm
+with a proof that it equals `Nat.fib` for every natural-number input.
 -/
 
-def fibSpec : Nat → Nat
-  | 0 => 0
-  | 1 => 1
-  | n + 2 => fibSpec n + fibSpec (n + 1)
+/-- Compatibility name for existing submissions; exactly Mathlib's `Nat.fib`. -/
+abbrev fibSpec : Nat → Nat := Nat.fib

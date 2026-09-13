@@ -34,7 +34,7 @@ EXAMPLES = ROOT / "examples" / "submissions"
 # evaluation plan.  Packed inputs have the scale in the high bits and a small
 # public seed in the low 32 bits.
 DEMO_CASES: dict[str, tuple[str, tuple[int, ...]]] = {
-    "fib": ("fibSpec", (0, 10, 20)),
+    "fib": ("Nat.fib", (0, 10, 20)),
     "partition": ("partitionSpec", (0, 5, 10)),
     "mertens": ("mertensSpec", (1, 10, 25)),
     "primecount": ("primeCountSpec", (1, 10, 50)),
@@ -135,6 +135,33 @@ def _failure_output(proc: subprocess.CompletedProcess[str]) -> str:
     return output[-4000:] if output else f"command exited {proc.returncode} without output"
 
 
+def _stage_dependencies(problem: str, problem_dir: Path, work: Path) -> bool:
+    """Reuse prepared fib packages for this local compiled demo only.
+
+    The canonical judge uses its own verified dependency-artifact staging. This
+    symlink is a local convenience, not an official isolation mechanism, and
+    allows Lake to build any missing native objects in the prepared package tree.
+    """
+    if problem != "fib":
+        return False
+
+    # Keep the dependency helper out of the eight core-only demo paths.
+    from problem_dependencies import validate_prepared_packages
+
+    try:
+        packages = validate_prepared_packages(problem_dir)
+        shutil.copy2(problem_dir / "lake-manifest.json", work / "lake-manifest.json")
+        lake_dir = work / ".lake"
+        lake_dir.mkdir()
+        (lake_dir / "packages").symlink_to(packages.resolve(), target_is_directory=True)
+    except (ValueError, OSError) as error:
+        raise ValueError(
+            "fib dependency setup is missing or inconsistent: "
+            f"{error}. Run python3 scripts/prepare_problem_dependencies.py --problem fib"
+        ) from error
+    return True
+
+
 def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 120) -> QuickResult:
     """Build and execute one public demo in an automatically removed workspace."""
     if problem not in DEMO_CASES:
@@ -155,6 +182,7 @@ def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 
                     return QuickResult(problem, False, f"missing locked file: {locked}")
                 shutil.copy2(locked, work / name)
             shutil.copy2(source, work / "Submission.lean")
+            has_dependencies = _stage_dependencies(problem, problem_dir, work)
 
             spec_name, inputs = DEMO_CASES[problem]
             (work / "QuickTest.lean").write_text(
@@ -169,7 +197,14 @@ def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 
             # interprets recursive specs and can make even tiny demo inputs surprisingly
             # slow; native execution is exactly the lightweight feedback intended here.
             # Importing Solution still builds and type-checks Submission and its proof.
-            build = _run(["lake", "build", DEMO_EXECUTABLE], cwd=work, timeout=timeout)
+            # Dependency setup is explicit. The locked prepared packages above
+            # avoid checkout downloads; --no-cache also disables build-cache
+            # downloads. Never run `lake update` or a fetch from the quick demo.
+            build_command = ["lake"]
+            if has_dependencies:
+                build_command.append("--no-cache")
+            build_command.extend(["build", DEMO_EXECUTABLE])
+            build = _run(build_command, cwd=work, timeout=timeout)
             if build.returncode != 0:
                 return QuickResult(problem, False, "build failed:\n" + _failure_output(build))
             build_output = "\n".join((build.stdout, build.stderr))
@@ -191,6 +226,8 @@ def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 
             return QuickResult(problem, True, detail)
     except subprocess.TimeoutExpired:
         return QuickResult(problem, False, f"quick test exceeded the {timeout}s local timeout")
+    except ValueError as error:
+        return QuickResult(problem, False, str(error))
     except OSError as error:
         return QuickResult(problem, False, f"could not run quick test: {error}")
 

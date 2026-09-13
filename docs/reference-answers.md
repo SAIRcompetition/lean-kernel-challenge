@@ -43,7 +43,7 @@ The bundle has exactly these fields:
 {
   "schema": "reference-answers-v1",
   "problem": "fib",
-  "spec_sha256": "<SHA-256 of the locked Spec.lean bytes>",
+  "spec_sha256": "<locked specification fingerprint>",
   "answers": [
     {"n": 3, "type": "Nat", "value": "2"}
   ]
@@ -56,6 +56,12 @@ large exact integers without JSON number rounding. `mertens` and `polydisc` use
 `Int`; the other seven use `Nat`. Negative zero, signs on zero, leading zeros,
 duplicate or missing inputs, wrong output types, and mismatched specifications
 are rejected before contestant code executes.
+
+For core-only problems, the specification fingerprint remains the SHA-256 of
+`Spec.lean`. For `fib`, it also binds the pinned Mathlib dependency lock; changing
+that lock invalidates old answer bundles even when the import line is unchanged.
+Use the preparation script to compute the fingerprint rather than hashing the
+source file manually.
 
 The cohort seals the canonical JSON bundle's SHA-256, specification digest, and
 answer count, alongside its input plan and scoring policy. A changed answer

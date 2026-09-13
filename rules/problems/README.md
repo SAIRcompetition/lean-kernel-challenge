@@ -29,8 +29,8 @@ The full schedule and common resource limits are in
 
 For problem `<id>`, the locked files in `problems/<id>/` define the interface:
 
-- `Spec.lean` defines the function the implementation must equal, including any input decoder
-  and instance generator.
+- `Spec.lean` defines or imports the function the implementation must equal, including any
+  input decoder and instance generator. `fib` imports Mathlib's official `Nat.fib`.
 - `Challenge.lean` states the implementation and theorem to provide.
 - `Solution.lean` connects the submitted declarations to that fixed statement.
 - `config.json` specifies the evaluation groups, sampling policy, resource limits, and ranking
@@ -64,9 +64,11 @@ decoder and generator; it does not mean all possible matrices, graphs, or byte s
 
 The implementation may use a different algorithm or representation. The correctness proof may
 use induction, rewriting, and other permitted Lean reasoning; it need not be `rfl`. Separately,
-the implementation must be total and kernel-reducible to its output literal. The current rules
-require core Lean without Mathlib and allow only `propext`, `Quot.sound`, and `Classical.choice`
-as proof axioms; `sorry` and `native_decide` are not accepted. See
+the implementation must be total and kernel-reducible to its output literal. Use only the
+dependencies supplied by the locked problem workspace: `fib` includes the pinned Mathlib
+Fibonacci import closure; the other eight tasks remain core-Lean-only. Only `propext`,
+`Quot.sound`, and `Classical.choice` are permitted proof axioms; `sorry` and `native_decide`
+are not accepted. See
 [Rules R1–R5](../overview.md#rules).
 
 ## How performance and scores are determined
@@ -100,6 +102,9 @@ Install Git, Python 3.9 or later, and `elan` with the pinned Lean 4.33.1 toolcha
 from the repository root, not this documentation directory:
 
 ```bash
+# Prepare fib's pinned Mathlib dependencies once (network access required on a fresh checkout).
+python3 scripts/prepare_problem_dependencies.py --problem fib
+
 # Run the completed baseline demos for all nine scored problems.
 python3 scripts/quick_test.py
 

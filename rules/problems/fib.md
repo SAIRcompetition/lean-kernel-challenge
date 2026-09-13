@@ -11,8 +11,12 @@ F(1) = 1
 F(n + 2) = F(n) + F(n + 1)
 ```
 
-Your implementation must compute the exact value and agree with the locked
-[`fibSpec`](../../problems/fib/Spec.lean) for every input.
+Your implementation must compute the exact value and equal Mathlib's official
+`Nat.fib` for every input. The locked [specification](../../problems/fib/Spec.lean)
+imports `Mathlib.Data.Nat.Fib.Basic` from Mathlib **v4.33.1**, pinned to commit
+`0df444a360eaa60ab8c11dca51a86af692955474` in the
+[dependency manifest](../../problems/fib/lake-manifest.json).
+There is no challenge-specific Fibonacci algorithm in the spec.
 
 ## Input
 
@@ -78,20 +82,27 @@ Submit one `Submission.lean` containing these declarations inside
 
 ```text
 impl : Nat → Nat
-impl_correct : ∀ n, impl n = fibSpec n
+impl_correct : ∀ n, impl n = Nat.fib n
 ```
 
 The [locked bridge](../../problems/fib/Solution.lean) exposes them to the judge.
 Prove equality for **all `n`**, not just the examples or hidden cases. The proof
 need not use `rfl`, and the algorithm need not follow the specification's
 recurrence. Separately, the kernel must reduce `impl n` to the exact answer.
-The current rules require core Lean without Mathlib, total kernel-reducible
-code, and permitted axioms only; see the [shared requirements](README.md#what-a-submission-must-establish).
+This problem permits the pinned `Mathlib.Data.Nat.Fib.Basic` module and its
+transitive imports supplied by the locked workspace. You may use their
+definitions and theorems, including `Nat.fastFib` and `Nat.fastFib_eq`.
+Additional packages or Mathlib modules outside that supplied import closure
+are not part of this pilot. Total kernel-reducible code and the permitted-axiom
+rules still apply; see the [shared requirements](README.md#what-a-submission-must-establish).
+
+For compatibility, `fibSpec` remains an abbreviation for `Nat.fib`, so a theorem
+stated using that name has the same target. It is not a second implementation.
 
 ## Starter Code and Local Testing
 
 Start from the [completed baseline](../../examples/submissions/fib/baseline/Submission.lean),
-which uses `fibSpec` directly, or inspect the
+which uses `Nat.fib` directly, or inspect the
 [fast-doubling example](../../examples/submissions/fib/doubling/Submission.lean).
 The problem workspace's `Submission.lean` is a template with placeholders.
 
@@ -99,6 +110,7 @@ From the repository root, after following the
 [setup instructions](README.md#quick-test-before-using-the-judge), run:
 
 ```bash
+python3 scripts/prepare_problem_dependencies.py --problem fib
 python3 scripts/quick_test.py --problem fib
 python3 scripts/quick_test.py --problem fib --submission examples/submissions/fib/doubling/Submission.lean
 python3 scripts/quick_test.py --problem fib --submission path/to/Submission.lean
@@ -113,10 +125,14 @@ kernel performance. For local kernel measurements, use the
 
 ## Notes
 
-The baseline recurrence is elaborated using course-of-values recursion; do not
-infer exponential kernel cost from its two source-level recursive calls.
-The fast-doubling example halves the index and proves the corresponding
-identities. Its logarithmic number of stages is not logarithmic bit-time:
+Mathlib's `Nat.fib` iterates a pair of consecutive Fibonacci numbers.
+Mathlib also provides `Nat.fastFib`, with a proof that it equals `Nat.fib`;
+using that implementation is allowed, not a correctness violation.
+The supplied fast-doubling example keeps its own algorithm and now proves
+correctness using Mathlib's doubling identities. Its logarithmic number of
+stages is not logarithmic bit-time:
 the intermediate integers grow, and the output itself has size proportional
 to `n` in bits. Algorithm and representation changes should be measured with
-kernel replay, not inferred from native execution time.
+kernel replay, not inferred from native execution time. In particular, Mathlib
+has a compiler simplification from `Nat.fib` to `Nat.fastFib`; this changes
+compiled execution, not the kernel definition being measured.

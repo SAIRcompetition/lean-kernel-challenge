@@ -57,8 +57,9 @@ kernel-level encodings rather than from bypassing the computation.
 
 ## The task
 
-Each problem gives you a **trusted spec** — a deliberately naive but correct definition
-`spec : Nat → Output` in core Lean (e.g. the partition function `p(n)`). You submit:
+Each problem gives you a **trusted spec**, `spec : Nat → Output`.
+For `fib`, this is Mathlib's official `Nat.fib`; the other tasks currently use
+the definitions supplied in their core-Lean workspaces. You submit:
 
 1. a **function** `impl : Nat → Output` — your fast algorithm, and
 2. a **proof** `impl_correct : ∀ n, impl n = spec n` — that it agrees with the spec on
@@ -75,12 +76,14 @@ tables logically impossible: a contestant can derive constants through another v
 algorithm. The scoring contract therefore records both the correctness-closure replay and each
 successful target-declaration replay, and each problem specifies how they enter its tie-breaks.
 The simplest submission is `impl := spec` with
-`impl_correct := fun _ => rfl` — correct but slow because the kernel reduces the naïve spec.
+`impl_correct := fun _ => rfl` — correct by construction, but not necessarily efficient
+enough to pass every performance case.
 
 ## What you submit
 
-Exactly one file, **`Submission.lean`**, at most 1 MiB. Nothing else — every lemma your
-proof needs lives in that file, inside `namespace Submission`. You fill two holes in a
+Exactly one file, **`Submission.lean`**, at most 1 MiB. Every helper you add lives in that
+file, inside `namespace Submission`; you may also use the locked workspace's library declarations.
+You fill two holes in a
 locked workspace:
 
 ```lean
@@ -88,7 +91,7 @@ namespace Submission
 
 def impl : Nat → Nat := sorry                       -- ① your fast algorithm (a total function)
 
-theorem impl_correct : ∀ n, impl n = fibSpec n :=   -- ② proof it equals the spec on every n
+theorem impl_correct : ∀ n, impl n = Nat.fib n :=   -- ② proof it equals the spec on every n
   sorry
 
 end Submission
@@ -109,8 +112,10 @@ A submission has two parts — a function `impl` and a proof `impl_correct` — 
 follow that shape (full text in [`rules/overview.md`](rules/overview.md)):
 
 - **R1** Submit exactly one file, `Submission.lean`; every other file is locked.
-- **R2** `impl` is a total core-Lean function that the kernel can reduce on every input
-  (structural recursion is recommended; well-founded recursion is also permitted; no Mathlib).
+- **R2** `impl` is a total function that the kernel can reduce on every input, using only the
+  locked workspace's dependencies. `fib` includes the pinned Mathlib Fibonacci import closure;
+  the other eight scored tasks remain core-Lean-only. Structural and kernel-reducible
+  well-founded recursion are both permitted.
 - **R3** `impl_correct` proves `∀ n, impl n = spec n` — correctness for *all* inputs.
 - **R4** The proof may depend only on the standard axioms `propext`, `Quot.sound`,
   `Classical.choice`; `sorry` and `native_decide` are rejected.
@@ -221,6 +226,9 @@ Lean and `lake`. Run these commands from the repository root. On first use, `ela
 the pinned Lean 4.33.1 toolchain.
 
 ```bash
+# Prepare fib's pinned Mathlib dependencies once (first use requires network access).
+python3 scripts/prepare_problem_dependencies.py --problem fib
+
 # Run the checked-in baseline demo for all nine scored problems.
 python3 scripts/quick_test.py
 

@@ -70,7 +70,7 @@
       "scored": true
     },
     {
-      "problem": "fib",
+      "problem": "primecount",
       "submission": "cheat-mathlib",
       "expect": "rejected",
       "reason_contains": "comparator"

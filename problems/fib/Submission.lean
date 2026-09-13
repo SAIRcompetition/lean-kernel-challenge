@@ -6,6 +6,6 @@ namespace Submission
 
 def impl : Nat → Nat := sorry
 
-theorem impl_correct : ∀ n, impl n = fibSpec n := sorry
+theorem impl_correct : ∀ n, impl n = Nat.fib n := sorry
 
 end Submission

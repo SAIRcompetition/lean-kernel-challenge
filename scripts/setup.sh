@@ -54,6 +54,9 @@ clone_build lean4export https://github.com/leanprover/lean4export.git "$LEAN4EXP
 echo "== building timer-kernel =="
 ( cd "$HERE/judge/timer-kernel" && lake build )
 
+echo "== preparing fib's pinned Mathlib dependency closure =="
+python3 "$HERE/scripts/prepare_problem_dependencies.py" --problem fib
+
 cat <<EOF
 
 Setup complete. Point the judge at the tools with:

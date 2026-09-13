@@ -71,6 +71,12 @@ if hasattr(sys, "set_int_max_str_digits"):
 ROOT = Path(__file__).resolve().parent.parent            # lean-kernel-challenge/
 sys.path.insert(0, str(ROOT / "scripts"))
 from memory_policy import memory_mb_from_envelope as _memory_mb_from_envelope, problem_memory_mb
+from problem_dependencies import (
+    ARTIFACT_SUFFIXES as DEPENDENCY_ARTIFACT_SUFFIXES,
+    DependencyError,
+    specification_fingerprint,
+    stage_problem_dependencies,
+)
 
 PROBLEMS = ROOT / "problems"
 RESULTS = ROOT / "results"
@@ -1330,6 +1336,14 @@ def assemble(job_dir: Path, problem, submission_dir):
     # never silently follow one).
     shutil.copytree(prob_dir, work, symlinks=True,
                     ignore=shutil.ignore_patterns(".lake", "lake-manifest.json"))
+    # Dependency-enabled problems retain a canonical source Lake lock for provenance, but the
+    # untrusted build sees only its precomputed, hash-checked import closure.  The staging helper
+    # also installs a derived package-free lakefile, so a network-disabled job never resolves or
+    # fetches packages and cannot widen the allowed module set.
+    try:
+        stage_problem_dependencies(prob_dir, work)
+    except DependencyError as exc:
+        raise InfraError(f"invalid prepared dependencies for '{problem}': {exc}") from exc
     # Overlay the one contestant file without following symlinks.
     try:
         shutil.copy(sd / "Submission.lean", work / "Submission.lean", follow_symlinks=False)
@@ -1959,7 +1973,11 @@ def _snapshot_verified_artifacts(work):
             except OSError as e:
                 raise InfraError(f"cannot clear stale generated artifact '{name}': {e}")
 
-    files = sorted(lib.rglob("*.olean"), key=lambda p: p.relative_to(lib).as_posix())
+    files = sorted(
+        (path for path in lib.rglob("*")
+         if path.is_file() and any(path.name.endswith(s) for s in DEPENDENCY_ARTIFACT_SUFFIXES)),
+        key=lambda p: p.relative_to(lib).as_posix(),
+    )
     if not files or not (lib / "Submission.olean").is_file():
         raise InfraError("comparator accepted but emitted no Submission.olean")
     snapshot = {}
@@ -2226,9 +2244,11 @@ def _problem_bundle_digest(problem):
         raise InfraError(f"unknown problem '{problem}'")
     digest = hashlib.sha256()
     files = []
+    dependency_enabled = (base / "dependency-lock.json").is_file()
     for path in base.rglob("*"):
         rel = path.relative_to(base)
-        if ".lake" in rel.parts or rel.as_posix() in ("Submission.lean", "lake-manifest.json"):
+        if (".lake" in rel.parts or rel.as_posix() == "Submission.lean"
+                or (rel.as_posix() == "lake-manifest.json" and not dependency_enabled)):
             continue
         if path.is_symlink():
             raise InfraError(f"problem bundle contains a symlink ({rel.as_posix()})")
@@ -2253,6 +2273,8 @@ def _evaluator_bundle_digest():
         ROOT / "judge" / "judge.py",
         ROOT / "judge" / "reference_answers.py",
         ROOT / "scripts" / "prepare_reference.py",
+        ROOT / "scripts" / "problem_dependencies.py",
+        ROOT / "scripts" / "prepare_problem_dependencies.py",
         ROOT / "judge" / "timer-kernel" / "Main.lean",
         ROOT / "judge" / "timer-kernel" / "timer_control.c",
         ROOT / "judge" / "timer-kernel" / "lakefile.lean",
@@ -2452,7 +2474,10 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     reference_bundle, standard_values = None, None
     if resolved_plan is not None:
         reference_inputs = [case["n"] for case in resolved_plan]
-        spec_digest = hashlib.sha256((PROBLEMS / problem / "Spec.lean").read_bytes()).hexdigest()
+        try:
+            spec_digest = specification_fingerprint(PROBLEMS / problem)
+        except DependencyError as exc:
+            raise InfraError(f"invalid dependency-bound specification for '{problem}': {exc}") from exc
         try:
             reference_bundle = _REFERENCE_ANSWERS
             if reference_bundle is None:
@@ -2525,7 +2550,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     verified_env = _verified_runtime_env(env, artifact_lib, lean_prefix, core_lib)
     result["stages"]["verified_artifacts"] = {
         "source": "comparator-build",
-        "olean_files": len(verified_artifacts),
+        "olean_files": sum(name.endswith(".olean") for name in verified_artifacts),
+        "artifact_files": len(verified_artifacts),
         "sha256": artifact_digest,
     }
     freeze_readonly(work)
