@@ -25,7 +25,9 @@ when locating evaluation files. A good kernel-computation problem has:
 Specs may import a standard library definition instead of reimplementing it.
 For example, `fib` uses Mathlib v4.33.1's `Nat.fib` from `Mathlib.Data.Nat.Fib.Basic`;
 see its [official API and pinned source](rules/problems/fib.md#mathlib-specification).
-The other seven scored tasks remain core-Lean-only. A library-backed task
+Mertens and prime counting also use pinned Mathlib definitions; the other five
+scored tasks remain core-Lean-only. See the [per-problem Mathlib status](rules/problems/README.md#mathlib-status).
+A library-backed task
 must document its exact declaration and version, link the official API and fixed-version
 source, and supply locked dependencies for offline evaluation.
 
@@ -44,13 +46,15 @@ manifest with a `reason_contains` substring.
 
 ## Green gate
 
-For each scored task, run `lake build` inside `problems/<id>/`. Only fib needs
-its [participant setup](README.md#quick-start) first. This compiles the definitions and proofs, not an
+For each scored task, run `lake build` inside `problems/<id>/`. Fib, Mertens, and
+prime counting need their [participant setup](README.md#quick-start) first.
+This compiles the definitions and proofs, not an
 independent check against the official interface or permitted axioms.
 
 Regenerate participant dependencies with `python3 scripts/sync_participants.py`;
 use `--check` to verify their toolchains, Lake configuration, and fixed Spec copies
-against the canonical evaluation files. Fib additionally has a pinned Mathlib manifest.
+against the canonical evaluation files. Fib, Mertens, and prime counting additionally
+have pinned Mathlib manifests and generated setup scripts.
 Do not edit generated participant dependencies independently. The older
 `sync_fib_participant.py` command remains compatible for fib only.
 

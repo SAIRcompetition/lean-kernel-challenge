@@ -132,6 +132,10 @@ Replace `partition` with the chosen task. For fib, Mertens, and prime counting,
 install Git and Python 3.9+ and run `python3 setup.py` before building; each
 participant package documents that step. The other five need only core Lean.
 Edit `Submission.lean` and repeat `lake build`.
+For the three Mathlib tasks, local setup checks out the pinned packages, while
+the judge supplies only the import closure recorded in that task's
+`evaluation/problems/<id>/dependency-lock.json`. An additional Mathlib import
+can build locally without being available in the official workspace.
 Building compiles definitions and proofs; it does not independently check the official
 interface or permitted axioms, benchmark, or score the submission.
 

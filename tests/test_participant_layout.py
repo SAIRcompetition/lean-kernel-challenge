@@ -94,6 +94,9 @@ class ParticipantLayoutTests(unittest.TestCase):
                 target_eval.mkdir(parents=True)
                 for name in ("Spec.lean", "config.json", "lakefile.toml", "lean-toolchain",
                              "lake-manifest.json"):
+                    # Dependency-free evaluators may omit the optional empty manifest.
+                    if name == "lake-manifest.json" and not (source_eval / name).is_file():
+                        continue
                     shutil.copy2(source_eval / name, target_eval / name)
                 participant = root / "problems" / problem
                 participant.mkdir(parents=True)

@@ -53,9 +53,12 @@ verify such computations.
 ## Task
 
 Each problem provides a trusted specification `spec : Nat → Output`, where `Output` is
-the problem-specific output type. For `fib`, the spec is Mathlib v4.33.1's `Nat.fib`
-from `Mathlib.Data.Nat.Fib.Basic`; see its [official API and pinned source](problems/fib.md#mathlib-specification).
-The other seven scored tasks use their repository-defined core-Lean specs. Participants submit:
+the problem-specific output type. Three tasks use Mathlib v4.33.1 definitions:
+`fib` uses `Nat.fib`, `primecount` uses `Nat.primeCounting`, and `mertens` sums
+`ArithmeticFunction.moebius` through the inclusive input bound. Their problem pages
+link the exact declarations and pinned sources; see the
+[per-problem Mathlib status](problems/README.md#mathlib-status).
+The other five scored tasks use their repository-defined core-Lean specs. Participants submit:
 
 1. an implementation `impl : Nat → Output` optimized for kernel verification; and
 2. a proof `impl_correct : ∀ n, impl n = spec n`.
@@ -80,8 +83,9 @@ You may also use the locked workspace's library declarations. All other workspac
 The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, and `config.json`) are fixed,
 and the judge supplies its own copies. For all eight scored tasks, these live
 in `evaluation/problems/<id>/`, separately from the runnable participant package in
-`problems/<id>/`. Core-Lean participant packages include a generated fixed Spec copy;
-fib imports Mathlib directly. The simplest valid submission defines `impl` as the trusted
+`problems/<id>/`. All eight participant packages include a generated fixed Spec copy;
+the copies for fib, Mertens, and prime counting import pinned Mathlib definitions.
+The simplest valid submission defines `impl` as the trusted
 specification and proves correctness with `rfl`. This adds no optimization and does not
 guarantee that every performance case passes within its limits.
 
@@ -105,8 +109,8 @@ post-deadline submissions cannot replace it.
 
 ## Local development
 
-For all eight tasks, run `lake build` inside `problems/<id>/`; fib alone
-needs `python3 setup.py` first. No evaluation tools are needed. See the
+For all eight tasks, run `lake build` inside `problems/<id>/`; fib, Mertens, and
+prime counting need `python3 setup.py` first. No evaluation tools are needed. See the
 [participant guide](problems/README.md). Building compiles your definitions and proofs; it does not independently
 check the official interface or permitted axioms, benchmark, or score the submission.
 
@@ -119,8 +123,9 @@ Participation is also subject to the team, anti-cheating, and participant-cost p
   workspace files are locked.
 - **R2 — Reducible total function.** `impl` must be total, use only the dependencies supplied by
   the locked problem workspace, and be reducible by the kernel to an output literal for every
-  input. `fib` includes the pinned Mathlib Fibonacci import closure described in its
-  [problem statement](problems/fib.md); the other seven scored tasks remain core-Lean-only.
+  input. Fib, Mertens, and prime counting include the pinned Mathlib import closures
+  described in their [problem statements](problems/README.md#mathlib-status);
+  the other five scored tasks remain core-Lean-only.
   It may not be `partial` or
   `unsafe`. Well-founded recursion is permitted only if the resulting definition remains
   kernel-reducible.

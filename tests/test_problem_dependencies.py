@@ -297,6 +297,22 @@ class ProblemDependencyTests(unittest.TestCase):
         for problem in ("fib", "mertens", "primecount"):
             self.assertIn(f"/evaluation/problems/{problem}/.lake/packages", dockerfile)
 
+    def test_published_dependency_locks_match_canonical_problem_sources(self):
+        for problem in ("fib", "mertens", "primecount"):
+            with self.subTest(problem=problem):
+                problem_dir = ROOT / "evaluation/problems" / problem
+                loaded = deps.load_dependency_lock(problem_dir)
+                self.assertIsNotNone(loaded)
+                lock, _ = loaded
+                self.assertEqual(
+                    lock["root_modules"],
+                    prepare_deps._direct_imports(problem_dir / "Spec.lean"),
+                )
+                # Validate the actual manifest, source lakefile, toolchain and
+                # derived runtime lakefile without requiring local cache files.
+                runtime = deps.runtime_lakefile(problem_dir, lock)
+                self.assertNotIn(b"[[require]]", runtime)
+
 
 if __name__ == "__main__":
     unittest.main()

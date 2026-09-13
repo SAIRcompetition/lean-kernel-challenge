@@ -249,7 +249,8 @@ before launch.
 ## Local development
 
 Eight [participant workspaces](problems/README.md) are independent of the evaluator.
-Run `lake build` inside `problems/<id>/`; fib alone needs `python3 setup.py` first.
+Run `lake build` inside `problems/<id>/`; fib, Mertens, and prime counting need
+`python3 setup.py` first.
 This compiles definitions and proofs without the comparator, exporter, replay timer, or Docker.
 It does not independently check the official interface or permitted axioms,
 measure kernel performance, or produce a score.
@@ -269,10 +270,11 @@ the official path, but no official seed, cohort, PMU score, or production isolat
 See the [local evaluator guide](../evaluation/README.md).
 
 Fixed evaluation files for all eight tasks live in `evaluation/problems/<id>/`.
-The seven core-Lean tasks supply byte-identical generated Spec copies for participant
-builds. Fib instead imports Mathlib; judge setup prepares its pinned Fibonacci
-import closure for offline use. Its dependency lock
-is part of the specification identity; changing it requires fresh reference answers
-and a new cohort. Participant dependency files are generated from those same pins;
-maintainers verify all eight packages with `python3 scripts/sync_participants.py --check`.
-The other seven scored tasks do not require Mathlib.
+All eight tasks supply byte-identical generated Spec copies for participant builds.
+Fib, Mertens, and prime counting import pinned Mathlib definitions; judge setup
+prepares each task's locked import closure for offline use. Each dependency lock
+is part of that task's specification identity; changing it requires fresh reference
+answers and a new cohort. Participant dependency files are generated from those same
+pins; maintainers verify all eight packages with
+`python3 scripts/sync_participants.py --check`. The other five scored tasks do not
+require Mathlib.
