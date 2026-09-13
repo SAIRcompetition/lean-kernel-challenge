@@ -132,7 +132,7 @@ permitted axioms, benchmark, or score the submission. See the [participant guide
 For optional kernel evaluation, run from the repository root:
 
 ```bash
-bash evaluation/setup.sh
+bash evaluation/setup.sh --problem permanent
 python3 evaluation/run.py --problem permanent --submission problems/permanent/Submission.lean
 ```
 

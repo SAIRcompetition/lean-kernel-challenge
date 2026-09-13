@@ -8,8 +8,12 @@ blocker unless marked otherwise.
 The September 9 organizer decisions are recorded at the start of
 [`wording-review-2026-09-08.md`](wording-review-2026-09-08.md). They supersede the earlier
 partial-credit scoring and contestant-derived output preparation. This follow-up implements
-independent reference answers and `full-plan-v1` scoring in LKC, updates all nine configurations,
-and synchronizes the published rules. Platform integration and production acceptance remain:
+independent reference answers and `full-plan-v1` scoring in LKC, updates the eight current configurations,
+and synchronizes the published rules.
+
+The linked review is a historical record and may refer to retired tasks or earlier
+policies. Use the current eight-problem list and configurations for launch acceptance.
+Platform integration and production acceptance remain:
 
 - Prepare and validate official answer bundles on the pinned image using
   [`reference-answers.md`](reference-answers.md). Integrate the wrapper's required
@@ -22,7 +26,7 @@ and synchronizes the published rules. Platform integration and production accept
   work policies, invalid reference seals, and incomplete records. Verify that platform fields and
   displayed rankings agree with the canonical scorer, and never mix old and new cohorts.
 - Matrix permanent now has an organizer-confirmed `evaluation.memory_mb` of 8192 MiB (8 GiB).
-  Confirm and publish the final values for the other eight problems; their 4096 MiB entries
+  Confirm and publish the final values for the other seven problems; their 4096 MiB entries
   remain transitional values from the earlier envelope, not calibrated approvals.
   The wrapper now enforces the selected problem's cap with zero extra swap; the judge checks
   the image policy and actual cgroup, remote replay requests use the problem's cap, and the
@@ -68,8 +72,8 @@ and synchronizes the published rules. Platform integration and production accept
   announce them when determined. Platform answers must not supply a default opening time or an
   early Playground opening.
 
-The six target-work problem configurations use `work: curve, proof: gate`; `saw`, `ca-rule110`,
-and `sha256` retain `work: total, proof: include`. Regression checks exercise these policies
+The six target-work problem configurations use `work: curve, proof: gate`; `ca-rule110`
+and `sha256` use `work: total, proof: include`. Regression checks exercise these policies
 through the full-plan scorer. The official cohort dry run below must verify the production
 rankings and answer-bundle integration.
 
@@ -79,17 +83,18 @@ mode; passing it does not establish full performance coverage or per-problem mem
 
 ## 1. Official PMU evaluation sweep
 
-The nine scored problems have published input groups, generators, case counts, and limits in
+The eight scored problems have published input groups, generators, case counts, and limits in
 [`../rules/problem-scoring.md`](../rules/problem-scoring.md). Use the complete competition plans
-rather than local smoke ranges. `conv` is excluded from the nine leaderboards.
+rather than local smoke ranges. `conv` is excluded from the eight leaderboards.
 
 Historical scales, memory assumptions, and development measurements are preserved in
 [`history/prelaunch-calibration-2026-09-07.md`](history/prelaunch-calibration-2026-09-07.md).
 Use the current problem configurations and published policies for every check below.
 
-The full grouped plans must be measured with `perf -e instructions` on the official bare-metal
-Linux executor. Record acceptance for the current policies. Local wall-time calibration cannot
-validate production instruction counts or PMU behavior.
+The full grouped plans must be measured by the judge's timer with `--count-instructions`
+on the official bare-metal Linux executor. The timer opens its own PMU counter with
+`perf_event_open` and enables it only around kernel replay. Record acceptance for the current
+policies. Local wall-time calibration cannot validate production instruction counts or PMU behavior.
 
 **To close:** run every official group through `scripts/run_isolated.sh` with the pinned executor,
 three timing repetitions, an official seed, and an official cohort. Confirm that:
@@ -100,13 +105,13 @@ three timing repetitions, an official seed, and an official cohort. Confirm that
 - the published replay limits, independent preparation caps, and memory envelope are
   operationally feasible.
 
-Prove the PMU path itself first. The judge preflights `perf stat -e instructions` after the
-correctness gate and axiom audit, before timed replay. It refuses a user-only (`instructions:u`)
-downgrade, so a broken
-counter fails loudly — but the host must still pass that preflight: confirm the Ubuntu
-`linux-tools` wrapper has a perf build for the *running* kernel (it resolves via `uname -r`, so a
-host kernel update without an image rebuild breaks it), and that `--perfmon` plus the host
-`perf_event_paranoid` setting deliver kernel-scope counts to the non-root container user. Pin
+Prove the PMU path itself first. The judge runs `perf stat -e instructions` after the
+correctness gate and axiom audit, before timed replay. This is a preflight, not the scoring
+counter, and it refuses a user-only (`instructions:u`) downgrade. Confirm the Ubuntu
+`linux-tools` wrapper has a perf build for the running kernel. Then verify the timer's own
+counter under the official non-root container envelope; passing `perf stat` alone is not enough.
+Check that `--perfmon` and the host's `perf_event_paranoid` setting permit full user-and-kernel
+counts for that user. Pin
 `EVALUATION_EXECUTOR_ID`/`EVALUATION_EXECUTOR_VERSION` explicitly for the fleet: the default
 derivation hashes `/proc/cpuinfo` including microcode, so a routine host security update mid-round
 would rotate the cohort id and fork the leaderboard.

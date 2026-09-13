@@ -4,11 +4,11 @@ You do not need the evaluator to develop or submit a solution. Follow the
 [participant guide](../rules/problems/README.md) to build your code with `lake build`.
 Checking the locked interface and permitted axioms is the evaluator's job.
 
-The supported separated tasks are `fib`, `partition`, `mertens`, `primecount`,
+The eight Stage 1 tasks are `fib`, `partition`, `mertens`, `primecount`,
 `permanent`, `ca-rule110`, `sha256`, and `polydisc`. Their fixed workspaces live
 in `evaluation/problems/<id>/`, separate from editable `problems/<id>/Submission.lean`.
 Shared judge code remains in the root `judge/` and `scripts/` directories.
-`saw` and experimental `conv` retain their existing layout and legacy entrypoints.
+Experimental `conv` is outside Stage 1 and retains its legacy development entrypoints.
 
 ## Run from the repository root
 
@@ -23,12 +23,17 @@ python3 evaluation/run.py --problem partition --submission problems/partition/Su
 ```
 
 Replace `partition` with the chosen task. Omit `--problem` from setup to prepare
-all eight tasks. To evaluate another file or set a
-local time budget:
+all eight tasks. To evaluate another file or adjust the local timeout:
 
 ```sh
 python3 evaluation/run.py --problem partition --submission path/to/Submission.lean --timeout 120
 ```
+
+`--timeout` is not a total runtime limit. It sets the correctness-replay limit and
+each case's shared build/export budget. The target-replay limit is the smaller of
+this value and the group's published limit. The comparator keeps its 3,600-second
+limit, and axiom audits keep their 300-second limit. Cases have independent budgets,
+so the complete run can take longer than `--timeout`.
 
 `--submission` defaults to `problems/<id>/Submission.lean`. The wrapper copies
 only that file into a temporary payload and delegates to the canonical judge.

@@ -67,7 +67,7 @@ review; and a correctness-replay timeout leaves an otherwise accepted submission
 the attested memory limit for that problem, a memory kill in the comparator or correctness axiom
 audit is a terminal rejection, while a timed correctness-replay memory kill is accepted but unscored.
 
-Stage 1 has **nine independent 100-point problem leaderboards**. There is no cross-problem total or
+Stage 1 has **eight independent 100-point problem leaderboards**. There is no cross-problem total or
 relative-placement aggregation. `conv` is retained as an experimental development task and is not
 part of these leaderboards.
 
@@ -93,9 +93,9 @@ these per-case budgets. A timeout does not by itself prove that `impl` is not ke
 a confirmed violation of R2 is a rejection.
 
 Each problem has its own memory limit, declared in `evaluation.memory_mb` (MiB) in
-the locked `config.json` (`evaluation/problems/<id>/` for the eight separated tasks;
-`problems/saw/` for saw) and published before official use. Matrix permanent (`permanent`)
-has an 8192 MiB (8 GiB) limit. The other eight problems retain provisional 4096 MiB (4 GiB)
+the locked `evaluation/problems/<id>/config.json` and published before official use.
+Matrix permanent (`permanent`) has an 8192 MiB (8 GiB) limit. The other seven problems
+retain provisional 4096 MiB (4 GiB)
 limits pending organizer confirmation. Official-host validation remains required for every
 problem; these allocations do not establish that every current baseline fits.
 Organizers may revise a problem's limit during the competition. The limit is fixed within each
@@ -240,8 +240,10 @@ accepted but unscored.
 - Official kernel replay uses that local PMU environment. Non-official KTP/3 validation may send
   only immutable exported artifacts to a remote executor and binds each request and response to
   the applicable problem memory limit.
-- The stage uses Lean **v4.33.1**, comparator `3927ad3`, lean4export `15f6055`, and
-  kernel replay via Lean's built-in `Lean.Replay`.
+- The stage uses Lean **v4.33.1**, comparator `3927ad3` with the checked-in
+  [emit-export patch](../patches/comparator-emit-export.patch), lean4export `15f6055`,
+  and kernel replay via Lean's built-in `Lean.Replay`. Full revision pins are in
+  [`pipeline/config.json`](../pipeline/config.json); evaluator setup applies the patch.
 - Attempts to escape the evaluation environment or exploit the judge result in disqualification.
 
 The production measurement and container paths must be validated on the official PMU hardware
@@ -255,17 +257,10 @@ This compiles definitions and proofs without the comparator, exporter, replay ti
 It does not independently check the official interface or permitted axioms,
 measure kernel performance, or produce a score.
 
-The legacy `saw` demo remains in `scripts/quick_test.py`. It builds a submission
-and compares compiled executions of `impl` and the trusted specification on small,
-fixed, public inputs. This convenience check does
-not invoke the judge, hidden plan, PMU counter, production isolation, axiom audit, verdict, or
-scorer. Compiled execution is not an official metric, and passing this demo does not establish
-acceptance or performance.
-
-For optional kernel measurements on a separated task, run from the repository root:
+For optional kernel measurements, run from the repository root:
 
 ```bash
-bash evaluation/setup.sh
+bash evaluation/setup.sh --problem fib
 python3 evaluation/run.py --problem fib --submission problems/fib/Submission.lean
 ```
 
@@ -274,14 +269,13 @@ file and delegates to `scripts/perf_eval.py`. It runs that problem's complete
 unseeded public plan with one wall-time repetition through the
 canonical judge. This uses the same export, audit, and measurement boundaries as
 the official path, but no official seed, cohort, PMU score, or production isolation.
-See the [local evaluator guide](../evaluation/README.md). Legacy tasks can continue
-to use `scripts/perf_eval.py` directly.
+See the [local evaluator guide](../evaluation/README.md).
 
-Fixed evaluation files for the eight separated tasks live in `evaluation/problems/<id>/`.
+Fixed evaluation files for all eight tasks live in `evaluation/problems/<id>/`.
 The seven core-Lean tasks supply byte-identical generated Spec copies for participant
 builds. Fib instead imports Mathlib; judge setup prepares its pinned Fibonacci
 import closure for offline use. Its dependency lock
 is part of the specification identity; changing it requires fresh reference answers
 and a new cohort. Participant dependency files are generated from those same pins;
 maintainers verify all eight packages with `python3 scripts/sync_participants.py --check`.
-The other eight scored tasks do not require Mathlib.
+The other seven scored tasks do not require Mathlib.

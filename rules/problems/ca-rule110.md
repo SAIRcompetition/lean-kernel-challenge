@@ -136,10 +136,9 @@ outside the measured groups.
 The hidden closed theorems `impl n = v` then measure reduction at selected inputs; passing
 those instances alone cannot replace the universal proof.
 
-`impl` must be total and kernel-reducible.
-Use core Lean only; Mathlib imports are not allowed.
-Only `propext`, `Quot.sound`, and `Classical.choice` are permitted axioms.
-Submissions may not rely on `sorry`, `native_decide`, `partial`, or `unsafe`.
+Use total, kernel-reducible core Lean code without Mathlib. The
+[shared submission requirements](README.md#what-a-submission-must-establish)
+apply, including the permitted axioms and proof restrictions.
 
 ## Starter Code and Local Testing
 
@@ -165,7 +164,7 @@ permitted axioms, benchmark, or score the submission. See the [participant guide
 For optional kernel evaluation, run from the repository root:
 
 ```bash
-bash evaluation/setup.sh
+bash evaluation/setup.sh --problem ca-rule110
 python3 evaluation/run.py --problem ca-rule110 --submission problems/ca-rule110/Submission.lean
 ```
 

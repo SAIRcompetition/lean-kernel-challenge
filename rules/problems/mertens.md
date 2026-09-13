@@ -118,7 +118,7 @@ permitted axioms, benchmark, or score the submission. See the [participant guide
 For optional kernel evaluation, run from the repository root:
 
 ```bash
-bash evaluation/setup.sh
+bash evaluation/setup.sh --problem mertens
 python3 evaluation/run.py --problem mertens --submission problems/mertens/Submission.lean
 ```
 

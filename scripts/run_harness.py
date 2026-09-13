@@ -37,7 +37,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-from problem_layout import iter_evaluation_problem_dirs
+from problem_layout import RETIRED_PROBLEMS, iter_evaluation_problem_dirs
 
 JUDGE = ROOT / "judge" / "judge.py"
 MANIFEST = ROOT / "tests" / "harness_manifest.json"
@@ -68,6 +68,7 @@ def validate_manifest(cases):
     discovered = {
         (path.parent.parent.name, path.parent.name)
         for path in SUBS.glob("*/*/Submission.lean")
+        if path.parent.parent.name not in RETIRED_PROBLEMS
     }
     registered = set(keys)
     missing = sorted(registered - discovered)

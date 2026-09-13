@@ -157,10 +157,9 @@ All helpers must also be inside `namespace Submission`.
 The universal theorem covers every input and all five bands, while the measured closed
 theorem `impl n = v` evaluates one hidden instance against its exact `Int` literal.
 
-The implementation must be total and kernel-reducible.
-Use core Lean only; Mathlib imports are not allowed.
-Only `propext`, `Quot.sound`, and `Classical.choice` are permitted axioms.
-Do not use `sorry`, `native_decide`, `partial`, or `unsafe` to bypass the contract.
+Use total, kernel-reducible core Lean code without Mathlib. The
+[shared submission requirements](README.md#what-a-submission-must-establish)
+apply, including the permitted axioms and proof restrictions.
 
 ## Starter Code and Local Testing
 
@@ -185,7 +184,7 @@ permitted axioms, benchmark, or score the submission. See the [participant guide
 For optional kernel evaluation, run from the repository root:
 
 ```bash
-bash evaluation/setup.sh
+bash evaluation/setup.sh --problem polydisc
 python3 evaluation/run.py --problem polydisc --submission problems/polydisc/Submission.lean
 ```
 

@@ -71,7 +71,7 @@ if hasattr(sys, "set_int_max_str_digits"):
 ROOT = Path(__file__).resolve().parent.parent            # lean-kernel-challenge/
 sys.path.insert(0, str(ROOT / "scripts"))
 from memory_policy import memory_mb_from_envelope as _memory_mb_from_envelope, problem_memory_mb
-from problem_layout import evaluation_problem_dir, iter_evaluation_problem_dirs
+from problem_layout import RETIRED_PROBLEMS, evaluation_problem_dir, iter_evaluation_problem_dirs
 from problem_dependencies import (
     ARTIFACT_SUFFIXES as DEPENDENCY_ARTIFACT_SUFFIXES,
     DependencyError,
@@ -87,14 +87,20 @@ RESULTS = ROOT / "results"
 def _problem_dir(problem):
     # Retain explicit custom-workspace overrides used by local integration fixtures.
     # Migrated packages always resolve to their evaluator-owned workspaces.
+    if problem in RETIRED_PROBLEMS:
+        raise InfraError(f"retired evaluator problem: {problem}")
     if PROBLEMS != _DEFAULT_PROBLEMS:
         return PROBLEMS / problem
-    return evaluation_problem_dir(ROOT, problem)
+    try:
+        return evaluation_problem_dir(ROOT, problem)
+    except ValueError as exc:
+        raise InfraError(str(exc)) from exc
 
 
 def _problem_dirs():
     if PROBLEMS != _DEFAULT_PROBLEMS:
-        return (path.parent for path in sorted(PROBLEMS.glob("*/config.json")))
+        return (path.parent for path in sorted(PROBLEMS.glob("*/config.json"))
+                if path.parent.name not in RETIRED_PROBLEMS)
     return iter_evaluation_problem_dirs(ROOT)
 
 # Judge budgets + timing/sandbox policy live in pipeline/config.json (SAIR convention).
@@ -3109,7 +3115,7 @@ def leaderboard():
         print(f"no results yet at {RESULTS}")
         return
     for pdir in sorted(RESULTS.iterdir()):
-        if not pdir.is_dir() or pdir.name in ("work", "plots"):
+        if not pdir.is_dir() or pdir.name in ("work", "plots") or pdir.name in RETIRED_PROBLEMS:
             continue
         for f in sorted(pdir.glob("*.json")):
             try:
@@ -3123,6 +3129,8 @@ def leaderboard():
             if not (isinstance(r, dict)
                     and isinstance(r.get("problem"), str) and isinstance(r.get("submission"), str)
                     and isinstance(r.get("status"), str) and isinstance(r.get("stages"), dict)):
+                continue
+            if r["problem"] in RETIRED_PROBLEMS:
                 continue
             if r["problem"] not in stage1_problems:
                 legacy_rows.append(r)

@@ -40,7 +40,7 @@ class MemoryPolicyTests(unittest.TestCase):
             if "evaluation" in cfg:
                 count += 1
                 self.assertTrue(valid_memory_mb(problem_memory_mb(cfg)), path)
-        self.assertEqual(count, 9)
+        self.assertEqual(count, 8)
 
     def test_ci_memory_command_reads_the_evaluator_config(self):
         workflow = (ROOT / ".github/workflows/isolation-wrapper.yml").read_text()

@@ -4,6 +4,15 @@ results/
 __pycache__/
 .git/
 
+# Local-only retired SAW files must not enter an evaluation image.
+problems/saw/
+evaluation/problems/saw/
+examples/submissions/saw/
+rules/problems/saw.md
+scripts/quick_test.py
+tests/test_quick_test.py
+tests/retired_saw_quick_test.py
+
 # Host-prebuilt verification tools (staged by scripts/prebuild-tools.sh) are
 # the one exception to the .lake exclusion: they must reach the image build.
 !prebuilt-tools/

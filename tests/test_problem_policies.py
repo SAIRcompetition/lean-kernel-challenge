@@ -55,14 +55,6 @@ GROUPED_PROBLEMS = {
         "timeouts": [30, 60, 120],
         "profile": "hardest_group_then_count",
     },
-    "saw": {
-        "ids": ["S1", "S2", "S3"],
-        "kind": "packed",
-        "scales": [4, 6, 8],
-        "counts": [2, 2, 2],
-        "timeouts": [30, 60, 120],
-        "profile": "hardest_group_then_count",
-    },
     "ca-rule110": {
         "ids": ["C1", "C2", "C3"],
         "kind": "packed",
@@ -99,7 +91,7 @@ def _config(problem):
 
 
 class PublishedProblemPolicyTests(unittest.TestCase):
-    def test_exactly_nine_grouped_leaderboards_and_conv_is_excluded(self):
+    def test_exactly_eight_grouped_leaderboards_and_conv_is_excluded(self):
         found = {
             path.name
             for path in iter_evaluation_problem_dirs(ROOT)

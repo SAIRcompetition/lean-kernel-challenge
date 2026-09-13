@@ -52,7 +52,11 @@ def evaluate(problem, submission_dir, timeout=120):
         return _failure(problem, submission, "error", "timeout must be positive")
     if not _judge.valid_slug(problem):
         return _failure(problem, submission, "error", f"invalid problem slug {problem!r}")
-    if not (evaluation_problem_dir(BASE, problem) / "config.json").is_file():
+    try:
+        problem_dir = evaluation_problem_dir(BASE, problem)
+    except ValueError as exc:
+        return _failure(problem, submission, "error", str(exc))
+    if not (problem_dir / "config.json").is_file():
         return _failure(problem, submission, "error", f"unknown problem '{problem}'")
     if (_judge.OFFICIAL_EVAL or _judge.PERF_SEED or _judge.EVALUATION_COHORT
             or _judge.TIMING_EXECUTOR_URLS

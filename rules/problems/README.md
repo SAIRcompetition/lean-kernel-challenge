@@ -1,6 +1,6 @@
 # Stage 1 — Problem Statements
 
-Each page below presents one of the nine scored problems in contest-statement format:
+Each page below presents one of the eight scored problems in contest-statement format:
 problem statement, input, output, examples, constraints and scoring, and submission requirements.
 Starter-code and local-testing instructions follow the statement. Unlike a standard-input /
 standard-output programming contest, a submission here is a Lean function and a proof.
@@ -16,7 +16,6 @@ workspace is not a scored Stage 1 problem.
 | [Mertens function (`mertens`)](mertens.md) | Sum of the Möbius function | Inclusive upper bound | `Int` | Target |
 | [Prime counting (`primecount`)](primecount.md) | Number of primes up to a bound | Inclusive upper bound | `Nat` | Target |
 | [Matrix permanent (`permanent`)](permanent.md) | Permanent of a generated 0/1 matrix | Packed dimension and seed | `Nat` | Target |
-| [Self-avoiding walks (`saw`)](saw.md) | Count of walks avoiding revisits and generated obstacles | Packed length and seed | `Nat` | Combined |
 | [Rule 110 (`ca-rule110`)](ca-rule110.md) | Evolution of a 256-cell cyclic row | Packed steps and seed | `Nat` | Combined |
 | [SHA-256 chain (`sha256`)](sha256.md) | Repeated hashing of a 32-byte digest | Packed chain length and seed | `Nat` | Combined |
 | [Polynomial discriminant (`polydisc`)](polydisc.md) | Discriminant of a generated monic degree-24 polynomial | Width-band and instance selector | `Int` | Target |
@@ -27,9 +26,8 @@ The full schedule and common resource limits are in
 
 ## Read the specification before implementing
 
-The fixed evaluation files define the interface. All scored tasks except `saw` now
-keep them in `evaluation/problems/<id>/`, separately from participant files.
-`saw` and experimental `conv` retain their original `problems/<id>/` workspaces:
+The fixed evaluation files define the interface. All eight scored tasks keep them
+in `evaluation/problems/<id>/`, separately from participant files:
 
 - `Spec.lean` defines or imports the function the implementation must equal, including any
   input decoder and instance generator. `fib` imports Mathlib v4.33.1's official
@@ -41,11 +39,11 @@ keep them in `evaluation/problems/<id>/`, separately from participant files.
 - `config.json` specifies the evaluation groups, sampling policy, resource limits, and ranking
   policy.
 
-The eight separated participant packages contain runnable `Submission.lean` files
+The eight participant packages contain runnable `Submission.lean` files
 with two short TODOs. The seven core-Lean packages also contain a generated fixed
 `Spec.lean` dependency; do not edit it. Fib imports Mathlib directly and provides
 its own dependency setup. No participant package contains the judge interfaces or
-scoring configuration. The legacy `saw` template is unchanged.
+scoring configuration.
 
 The completed starting implementations are under `examples/submissions/<id>/baseline/`.
 Some problems also have another example implementation. A baseline is a starting point, not a
@@ -53,7 +51,7 @@ promise that it completes every official case within the configured limits.
 
 Mathematical descriptions explain the intended computation. The formal correctness target is
 the definition supplied or imported by the locked `Spec.lean`. For `fib`, it is `Nat.fib`
-itself. The other eight tasks still use their repository-defined specs; no separate equivalence
+itself. The other seven tasks use their repository-defined specs; no separate equivalence
 theorem to Mathlib is supplied for them.
 
 ## What a submission must establish
@@ -70,14 +68,14 @@ impl_correct : ∀ n, impl n = spec n
 page. They are not declarations to add to the submission.
 
 The proof covers **every natural-number input**, not just the three scored groups or the
-public demo inputs. For packed-input problems, this means all instances defined by the locked
+worked examples. For packed-input problems, this means all instances defined by the locked
 decoder and generator; it does not mean all possible matrices, graphs, or byte strings.
 
 The implementation may use a different algorithm or representation. The correctness proof may
 use induction, rewriting, and other permitted Lean reasoning; it need not be `rfl`. Separately,
 the implementation must be total and kernel-reducible to its output literal. Use only the
 dependencies supplied by the locked problem workspace: `fib` includes the pinned Mathlib
-Fibonacci import closure; the other eight tasks remain core-Lean-only. Only `propext`,
+Fibonacci import closure; the other seven tasks remain core-Lean-only. Only `propext`,
 `Quot.sound`, and `Classical.choice` are permitted proof axioms; `sorry` and `native_decide`
 are not accepted. See
 [Rules R1–R5](../overview.md#rules).
@@ -100,7 +98,7 @@ For an otherwise scoreable submission:
 Official medians use three repetitions. Every submission must complete all correctness
 replays, including on target-work problems where that cost is not added to ranking work.
 Infrastructure errors and incomplete runs are unscored, not zero-point contestant failures.
-The nine problem leaderboards are independent; there is no combined competition score.
+The eight problem leaderboards are independent; there is no combined competition score.
 
 The tables on individual pages give per-repetition target-process watchdogs, not a time budget
 shared by a whole group. Preparation and correctness checks have their own limits. The official
@@ -109,7 +107,7 @@ metric counts kernel instructions, not compiled runtime or total process wall ti
 
 ## Local participant build
 
-For any separated task, install `elan` and run from the repository root:
+For any scored task, install `elan` and run from the repository root:
 
 ```bash
 cd problems/partition
@@ -126,23 +124,3 @@ For optional kernel measurements, follow the separate
 [evaluation setup](../../evaluation/README.md). It uses the canonical judge on the
 selected task's complete unseeded public plan with one wall-time repetition,
 not official scores. Only `Submission.lean` is passed to the judge.
-
-## Quick test before using the judge
-
-This legacy helper now supports only `saw`. Run from the repository root:
-
-```bash
-python3 scripts/quick_test.py
-python3 scripts/quick_test.py --problem saw
-python3 scripts/quick_test.py --problem saw --submission path/to/Submission.lean
-```
-
-The helper creates a temporary workspace, builds the submitted implementation and
-universal proof, and compares compiled outputs against
-the specification on fixed public inputs. It does not submit anything, invoke the official
-judge, audit permitted axioms, use hidden inputs or PMU counters, or produce a score.
-Passing the demo does not establish official acceptance or kernel performance.
-
-For kernel measurements on `saw`, see [Local development](../evaluation.md#local-development)
-and the [judge setup](../../README.md#maintainer-regression-and-judge-checks).
-Keep compiled quick tests, local kernel measurements, and official PMU scores separate.

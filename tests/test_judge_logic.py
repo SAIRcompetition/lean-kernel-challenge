@@ -18,6 +18,43 @@ import judge
 import perf_eval
 
 
+class RetiredProblemTests(unittest.TestCase):
+    def test_local_leaderboard_ignores_retired_results_but_keeps_conv(self):
+        with tempfile.TemporaryDirectory() as temp:
+            results = Path(temp)
+            for problem in ("saw", "conv"):
+                path = results / problem / "old.json"
+                path.parent.mkdir()
+                path.write_text(json.dumps({
+                    "problem": problem, "submission": "retained-" + problem,
+                    "status": "rejected", "stages": {},
+                }))
+            with mock.patch.object(judge, "RESULTS", results):
+                judge.leaderboard()
+            report = (results / "leaderboard.md").read_text()
+            self.assertNotIn("retained-saw", report)
+            self.assertIn("retained-conv", report)
+            self.assertTrue((results / "saw/old.json").is_file())
+            self.assertFalse((results / "saw/leaderboard-local.md").exists())
+
+    def test_retained_saw_workspace_is_not_resolved_or_assembled(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for problem in ("saw", "conv"):
+                config = root / "problems" / problem / "config.json"
+                config.parent.mkdir(parents=True)
+                config.write_text("{}")
+            for custom in (False, True):
+                with self.subTest(custom_workspace=custom), \
+                     mock.patch.object(judge, "ROOT", root), \
+                     mock.patch.object(judge, "PROBLEMS", root / "problems" if custom
+                                       else judge._DEFAULT_PROBLEMS):
+                    self.assertNotIn("saw", {path.name for path in judge._problem_dirs()})
+                    with self.assertRaisesRegex(judge.InfraError, "retired evaluator problem: saw"):
+                        judge.assemble(root / "job", "saw", root / "submission")
+                    self.assertEqual(judge._problem_dir("conv"), root / "problems/conv")
+
+
 class PerfInputTests(unittest.TestCase):
     def test_official_modes_require_seed(self):
         cfg = {"perf": {"min": 1, "max": 100, "count": 4}}

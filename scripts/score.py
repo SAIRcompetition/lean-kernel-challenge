@@ -39,6 +39,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESULTS = os.path.join(ROOT, "results")
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 from memory_policy import memory_mb_from_envelope, valid_memory_mb
+from problem_layout import RETIRED_PROBLEMS
 with open(os.path.join(ROOT, "pipeline", "config.json")) as _config_file:
     _PIPELINE_POLICY = json.load(_config_file)
 _TIMING_POLICY = _PIPELINE_POLICY["timing"]
@@ -56,7 +57,7 @@ STAGE1_OFFICIAL_BUDGETS = {
 STAGE1_OFFICIAL_TOOLCHAIN = _PIPELINE_POLICY["toolchain"]
 STAGE1_PROBLEMS = frozenset({
     "ca-rule110", "fib", "mertens", "partition", "permanent",
-    "polydisc", "primecount", "saw", "sha256",
+    "polydisc", "primecount", "sha256",
 })
 
 REMOTE_PROTOCOL = _TIMING_POLICY["remote_protocol"]
@@ -109,7 +110,7 @@ def _load_verdicts():
         return rows
     for prob in sorted(os.listdir(RESULTS)):
         pdir = os.path.join(RESULTS, prob)
-        if not os.path.isdir(pdir) or prob in ("work", "plots"):
+        if not os.path.isdir(pdir) or prob in ("work", "plots") or prob in RETIRED_PROBLEMS:
             continue
         for fn in sorted(os.listdir(pdir)):
             if not fn.endswith(".json"):
@@ -988,6 +989,9 @@ def _score_row(verdict, metric):
     coverage auditable rather than inferring it from the largest sampled input.
     """
     row = _base_row(verdict, metric, None)
+    if isinstance(verdict.get("problem"), str) and verdict["problem"] in RETIRED_PROBLEMS:
+        row["reason"] = "retired problem is not scoreable"
+        return row
     if verdict.get("status") != "accepted":
         row["reason"] = "verdict status is not accepted"
         return row
@@ -1248,6 +1252,8 @@ def _groups(verdicts):
     for verdict in verdicts:
         metric = verdict.get("metric")
         if (verdict.get("status") != "accepted"
+                or (isinstance(verdict.get("problem"), str)
+                    and verdict["problem"] in RETIRED_PROBLEMS)
                 or not isinstance(metric, str) or metric not in METRICS):
             continue
         cohort = verdict.get("evaluation_cohort")
@@ -1279,6 +1285,8 @@ def _is_stage1_public_verdict(verdict):
     executor = policy.get("executor") if isinstance(policy, dict) else None
     return (
         _is_grouped_verdict(verdict)
+        and isinstance(verdict.get("problem"), str)
+        and verdict.get("problem") in STAGE1_PROBLEMS
         and verdict.get("evaluation_mode") == "official"
         and policy.get("evaluation_mode") == "official"
         and verdict.get("metric") == "perf_instructions"

@@ -1,7 +1,7 @@
 # Preparing official reference answers
 
 Stage 1 obtains expected outputs independently of contestant implementations.
-`judge/reference_answers.py` provides exact Python algorithms for all nine
+`judge/reference_answers.py` provides exact Python algorithms for all eight
 problems, using only the standard library. Operators prepare each problem's
 complete hidden plan once and reuse its private answer bundle across submissions
 in that cohort. A separately produced table is also acceptable if it matches the
@@ -10,10 +10,10 @@ same schema, specification, and input plan.
 ## Prepare and evaluate
 
 Use the same checked-out evaluator and problem definitions as the official image.
-For the eight separated tasks, the fixed spec and configuration are in
+For all eight scored tasks, the fixed spec and configuration are in
 `evaluation/problems/<id>/`, not the participant folder `problems/<id>/`.
 Fib's dependency lock also lives there. The preparation command resolves this
-layout automatically; `saw` and experimental `conv` retain their original workspaces.
+layout automatically. Experimental `conv` retains its original development workspace.
 Pass the secret seed through stdin; do not commit answers or include them in logs:
 
 ```bash
@@ -25,6 +25,11 @@ PERF_SEED="$(cat /private/evaluation/seed.txt)" scripts/run_isolated.sh \
   --results /absolute/path/to/results --cohort stage1-round1 \
   --reference-answers /private/evaluation/fib-answers.json --perfmon
 ```
+
+Here, `--submission` is a directory containing only `Submission.lean`, not the
+whole `problems/<id>/` package. The `--results` directory must be writable by the
+container's `judge` user (UID 10001 on a native Linux Docker host). In contrast,
+the [local evaluator](../evaluation/README.md) accepts a single file via `--submission`.
 
 The seed file contains one UTF-8 line. Preparation writes a new mode-0600 file
 and refuses to overwrite an existing one. `--official` rejects `PERF_COUNT`
@@ -57,7 +62,7 @@ The bundle has exactly these fields:
 This small example illustrates the format; an official bundle must cover the
 complete resolved plan in order. Values are canonical decimal strings, allowing
 large exact integers without JSON number rounding. `mertens` and `polydisc` use
-`Int`; the other seven use `Nat`. Negative zero, signs on zero, leading zeros,
+`Int`; the other six use `Nat`. Negative zero, signs on zero, leading zeros,
 duplicate or missing inputs, wrong output types, and mismatched specifications
 are rejected before contestant code executes.
 
@@ -80,4 +85,4 @@ A numerically wrong reference answer cannot make an incorrect equality pass the
 kernel; it causes an evaluation error requiring organizer investigation. Expected
 answers do not become axioms, and the universal proof is not used to bypass the
 measured target reduction. The legacy `conv` development task retains its separate
-Lean value oracle and is outside the nine scored problems.
+Lean value oracle and is outside the eight scored problems.

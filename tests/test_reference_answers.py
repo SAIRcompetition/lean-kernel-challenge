@@ -21,6 +21,31 @@ from test_packed_instance_specs import CASES, POLYDISC_VECTORS, lean_int_values
 
 
 class ReferenceAnswerTests(unittest.TestCase):
+    def test_reference_registry_excludes_retired_saw(self):
+        self.assertEqual(set(reference.OUTPUT_TYPES), {
+            "fib", "ca-rule110", "mertens", "partition", "permanent", "polydisc",
+            "primecount", "sha256",
+        })
+        with self.assertRaisesRegex(ValueError, "unsupported reference problem"):
+            reference.compute_answer("saw", 0)
+        with self.assertRaisesRegex(ValueError, "unsupported reference problem"):
+            reference.prepare("saw", [0], "a" * 64)
+        bundle = reference.prepare("fib", [0], "a" * 64)
+        bundle["problem"] = "saw"
+        with self.assertRaises(ValueError):
+            reference.validate(bundle, "saw", [0], "a" * 64)
+
+    def test_reference_cli_rejects_retired_saw_without_writing_answers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "answers.json"
+            result = subprocess.run([
+                sys.executable, str(ROOT / "scripts/prepare_reference.py"),
+                "--problem", "saw", "--output", str(output),
+            ], text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("invalid choice: 'saw'", result.stderr)
+            self.assertFalse(output.exists())
+
     def test_packed_and_polydisc_match_independent_frozen_answers(self):
         for problem, case_set in CASES.items():
             for scale, seed, expected in case_set["vectors"]:

@@ -61,7 +61,7 @@ verified correctness artifact and the generated checks for judge-selected
 inputs.
 
 The problem set spans areas of computational mathematics including algebra,
-number theory, combinatorics, cryptography, and discrete mathematics. The nine
+number theory, combinatorics, cryptography, and discrete mathematics. The eight
 Stage 1 problems and their scoring groups are published in this repository
 (see [`problem-scoring.md`](problem-scoring.md)); submissions open at the
 official launch.

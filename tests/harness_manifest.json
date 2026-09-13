@@ -28,11 +28,6 @@
       "expect": "accepted"
     },
     {
-      "problem": "saw",
-      "submission": "baseline",
-      "expect": "accepted"
-    },
-    {
       "problem": "permanent",
       "submission": "baseline",
       "expect": "accepted"

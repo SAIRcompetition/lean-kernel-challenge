@@ -14,3 +14,12 @@ lake-manifest.json
 
 # Host-prebuilt verification tools (scripts/prebuild-tools.sh)
 prebuilt-tools/
+
+# Retired SAW assets stay local and are not part of the Stage 1 problem set.
+/problems/saw/
+/evaluation/problems/saw/
+/examples/submissions/saw/
+/rules/problems/saw.md
+/scripts/quick_test.py
+/tests/test_quick_test.py
+/tests/retired_saw_quick_test.py

@@ -55,7 +55,7 @@ verify such computations.
 Each problem provides a trusted specification `spec : Nat → Output`, where `Output` is
 the problem-specific output type. For `fib`, the spec is Mathlib v4.33.1's `Nat.fib`
 from `Mathlib.Data.Nat.Fib.Basic`; see its [official API and pinned source](problems/fib.md#mathlib-specification).
-The other eight scored tasks use their repository-defined core-Lean specs. Participants submit:
+The other seven scored tasks use their repository-defined core-Lean specs. Participants submit:
 
 1. an implementation `impl : Nat → Output` optimized for kernel verification; and
 2. a proof `impl_correct : ∀ n, impl n = spec n`.
@@ -69,7 +69,7 @@ evaluation policy. Hardcoded tables and special cases are permitted when covered
 proof. Their correctness replays must satisfy the resource limits, and their instruction costs
 enter ranking according to the problem's declared work policy. See
 [`evaluation.md`](evaluation.md) for the common measurement rules and
-[`problem-scoring.md`](problem-scoring.md) for the nine independent leaderboards.
+[`problem-scoring.md`](problem-scoring.md) for the eight independent leaderboards.
 
 ## Submission
 
@@ -78,10 +78,10 @@ Submit exactly one **`Submission.lean`** file, at most **1 MiB**. It must contai
 You may also use the locked workspace's library declarations. All other workspace files are locked.
 
 The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, and `config.json`) are fixed,
-and the judge supplies its own copies. For all scored tasks except `saw`, these live
+and the judge supplies its own copies. For all eight scored tasks, these live
 in `evaluation/problems/<id>/`, separately from the runnable participant package in
 `problems/<id>/`. Core-Lean participant packages include a generated fixed Spec copy;
-fib imports Mathlib directly. `saw` retains its existing layout. The simplest valid submission defines `impl` as the trusted
+fib imports Mathlib directly. The simplest valid submission defines `impl` as the trusted
 specification and proves correctness with `rfl`. This adds no optimization and does not
 guarantee that every performance case passes within its limits.
 
@@ -105,19 +105,10 @@ post-deadline submissions cannot replace it.
 
 ## Local development
 
-For the eight separated tasks, run `lake build` inside `problems/<id>/`; fib alone
+For all eight tasks, run `lake build` inside `problems/<id>/`; fib alone
 needs `python3 setup.py` first. No evaluation tools are needed. See the
 [participant guide](problems/README.md). Building compiles your definitions and proofs; it does not independently
 check the official interface or permitted axioms, benchmark, or score the submission.
-
-The existing `python3 scripts/quick_test.py` retains only the legacy `saw` demo.
-It compares compiled baseline outputs with the trusted specification on small public
-inputs. Use `--problem saw --submission <path>` to check another `saw` submission.
-
-This demo is a local convenience, not part of the competition or formal submission process. It
-does not invoke the official judge, hidden cases, PMU counters, production isolation, axiom audit,
-verdict generation, or scoring. Passing it does not establish official acceptance or performance.
-Compiled execution is not the competition metric.
 
 ## Rules
 
@@ -129,7 +120,7 @@ Participation is also subject to the team, anti-cheating, and participant-cost p
 - **R2 — Reducible total function.** `impl` must be total, use only the dependencies supplied by
   the locked problem workspace, and be reducible by the kernel to an output literal for every
   input. `fib` includes the pinned Mathlib Fibonacci import closure described in its
-  [problem statement](problems/fib.md); the other eight scored tasks remain core-Lean-only.
+  [problem statement](problems/fib.md); the other seven scored tasks remain core-Lean-only.
   It may not be `partial` or
   `unsafe`. Well-founded recursion is permitted only if the resulting definition remains
   kernel-reducible.
@@ -144,14 +135,13 @@ Participation is also subject to the team, anti-cheating, and participant-cost p
   [`evaluation.md`](evaluation.md) and [`problem-scoring.md`](problem-scoring.md) for the exact
   contracts.
 
-> Compiled execution, including `#eval` and the public quick test, does not predict
-> kernel-reduction performance. Use the optional [local evaluator](../evaluation/README.md),
-> or `scripts/perf_eval.py` for legacy tasks, for local wall-time checks that follow
-> the judge's measurement boundary. These are not official scores.
+> Compiled execution, including `#eval`, does not predict kernel-reduction performance.
+> Use the optional [local evaluator](../evaluation/README.md) for wall-time checks
+> that follow the judge's measurement boundary. These are not official scores.
 
 ## Stage 1 Problems
 
-Stage 1 begins with nine computational problems from algebra, number theory, combinatorics,
+Stage 1 begins with eight computational problems from algebra, number theory, combinatorics,
 cryptography, discrete mathematics, and related fields. Their public definitions and scoring
 groups are listed in [`problem-scoring.md`](problem-scoring.md).
 See the [Problem Statements](problems/README.md) for each problem's description, input and
@@ -162,7 +152,7 @@ output formats, examples, constraints, submission requirements, and local develo
 Stage 1 is scheduled to launch at the tentative time in the schedule above, with formal submissions open from launch
 until the deadline above.
 All problem workspaces compile, and the judge runs the correctness and grouped performance
-pipeline end to end. The nine per-problem group schedules and scoring rules are published in
+pipeline end to end. The eight per-problem group schedules and scoring rules are published in
 [`problem-scoring.md`](problem-scoring.md); there is no cross-problem total. The organizers
 must validate the complete production evaluation on the pinned PMU hardware and isolated container
 environment before launch.

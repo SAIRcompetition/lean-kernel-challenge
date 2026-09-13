@@ -1,4 +1,4 @@
-"""Organizer-owned exact answers for the nine Stage 1 problems.
+"""Organizer-owned exact answers for the eight Stage 1 problems.
 
 No contestant code, Lean elaboration, network, or third-party packages are used.
 The answer bundle is prepared once per hidden plan and consumed before any
@@ -17,7 +17,7 @@ SCHEMA = "reference-answers-v1"
 MAX_BUNDLE_BYTES = 8 * 1024 * 1024
 OUTPUT_TYPES = {
     "fib": "Nat", "partition": "Nat", "mertens": "Int", "primecount": "Nat",
-    "permanent": "Nat", "saw": "Nat", "ca-rule110": "Nat", "sha256": "Nat",
+    "permanent": "Nat", "ca-rule110": "Nat", "sha256": "Nat",
     "polydisc": "Int",
 }
 
@@ -71,41 +71,6 @@ def permanent_reference(dimension, seed):
                     following[mask | bit] = following.get(mask | bit, 0) + count
         states = following
     return states.get((1 << dimension) - 1, 0)
-
-
-def _encode_int(value):
-    return 2 * abs(value) - 1 if value < 0 else 2 * value
-
-
-def saw_reference(length, seed):
-    directions = ((1, 0), (-1, 0), (0, 1), (0, -1))
-
-    def blocked(point):
-        x, y = point
-        if y == 0 and x >= 0:
-            return False
-        mixed = (
-            seed
-            ^ (_encode_int(x) * 0x9E3779B9)
-            ^ (_encode_int(y) * 0x85EBCA6B)
-            ^ 0xC2B2AE35
-        )
-        return mix32(mixed) % 11 == 0
-
-    def count(steps, point, visited):
-        if steps == 0:
-            return 1
-        total = 0
-        for dx, dy in directions:
-            next_point = (point[0] + dx, point[1] + dy)
-            if next_point in visited or blocked(next_point):
-                continue
-            visited.add(next_point)
-            total += count(steps - 1, next_point, visited)
-            visited.remove(next_point)
-        return total
-
-    return count(length, (0, 0), {(0, 0)})
 
 
 def ca_reference(steps, seed):
@@ -297,7 +262,7 @@ def compute_answer(problem, n):
         return len(sieve(n))
     if problem == "polydisc":
         return polynomial_discriminant(candidate_polynomial(n)[0])
-    functions = {"permanent": permanent_reference, "saw": saw_reference,
+    functions = {"permanent": permanent_reference,
                  "ca-rule110": ca_reference, "sha256": sha256_reference}
     return functions[problem](n >> 32, n & MASK32)
 
@@ -308,6 +273,8 @@ def canonical_bytes(bundle):
 
 
 def prepare(problem, inputs, spec_sha256):
+    if problem not in OUTPUT_TYPES:
+        raise ValueError("unsupported reference problem")
     bundle = {
         "schema": SCHEMA, "problem": problem, "spec_sha256": spec_sha256,
         "answers": [

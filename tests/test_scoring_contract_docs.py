@@ -31,14 +31,13 @@ DOC_SAMPLER_KINDS = {
     "mertens": "geometric_range",
     "primecount": "geometric_range",
     "permanent": "packed",
-    "saw": "packed",
     "ca-rule110": "packed",
     "sha256": "packed",
     "polydisc": "uniform_int",
 }
 
 EXPECTED_GROUP_COUNT = 3
-EXPECTED_PROBLEM_COUNT = 9
+EXPECTED_PROBLEM_COUNT = 8
 EXPECTED_TOTAL_POINTS = 100
 
 _SECTION_RE = re.compile(r"^## `([^`]+)`", re.MULTILINE)
@@ -99,7 +98,7 @@ def _parse_table(section_text):
 def _doc_row(problem, header, cells):
     """Normalize one table row into a comparable dict.
 
-    Column layout (all nine tables): group id first, the scale/range second,
+    Column layout (all eight tables): group id first, the scale/range second,
     the per-repetition limit last. The case count is explicit in the
     'Cases' or 'Hidden seeds' column.
     """
@@ -170,11 +169,11 @@ class TestScoringContractDocs(unittest.TestCase):
             for doc_row, config_group in zip(doc_rows, config_groups):
                 yield problem, doc_row, config_group
 
-    def test_doc_lists_exactly_nine_problems_with_three_groups_each(self):
+    def test_doc_lists_exactly_eight_problems_with_three_groups_each(self):
         self.assertEqual(
             sorted(self.doc),
             sorted(DOC_SAMPLER_KINDS),
-            "doc problem sections do not match the expected nine problems",
+            "doc problem sections do not match the expected eight problems",
         )
         self.assertEqual(len(self.doc), EXPECTED_PROBLEM_COUNT)
         for problem, rows in sorted(self.doc.items()):
@@ -185,11 +184,11 @@ class TestScoringContractDocs(unittest.TestCase):
                 % (problem, len(rows), EXPECTED_GROUP_COUNT),
             )
 
-    def test_configs_list_exactly_nine_problems_with_three_groups_each(self):
+    def test_configs_list_exactly_eight_problems_with_three_groups_each(self):
         self.assertEqual(
             sorted(self.configs),
             sorted(DOC_SAMPLER_KINDS),
-            "configs with an 'evaluation' key do not match the expected nine "
+            "configs with an 'evaluation' key do not match the expected eight "
             "problems",
         )
         self.assertEqual(len(self.configs), EXPECTED_PROBLEM_COUNT)

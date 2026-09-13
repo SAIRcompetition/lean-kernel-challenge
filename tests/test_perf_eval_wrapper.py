@@ -15,6 +15,19 @@ import perf_eval
 
 
 class PerfEvalWrapperTests(unittest.TestCase):
+    def test_retained_saw_config_is_rejected_without_invoking_judge(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = root / "problems/saw/config.json"
+            config.parent.mkdir(parents=True)
+            config.write_text("{}")
+            with mock.patch.object(perf_eval, "BASE", root), \
+                 mock.patch.object(perf_eval._judge, "judge") as judge_mock:
+                verdict = perf_eval.evaluate("saw", root / "submission")
+            self.assertEqual(verdict["status"], "error")
+            self.assertIn("retired evaluator problem: saw", verdict["reason"])
+            judge_mock.assert_not_called()
+
     def test_evaluate_delegates_once_and_restores_judge_globals(self):
         original_results = perf_eval._judge.RESULTS
         original_timeout = perf_eval._judge.TIMING_TIMEOUT

@@ -68,41 +68,6 @@ def permanent_reference(dimension, seed):
     )
 
 
-def _encode_int(value):
-    return 2 * abs(value) - 1 if value < 0 else 2 * value
-
-
-def saw_reference(length, seed):
-    directions = ((1, 0), (-1, 0), (0, 1), (0, -1))
-
-    def blocked(point):
-        x, y = point
-        if y == 0 and x >= 0:
-            return False
-        mixed = (
-            seed
-            ^ (_encode_int(x) * 0x9E3779B9)
-            ^ (_encode_int(y) * 0x85EBCA6B)
-            ^ 0xC2B2AE35
-        )
-        return mix32(mixed) % 11 == 0
-
-    def count(steps, point, visited):
-        if steps == 0:
-            return 1
-        total = 0
-        for dx, dy in directions:
-            next_point = (point[0] + dx, point[1] + dy)
-            if next_point in visited or blocked(next_point):
-                continue
-            visited.add(next_point)
-            total += count(steps - 1, next_point, visited)
-            visited.remove(next_point)
-        return total
-
-    return count(length, (0, 0), {(0, 0)})
-
-
 def ca_reference(steps, seed):
     row = [
         True if i == 0 else
@@ -148,16 +113,6 @@ CASES = {
             (2, MASK32, 2),
             (3, 1, 6),
             (4, MASK32, 9),
-        ],
-    },
-    "saw": {
-        "spec": "sawSpec",
-        "reference": saw_reference,
-        "vectors": [
-            (0, MASK32, 1),
-            (1, 0, 4),
-            (4, 1, 62),
-            (5, MASK32, 162),
         ],
     },
     "ca-rule110": {

@@ -1,6 +1,6 @@
 # Lean Kernel Challenge Stage 1 — Problem Leaderboards
 
-Stage 1 has nine independent 100-point problem leaderboards. There is no
+Stage 1 has eight independent 100-point problem leaderboards. There is no
 cross-problem total or relative-placement aggregation. `conv` is an experimental
 development task and is excluded.
 
@@ -19,7 +19,7 @@ Among full-plan passes, lower instruction cost wins:
 - **Target work (`T`):** the sum of all target-declaration replay medians.
 - **Combined work (`T + C`):** target work plus the correctness-closure replay median once.
 
-Equal costs remain tied. `saw`, `ca-rule110`, and `sha256` use combined work;
+Equal costs remain tied. `ca-rule110` and `sha256` use combined work;
 the other six problems use target work. A baseline that passes every case may
 score 100; contestants compete by reducing instruction cost.
 
@@ -34,9 +34,8 @@ failure and measurement rules.
 The groups below define inputs and resource limits, not separate awards or
 prerequisites. Each problem's `evaluation.memory_mb` in its fixed `config.json`
 defines its memory limit in MiB, published before official use. The configuration is
-in `evaluation/problems/<id>/` for the eight separated tasks and `problems/saw/`
-for saw. Matrix permanent uses
-8192 MiB (8 GiB); the other eight problems retain provisional 4096 MiB (4 GiB) limits.
+in `evaluation/problems/<id>/` for all eight tasks. Matrix permanent uses
+8192 MiB (8 GiB); the other seven problems retain provisional 4096 MiB (4 GiB) limits.
 Official-host acceptance remains pending. Organizers may revise a limit; a revision requires
 a new cohort and a complete rescore of the problem's comparison set. Each target process has the table's
 watchdog. Theorem build/export has a separate 1,800-second combined limit per
@@ -116,18 +115,6 @@ pass; full-plan passes compare target work.
 | R1 | 6 | 5 | 30 s |
 | R2 | 12 | 5 | 60 s |
 | R3 | 16 | 5 | 120 s |
-
-## `saw`
-
-An input is `(length << 32) | seed`. The obstacle generator leaves the non-negative x-axis open,
-so every instance has at least one valid self-avoiding walk. All six cases must pass; full-plan
-passes compare combined work.
-
-| Group | Walk length | Hidden seeds | Per-repetition limit |
-| --- | ---: | ---: | ---: |
-| S1 | 4 | 2 | 30 s |
-| S2 | 6 | 2 | 60 s |
-| S3 | 8 | 2 | 120 s |
 
 ## `ca-rule110`
 

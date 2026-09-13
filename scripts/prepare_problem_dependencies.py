@@ -315,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
             total = sum(item["size"] for item in lock["artifacts"])
             print(f"Prepared {name}: {len(lock['artifacts'])} artifacts, {total} bytes.")
         return 0
-    except (DependencyError, OSError, subprocess.TimeoutExpired) as exc:
+    except (DependencyError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
         parser.exit(2, f"Dependency preparation failed: {exc}\n")
 
 

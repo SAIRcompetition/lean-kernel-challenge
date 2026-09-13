@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -19,6 +20,33 @@ import run_harness  # noqa: E402
 
 
 class HarnessManifestTests(unittest.TestCase):
+    def test_retained_saw_examples_are_ignored_but_cannot_be_registered(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            subs = root / "examples/submissions"
+            for problem, config_dir in (("fib", "evaluation/problems/fib"),
+                                        ("conv", "problems/conv"), ("saw", "problems/saw")):
+                config = root / config_dir / "config.json"
+                config.parent.mkdir(parents=True)
+                config.write_text("{}")
+                example = subs / problem / "baseline/Submission.lean"
+                example.parent.mkdir(parents=True)
+                example.write_text("-- retained fixture\n")
+            cases = [{"problem": problem, "submission": "baseline", "expect": "accepted"}
+                     for problem in ("fib", "conv")]
+            with mock.patch.object(run_harness, "ROOT", root), \
+                 mock.patch.object(run_harness, "SUBS", subs):
+                run_harness.validate_manifest(cases)
+                with self.assertRaisesRegex(ValueError, "unknown problems: saw"):
+                    run_harness.validate_manifest(cases + [
+                        {"problem": "saw", "submission": "baseline", "expect": "accepted"},
+                    ])
+                extra = subs / "fib/extra/Submission.lean"
+                extra.parent.mkdir(parents=True)
+                extra.write_text("-- must still register active examples\n")
+                with self.assertRaisesRegex(ValueError, "unregistered examples: fib/extra"):
+                    run_harness.validate_manifest(cases)
+
     def test_current_manifest_covers_every_example_and_problem(self):
         cases = json.loads(run_harness.MANIFEST.read_text())["cases"]
         run_harness.validate_manifest(cases)

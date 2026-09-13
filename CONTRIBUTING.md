@@ -5,9 +5,9 @@ Contributions we welcome:
 
 ## New problems
 
-A problem has a locked evaluation workspace. Eight scored tasks now use
+A problem has a locked evaluation workspace. All eight scored tasks use
 `evaluation/problems/<id>/`, separate from the editable `problems/<id>/` participant
-package. `saw` and experimental `conv` retain their existing `problems/<id>/` layout.
+package. Experimental `conv` retains its existing `problems/conv/` layout and is not scored.
 Use the routing helpers in `scripts/problem_layout.py`
 when locating evaluation files. A good kernel-computation problem has:
 
@@ -25,14 +25,16 @@ when locating evaluation files. A good kernel-computation problem has:
 Specs may import a standard library definition instead of reimplementing it.
 For example, `fib` uses Mathlib v4.33.1's `Nat.fib` from `Mathlib.Data.Nat.Fib.Basic`;
 see its [official API and pinned source](rules/problems/fib.md#mathlib-specification).
-The other eight current scored tasks remain core-Lean-only. A library-backed task
+The other seven scored tasks remain core-Lean-only. A library-backed task
 must document its exact declaration and version, link the official API and fixed-version
 source, and supply locked dependencies for offline evaluation.
 
 Add the workspace (Spec / Challenge / Solution / config with `definition_names = ["impl"]`,
 `theorem_names = ["impl_correct"]`, and a grouped `evaluation` policy) and at least the
-`baseline` example submission. Wire it into `tests/harness_manifest.json` and add the public
-group table to `rules/problem-scoring.md`.
+`baseline` example submission. Register the task in the evaluator, scoring, and reference-answer
+registries and the local entrypoints; creating a directory alone does not activate a task.
+Update the participant synchronization and registry tests, wire the examples into
+`tests/harness_manifest.json`, and add the public group table to `rules/problem-scoring.md`.
 
 ## Adversarial test submissions
 
@@ -42,13 +44,9 @@ manifest with a `reason_contains` substring.
 
 ## Green gate
 
-For each separated task, run `lake build` inside `problems/<id>/`. Only fib needs
+For each scored task, run `lake build` inside `problems/<id>/`. Only fib needs
 its [participant setup](README.md#quick-start) first. This compiles the definitions and proofs, not an
 independent check against the official interface or permitted axioms.
-
-`python3 scripts/quick_test.py` retains only the legacy `saw` baseline demo
-on small, fixed public inputs. This compiled demo does not run the official judge,
-hidden plan, PMU measurement, axiom audit, or scoring path.
 
 Regenerate participant dependencies with `python3 scripts/sync_participants.py`;
 use `--check` to verify their toolchains, Lake configuration, and fixed Spec copies
@@ -58,7 +56,7 @@ Do not edit generated participant dependencies independently. The older
 
 Every change must also keep the repository test suite and `python3 scripts/run_harness.py`
 green. The harness requires the separate [judge setup](README.md#maintainer-regression-and-judge-checks)
-and is not part of the public quick test. See `rules/overview.md` for the rules.
+and is separate from participant builds. See `rules/overview.md` for the rules.
 
 ## Reporting a soundness issue
 

@@ -104,7 +104,7 @@ This problem permits the pinned `Mathlib.Data.Nat.Fib.Basic` module and its
 transitive imports supplied by the locked workspace. You may use their
 definitions and theorems, including `Nat.fastFib` and `Nat.fastFib_eq`.
 Additional packages or Mathlib modules outside that supplied import closure
-are not part of this pilot. Total kernel-reducible code and the permitted-axiom
+are not permitted for this problem. Total kernel-reducible code and the permitted-axiom
 rules still apply; see the [shared requirements](README.md#what-a-submission-must-establish).
 
 For older judge submissions importing `Spec`, `fibSpec` remains an abbreviation
@@ -122,6 +122,7 @@ For comparison, the [baseline](../../examples/submissions/fib/baseline/Submissio
 uses `Nat.fib` directly, while the
 [fast-doubling example](../../examples/submissions/fib/doubling/Submission.lean)
 implements and proves its own algorithm.
+
 Install Git, Python 3.9+, and `elan`. From the repository root:
 
 ```bash
@@ -139,7 +140,7 @@ does not guarantee official acceptance. Submit only `Submission.lean`, not the w
 For optional kernel measurements on the same file, return to the repository root:
 
 ```bash
-bash evaluation/setup.sh
+bash evaluation/setup.sh --problem fib
 python3 evaluation/run.py --problem fib --submission problems/fib/Submission.lean
 ```
 

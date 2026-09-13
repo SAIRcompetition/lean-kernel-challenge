@@ -1,11 +1,11 @@
 # Lean Kernel Challenge — Stage 1
 
-*Stage 1 of a multi-stage competition on improving the performance of verified computation in the
-Lean 4 kernel.*
+*Stage 1 of a multi-stage competition on improving the performance of verified
+computation in the Lean 4 kernel.*
 
 ## Co-organizers
 
-Stage 1 of the Lean Kernel Challenge is co-organized by (in alphabetical order by surname):
+Stage 1 is co-organized by (in alphabetical order by surname):
 
 - Joachim Breitner
 - Leonardo de Moura
@@ -17,400 +17,176 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 
 ## Background
 
-The Lean Kernel Challenge is a competition series that brings the community together to
-improve the performance of verified computation in the Lean kernel.
+The Lean Kernel Challenge brings the community together to improve the performance
+of verified computation in the Lean kernel. Stage 1 is experimental and starts with
+fundamental computational problems; later stages will cover more mathematical and
+scientific fields and more complex problems.
 
-Stage 1 is the first, experimental stage of the series. It begins with a set of fundamental
-computational problems. Later stages will cover a broader range of mathematical and scientific
-fields and more complex problems.
-
-The Lean 4 kernel is the trusted core that type-checks every proof the system accepts.
-Type-checking includes definitional-equality checking, which the kernel discharges by
-reduction (β/δ/ι reduction and evaluation to weak head normal form). When a proof
-depends on a computed result — for instance an equation `f x = y` closed by `rfl` — the
-kernel establishes it by reducing `f x` and comparing. Verifying such a proof and
-performing the computation are therefore one and the same operation.
-
-The algorithms, representations, and open-source results and benchmark
-data produced through the competition will form a collective contribution to
-Lean's continued development and benefit Lean users worldwide.
-
-This makes the kernel a well-defined, deterministic model of computation with its own
-performance characteristics: reduction is call-by-name, natural-number literals are
-backed by GMP with a fixed set of native `Nat` operations, and evaluation strategy,
-term representation, and sharing all bear directly on cost. The resulting question is
-concrete and largely unstudied:
-
-> **How efficiently can a computation be expressed so that the kernel *verifies* it,
-> and which algorithmic and encoding techniques scale within the kernel's reduction
-> model?**
-
-The Lean FRO's [Lean Kernel Arena](https://arena.lean-lang.org/) measures kernel
-*implementations* — how fast different checkers verify a fixed corpus of proofs. This
-competition addresses the orthogonal axis: the official kernel is fixed as the judge,
-and submissions compete on how few instructions it takes to check them. Speed alone is
-not the objective — a submission is a general algorithm plus a machine-verifiable proof
-that it matches the spec on every input, so progress comes from stronger algorithms and
-kernel-level encodings rather than from bypassing the computation.
-
----
-
-## The task
-
-Each problem gives you a **trusted spec**, `spec : Nat → Output`.
-For `fib`, this is Mathlib **v4.33.1**'s official
-[Nat.fib](https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Nat/Fib/Basic.html#Nat.fib),
-from `Mathlib.Data.Nat.Fib.Basic`. See the [fib specification reference](rules/problems/fib.md#mathlib-specification)
-for the fixed-version source and dependency pin. The other eight tasks currently use
-the definitions supplied in their core-Lean workspaces. You submit:
-
-1. a **function** `impl : Nat → Output` — your fast algorithm, and
-2. a **proof** `impl_correct : ∀ n, impl n = spec n` — that it agrees with the spec on
-   *every* input.
-
-What is timed is **not how fast your compiled code runs**. The official Lean kernel measures three
-complete replays of the verified correctness closure and three replays of each hidden case's
-generated target declaration, recording each median. Process startup, export parsing, and
-per-input dependency preloading are outside the counter. Each problem defines how these
-measurements determine instruction cost after the complete hidden plan passes.
-
-Correctness for all `n` lets the judge rotate hidden inputs, but it does not make literal
-tables logically impossible: a contestant can derive constants through another verified
-algorithm. The scoring contract therefore records both the correctness-closure replay and each
-successful target-declaration replay, and each problem specifies how they enter its tie-breaks.
-The simplest submission is `impl := spec` with
-`impl_correct := fun _ => rfl` — correct by construction, but not necessarily efficient
-enough to pass every performance case.
-
-## What you submit
-
-Exactly one file, **`Submission.lean`**, at most 1 MiB. Every helper you add lives in that
-file, inside `namespace Submission`; you may also use the locked workspace's library declarations.
-For example, the runnable [fib starter](problems/fib/Submission.lean) contains:
-
-```lean
-import Mathlib.Data.Nat.Fib.Basic
-
-namespace Submission
-
-def impl (n : Nat) : Nat := Nat.fastFib n
-
-theorem impl_correct : ∀ n, impl n = Nat.fib n := by
-  intro n
-  exact Nat.fastFib_eq n
-
-end Submission
-```
-
-Optimize the implementation and update its proof; keep the interface unchanged.
-Eight tasks now have participant packages in `problems/<id>/`. The fixed `Spec.lean`,
-`Challenge.lean`, `Solution.lean`, and `config.json` live separately in
-`evaluation/problems/<id>/`; the judge supplies them. The seven core-Lean packages
-include a generated fixed Spec copy; fib imports Mathlib directly. `saw` retains
-its existing workspace layout and remains a scored problem. For the timeline, registration,
-participation policies, and co-organizers see
-**[`rules/prelaunch.md`](rules/prelaunch.md)**. See
-**[`rules/overview.md`](rules/overview.md)**
-for the binding rules, **[`rules/evaluation.md`](rules/evaluation.md)** for the common judging
-contract, and **[`rules/problem-scoring.md`](rules/problem-scoring.md)** for every problem's
-input groups, cases, limits, and instruction-cost policies.
-
-## Rules in brief
-
-A submission has two parts — a function `impl` and a proof `impl_correct` — and the rules
-follow that shape (full text in [`rules/overview.md`](rules/overview.md)):
-
-- **R1** Submit exactly one file, `Submission.lean`; every other file is locked.
-- **R2** `impl` is a total function that the kernel can reduce on every input, using only the
-  locked workspace's dependencies. `fib` includes the pinned Mathlib Fibonacci import closure;
-  the other eight scored tasks remain core-Lean-only. Structural and kernel-reducible
-  well-founded recursion are both permitted.
-- **R3** `impl_correct` proves `∀ n, impl n = spec n` — correctness for *all* inputs.
-- **R4** The proof may depend only on the standard axioms `propext`, `Quot.sound`,
-  `Classical.choice`; `sorry` and `native_decide` are rejected.
-- **R5** Kernel replay is measured: one full correctness-closure median and the successful
-  per-case target-declaration medians. Each problem gives 100 points for a complete pass
-  and 0 points with infinite ranking cost for any failed case; full passes compare instruction
-  cost. Parsing, dependency preload, and process startup are excluded; exact output-literal
-  checking remains included.
-
-## Problems (Stage 1)
-
-Each scored problem still exposes `impl : Nat → Output`. Some problems pack a public scale and a
-hidden 32-bit seed into that `Nat`; their generators and encodings are part of the trusted spec.
-
-| Problem | `impl n` computes | Spec algorithm / cost |
-|---|---|---|
-| [`fib`](rules/problems/fib.md) | the n-th Fibonacci number | Mathlib `Nat.fib`: `n` pair-iteration steps |
-| `partition` | the partition function p(n) | ~p(n)·n |
-| `mertens` | the Mertens function M(n) | quadratic |
-| `primecount` | the prime-counting function π(n) | quadratic |
-| `permanent` | the permanent of a seeded fixed-row-degree 0/1 matrix; input packs dimension and seed | exponential in dimension (pruned DFS) |
-| `saw` | seeded-obstacle self-avoiding walks; input packs walk length and seed | exponential in the walk length |
-| `ca-rule110` | a seeded 256-cell Rule 110 evolution; input packs step count and seed | linear in steps, list-based |
-| `sha256` | a seed-specific SHA-256 digest chain; input packs step count and seed | linear in steps, word-per-`Nat` |
-| `polydisc` | the discriminant of a monic degree-24 integer polynomial across three coefficient-scale bands | normal subresultant PRS; reduced Bareiss fallback |
-
-These nine problems have independent Stage 1 leaderboards. The repository also retains `conv` as
-an experimental development task; it is not part of the nine scored leaderboards.
-
-Most specs intentionally leave substantial algorithmic or representation overhead, so
-competitive submissions require better algorithms, kernel-level encodings, or both. The worked
-`fib` example ships a [single-file starter](problems/fib/Submission.lean)
-using `Nat.fastFib`, a baseline using `Nat.fib`, and a custom fast-doubling
-implementation, each with a full `∀ n, impl n = Nat.fib n` proof. The starter's
-TODOs identify the implementation and correctness proof to edit. `Nat.fib` is the
-correctness target, not a requirement to use its algorithm or a relative-speed
-scoring baseline.
-
-## How judging works
-
-```
-Submission.lean
-  → validate the official precomputed input/output bundle
-  → validate submission structure and size
-  → correctness : parse outside the counter, then replay the full verified closure three times
-  → performance : replay each grouped case's target declaration three times
-  → correctness timing + complete group/case record + verdict
-```
-
-This is measurement contract `kernel-replay-v2`, with boundaries
-`full-closure-replay-v1` and `target-declaration-replay-v1`. Scoped counters remove fixed
-harness cost without subtracting noisy process totals. Target replay still reduces `impl n` and
-compares the exact result, so checking a large `Nat`/`Int` literal remains input-dependent scored
-work. The verdict also pins the direct target-proof encoding
-`direct-rfl-v1-experimental`, preventing extracted-proof wrapper timings from mixing in.
-
-Official outputs are computed independently of submissions using Python reference algorithms or
-precomputed data. The judge validates and loads the private bundle before contestant code runs,
-then still checks the direct `impl n = output` theorem by kernel reduction.
-See [`docs/reference-answers.md`](docs/reference-answers.md) for preparation and transport.
-
-For official evaluation, `PERF_SEED` is a secret rotation token. The judge derives the hidden
-cases from it and the published problem, group, and case coordinates, so every submission in one
-evaluation cohort receives the same plan. The sealed cohort records the complete plan and a seed
-commitment. Operators rotate the token and cohort id for a new round or deliberate rescore; an
-unset seed is allowed only for deterministic local development. The production wrapper injects
-the seed once over stdin, never into the submission's elaboration environment. Raw verdicts and
-exact inputs remain private throughout the evaluation phase. After the final official cohort closes,
-its resolution seed, exact input plan, results, and benchmark data are released publicly under an
-open-source license. Provisional standings use separate hidden sampled inputs that organizers may
-update; the reference input plans and seeds are outside this publication commitment.
-
-## Scoring
-
-Stage 1 has **nine independent 100-point problem leaderboards**. There is no cross-problem total
-or relative-placement aggregation, and `conv` is excluded. Each problem publishes three input
-groups. An otherwise scoreable submission earns **100 points only when every hidden case passes**;
-**any failed case gives 0 points and infinite ranking cost**. There is no partial credit or
-comparison by harder groups or successful subsets. Infrastructure failures and incomplete runs
-remain unscored and require investigation or re-evaluation.
-For daily provisional standings, a classified terminal error counts as processed without a
-score or public rank. A daily edition can complete once every selected submission has a terminal
-outcome; queued, running, retrying, missing, and unknown outcomes still prevent completion.
-See [`rules/evaluation.md`](rules/evaluation.md) for daily completion and publication rules.
-
-Among full-plan passes, lower instruction cost wins. Target work sums all target-declaration
-replay medians. Combined work adds the correctness-closure replay median once; `saw`,
-`ca-rule110`, and `sha256` use this policy. The other six problems use target work. Equal costs
-remain tied, with no additional proof-cost comparison. All scoreable failed plans are tied.
-A baseline may score 100; reducing instruction cost is what improves its competitive position.
-
-The official metric is **kernel instructions** on the pinned Linux evaluation host
-(`perf -e instructions`, median of three repetitions). Stage 1 official cohorts use the local PMU
-inside the network-disabled evaluation container. Wall time and resource-bound remote **KTP/3**
-timing are non-official validation modes and are never mixed with official scores. Verdicts commit to
-the protocol, `kernel-replay-v2`, both boundary versions, target-proof encoding, exact grouped
-plan, reference-answer bundle, toolchain, timing policy, and executor. A change to any of these
-fields creates a new cohort and requires a full rescore. Run `python3 scripts/score.py` to generate the canonical tables.
-
-See **[`rules/problem-scoring.md`](rules/problem-scoring.md)** for the published input ranges or
-generators, case counts, resource limits, and instruction-cost policy
-for each problem.
-
-Each problem's memory limit will be published before it is used for official evaluation.
-Organizers may revise these limits during the competition. A limit is fixed within its evaluation
-cohort; revising it requires a new cohort and a complete rescore of that problem's comparison set.
+The algorithms, representations, and open-source results and benchmark data produced
+through the competition will contribute to Lean's development and benefit Lean users
+worldwide. See the [competition introduction](rules/prelaunch.md) for registration,
+dates, participation policies, and the release of code and data.
 
 ## Quick start
 
-Eight participant packages are ready to build: `fib`, `partition`, `mertens`,
-`primecount`, `permanent`, `ca-rule110`, `sha256`, and `polydisc`.
-Install [elan](https://github.com/leanprover/elan), then run from the repository root:
+Install [elan](https://github.com/leanprover/elan), choose a problem below, and run
+from the repository root:
 
 ```bash
 cd problems/partition
 lake build
 ```
 
-Replace `partition` with the chosen task. **For fib only**, install Git and Python
-3.9+, and run `python3 setup.py` before `lake build` to prepare its pinned Mathlib
-dependencies. The other seven use core Lean and need no separate setup.
+Replace `partition` with your chosen problem. For **fib only**, also install Git
+and Python 3.9+, then run `python3 setup.py` before `lake build` to prepare the
+pinned Mathlib dependencies. The other seven tasks use core Lean and need no
+separate setup.
 
-Edit only `Submission.lean`; its starting implementation and proof already work.
-No judge, Docker, comparator, exporter, or replay timer is needed. After edits,
-repeat `lake build`. Keep generated dependency files unchanged and submit only
-`Submission.lean`.
+Edit only `Submission.lean`. Each starter already contains a working implementation
+and correctness proof, with two short TODOs. After edits, repeat `lake build`.
+Keep the fixed specification and environment files unchanged. Submit only
+`Submission.lean` through [SAIR](https://competition.sair.foundation/) when
+submissions open.
 
-This compiles your definitions and proofs; it does not independently check the
-official interface or permitted axioms, measure kernel performance, or award a
-score. A successful build does not guarantee official acceptance. See the
-[participant guide](rules/problems/README.md).
-
-`saw` and experimental `conv` keep their existing layouts. The legacy quick-test
-helper now checks only the `saw` baseline, from the repository root:
-
-```bash
-python3 scripts/quick_test.py
-python3 scripts/quick_test.py --problem saw --submission path/to/Submission.lean
-```
+Building checks your code and proofs; it does not independently check the official
+interface or permitted axioms, measure kernel performance, or award a score.
+No judge tools or Docker are required for this participant workflow.
 
 ### Optional kernel evaluation
 
-To run the canonical judge locally on the same file, separately prepare the
-evaluation tools. From the repository root:
+To evaluate the same file locally, separately prepare the judge tools. From the
+repository root:
 
 ```bash
-bash evaluation/setup.sh
-python3 evaluation/run.py --problem fib --submission problems/fib/Submission.lean
+bash evaluation/setup.sh --problem partition
+python3 evaluation/run.py --problem partition --submission problems/partition/Submission.lean
 ```
 
-Replace fib with the chosen separated task. This uses its complete unseeded public
-plan and one wall-time repetition, not official instruction-count scores.
-See the [evaluation guide](evaluation/README.md).
+Replace `partition` in both commands. This runs the complete public plan with one
+wall-time measurement per case, not official instruction-count scoring.
+See the [local evaluation guide](evaluation/README.md) for prerequisites, timeout
+behavior, and how to read the result.
+
+## Problems (Stage 1)
+
+The eight problems have independent leaderboards. Each has three evaluation groups;
+the linked statements define its input, output, examples, limits, and ranking cost.
+
+| Problem statement | Computation | Starter |
+| --- | --- | --- |
+| [Fibonacci (`fib`)](rules/problems/fib.md) | The n-th Fibonacci number | [Submission](problems/fib/Submission.lean) |
+| [Integer partitions (`partition`)](rules/problems/partition.md) | The partition function p(n) | [Submission](problems/partition/Submission.lean) |
+| [Mertens function (`mertens`)](rules/problems/mertens.md) | The sum of the Möbius function up to n | [Submission](problems/mertens/Submission.lean) |
+| [Prime counting (`primecount`)](rules/problems/primecount.md) | The number of primes up to n | [Submission](problems/primecount/Submission.lean) |
+| [Matrix permanent (`permanent`)](rules/problems/permanent.md) | The permanent of a generated 0/1 matrix | [Submission](problems/permanent/Submission.lean) |
+| [Rule 110 (`ca-rule110`)](rules/problems/ca-rule110.md) | Evolution of a seeded 256-cell cyclic row | [Submission](problems/ca-rule110/Submission.lean) |
+| [SHA-256 chain (`sha256`)](rules/problems/sha256.md) | Repeated hashing of a 32-byte digest | [Submission](problems/sha256/Submission.lean) |
+| [Polynomial discriminant (`polydisc`)](rules/problems/polydisc.md) | The exact discriminant of a generated monic degree-24 polynomial | [Submission](problems/polydisc/Submission.lean) |
+
+The experimental `conv` workspace is not a scored Stage 1 problem.
+
+## The task
+
+Provide a fast, total, kernel-reducible implementation and prove that it equals the
+fixed specification for every natural-number input:
+
+```text
+impl : Nat → Output
+impl_correct : ∀ n, impl n = spec n
+```
+
+The output type, specification, and input encoding are problem-specific. For fib,
+the target is Mathlib v4.33.1's `Nat.fib`; see the
+[official declaration and pinned source](rules/problems/fib.md#mathlib-specification).
+The other seven tasks use their repository-defined core-Lean specifications.
+
+The proof need not use `rfl`, and the implementation need not use the specification's
+algorithm. The starter may be submitted unchanged, but a correct starter is not a
+promise that every performance case finishes within its limits.
+
+## What you submit
+
+Submit exactly one **`Submission.lean`**, at most 1 MiB. Keep the namespace,
+declaration names, types, and theorem statement unchanged; put all helpers inside
+`namespace Submission`.
+
+Participant packages live in `problems/<id>/`. The judge supplies its own fixed
+`Spec.lean`, `Challenge.lean`, `Solution.lean`, and configuration from
+`evaluation/problems/<id>/`. Core-Lean participant packages include a generated
+Spec copy for compilation; fib imports its pinned Mathlib dependency directly.
+
+## Rules in brief
+
+Use only the problem's supplied dependencies. The implementation must be total and
+kernel-reducible; its proof may use only `propext`, `Quot.sound`, and
+`Classical.choice` as axioms. `sorry` and `native_decide` are not accepted.
+See the [binding rules](rules/overview.md#rules) and
+[shared submission requirements](rules/problems/README.md#what-a-submission-must-establish).
+
+## How judging works
+
+The judge checks the universal correctness proof, then checks a direct equation
+`impl n = v` for each selected input using an independently prepared exact output
+`v`. Checking that equation forces kernel reduction of the submitted implementation.
+
+Official evaluation measures kernel instructions, not compiled execution. The timer
+counts inside the kernel-replay boundaries; process startup, export parsing, and
+per-input dependency preload are excluded. See the
+[evaluation rules](rules/evaluation.md) for the precise boundaries and verdicts.
+
+## Scoring
+
+There is no cross-problem total. On each problem, an otherwise scoreable submission
+earns **100 points only if every hidden case passes**. Any failed case gives
+**0 points and infinite ranking cost**; there is no partial credit. Infrastructure
+errors and incomplete evaluations remain unscored.
+
+Full-plan passes rank by lower instruction cost:
+
+- **Target work (`T`):** the sum of the per-input replay medians, used by six problems.
+- **Combined work (`T + C`):** target work plus the correctness-closure replay median
+  once, used by `ca-rule110` and `sha256`.
+
+Each median comes from three replays. Equal costs remain tied, without an additional
+proof-cost comparison. Local wall-time measurements are not official scores.
+See [Problem Leaderboards](rules/problem-scoring.md) for all groups, cases, and
+limits, and [Evaluation](rules/evaluation.md) for daily and final evaluation rules.
 
 ## Maintainer regression and judge checks
 
-The full repository checks require the pinned comparator, exporter, and replay timer:
-
-```bash
-scripts/setup.sh
-python3 scripts/run_harness.py
-python3 scripts/run_harness.py --quick --jobs 2
-python3 scripts/perf_eval.py --problem fib --submission examples/submissions/fib/doubling
-python3 scripts/score.py
-```
-
-Each harness worker can consume several GiB during Lean compilation (the
-heaviest cases peak at 2.3–4.9 GiB each).  The command defaults to one worker;
-the image-build gate runs two workers everywhere, the one setting measured to
-fit a 16 GiB builder with the worst pair near 8 GiB, so CI and deployment
-builds use the same configuration.  A smaller builder can pass
-`docker build --build-arg HARNESS_JOBS=1 -t lean-kernel-judge .`; raise the
-count only after measuring the target host.
-The image-build regression check uses `--quick --count 2 --timeout 120`.
-It checks expected submission verdicts, measurement-record structure, and the
-minimum performance coverage declared in `tests/harness_manifest.json`.
-A slow baseline may pass this check even when its performance inputs time out;
-the image build fails when a manifest requirement is not met. These checks run
-in local development mode and do not establish that every performance input
-passes under the official per-problem memory limits. Verify those limits using
-the built image through `scripts/run_isolated.sh` after the per-problem policy
-has been implemented and configured.
-To run a subset of the regression checks, use
-`docker build --build-arg HARNESS_ONLY=mertens ...`, which judges only the
-manifest cases whose problem contains the substring (`run_harness.py --only`):
-a development and test-rehearsal shortcut, never a release build.  Such an
-image has not been proven on every problem, so a deployment pipeline that
-passes it must label the image as partially gated and must never promote it
-beyond its test environment.  The full opt-out is
-`docker build --build-arg HARNESS_SKIP=1 ...`: the gate does not run at all.
-It exists for non-production deployment builds (test and beta environments)
-whose iteration time the serial gate dominates; the pinned commit is still
-green-gated by this repository's CI.  Such an image has not been proven at
-build time, so a deployment pipeline that consumes it must label the image as
-not gated and must never promote it to a production environment, whose builds
-always run the full gate.
-
-These tools exercise the evaluation pipeline for development, but local measurements are not
-official scores. The local sandbox is a pass-through shim; never run untrusted
-submissions on your own machine; real sandboxing is enforced by the wrapper-launched
-Docker container.
+Participants do not need this workflow. Maintainers should use the separate
+[regression and image-build guide](evaluation/maintainers.md), including dependency
+synchronization and the distinction between a regression pass and production acceptance.
 
 ### Isolated evaluation of untrusted submissions
 
-Build the evaluation image once, then run every untrusted submission through the
-host-side wrapper:
-
-```bash
-docker build -t lean-kernel-judge .
-LKC_REFERENCE_DIR=$(mktemp -d)
-printf '%s\n' 'official-secret-seed' | python3 scripts/prepare_reference.py \
-  --problem fib --official --output "$LKC_REFERENCE_DIR/fib.json"
-scripts/run_isolated.sh \
-  --problem fib \
-  --submission "$PWD/examples/submissions/fib/doubling" \
-  --results "$PWD/results" \
-  --perf-seed 'official-secret-seed' \
-  --reference-answers "$LKC_REFERENCE_DIR/fib.json" \
-  --cohort stage1-round1 \
-  --perfmon
-```
-
-`scripts/run_isolated.sh` is the supported production entry point. It always runs one
-submission per container with networking disabled, bounded memory/CPU/process counts,
-`no-new-privileges`, and the non-root `judge` user. The submission is mounted read-only
-and verdicts are written through a persistent results mount. The seed and private reference-answer
-bundle are consumed from a one-shot stdin pipe before any untrusted Lean process starts; `--cohort` is the public round
-identifier used to prevent cross-round scores from being mixed. `--perfmon` is optional on
-hosts whose `perf_event_paranoid` setting already permits instruction counting. On a native
-Linux Docker host, the results directory must be writable by the image's judge UID 10001;
-the wrapper checks this before it starts elaborating the submission.
-
-Memory is configured independently in each locked `config.json` as
-`evaluation.memory_mb` (MiB). The wrapper reads the chosen problem, applies the same value to
-`--memory` and `--memory-swap` (zero extra swap), and the judge checks it against both the image's
-problem policy and the actual cgroup. `--memory` / `JUDGE_MEMORY` can only assert that value;
-they cannot override it. **Matrix permanent (`permanent`) uses 8192 MiB (8 GiB)**. The other
-eight problems retain provisional 4096 MiB (4 GiB) limits pending organizer confirmation.
-See the [launch checklist](docs/pre-launch-checklist.md) for host acceptance. Changing a limit
-requires a rebuilt image, a new cohort, and rescoring that problem's comparison set.
+Use the official wrapper on a supported Linux PMU host. Follow the
+[reference-answer and isolated-evaluation instructions](docs/reference-answers.md)
+and [production acceptance checklist](docs/pre-launch-checklist.md).
+Do not run untrusted submissions through the unsandboxed local evaluation path.
 
 ## Repository layout
 
-```
-lean-kernel-challenge/
-├─ rules/           overview.md (rules) · evaluation.md (judge) · problem-scoring.md (leaderboards)
-├─ problems/<id>/   8 participant packages: editable Submission + fixed build dependencies
-├─ evaluation/      optional evaluation entrypoint and 8 fixed problems/<id>/ workspaces
-├─ problems/saw/ · problems/conv/   unchanged legacy workspaces
-├─ examples/submissions/<problem>/<name>/   worked + adversarial example submissions
-├─ judge/           judge.py (the judge) · timer-kernel/ (kernel replay + axiom audit)
-├─ pipeline/        config.json (budgets, sandbox mode, toolchain pins)
-├─ tests/           harness_manifest.json (expected verdicts — the green gate)
-├─ scripts/         quick_test.py · setup.sh · run_harness.py · run_isolated.sh · perf_eval.py · score.py · shims/
-├─ Dockerfile       Linux evaluation image (pinned toolchain, perf, landrun sandbox)
-└─ results/         verdict JSONs + scoring index + one generated leaderboard per problem
-```
+- `problems/<id>/`: eight participant packages; edit only `Submission.lean`.
+- `evaluation/`: optional local evaluator, maintainer guide, and fixed problem workspaces.
+- `rules/`: competition policies, problem statements, and scoring rules.
+- `examples/submissions/`: worked implementations and rejection examples.
+- `judge/`, `scripts/`, `pipeline/`: evaluation implementation and pinned configuration.
+- `tests/`: regression tests and the example-submission manifest.
+- `problems/conv/`: experimental, non-scoring workspace.
+- `results/`: local generated artifacts, not tracked by Git.
 
 ## Toolchain
 
-Pinned and frozen for the stage: **Lean v4.33.1**, comparator `3927ad3`,
-lean4export `15f6055`, kernel replay via Lean's built-in `Lean.Replay`. `scripts/setup.sh` rebuilds the tools from
-these pins; the third-party checkouts are not committed.
+Lean **v4.33.1**, comparator `3927ad3` plus the
+[emit-export patch](patches/comparator-emit-export.patch), and lean4export `15f6055`
+are pinned in [pipeline/config.json](pipeline/config.json). Setup builds the tools
+from these pins; third-party checkouts are not committed.
 
 ## Status
 
-The nine per-problem group schedules and scoring rules are published in
-**[`rules/problem-scoring.md`](rules/problem-scoring.md)** and encoded in each problem's
-`config.json`. Before launch, the production PMU measurements and container path still require
-end-to-end validation; see **[`docs/pre-launch-checklist.md`](docs/pre-launch-checklist.md)**.
-
-**Prototype / pre-launch.** All 10 evaluation workspaces compile, while nine are included in the Stage 1
-scoring contract. The correctness gate, axiom audit, grouped judge, canonical per-problem scorer,
-and green-gate harness are in place. The performance phase imports the byte-pinned `.olean` graph
-produced by the comparator instead of re-elaborating contestant source. Hidden cases are
-config-driven and shared within a cohort through a rotating official `PERF_SEED`; the seed is
-never exposed to elaboration. `scripts/score.py` applies the sealed `full-plan-v1` ranking
-contract and per-problem work policy. Remaining launch work includes production PMU and container
-acceptance, per-problem memory enforcement, and the platform policies listed in the launch
-checklist. Additional optimized examples are useful but not part of
-the scoring contract. Rule text may still change before launch (see `rules/overview.md`).
-
-The September 9 review implements independent standard answers, full-plan scoring, and
-per-problem memory policies in this repository. Platform integration and other launch work
-remain: verify that platform entry selection always uses the latest formal submission, and
-confirm the eight provisional 4096 MiB memory values (permanent is set at 8192 MiB).
-These pending updates are tracked in [`docs/pre-launch-checklist.md`](docs/pre-launch-checklist.md).
-The six target-work problem configurations now use correctness work only as a completion gate;
-the three combined-work problems retain correctness-plus-target ranking.
+The eight problem schedules and scoring policies are published. Local build and
+correctness checks do not establish official PMU, full-plan performance, or container
+acceptance. Production validation and unresolved platform policies remain tracked in
+the [pre-launch checklist](docs/pre-launch-checklist.md); local results must not be
+presented as completion of those checks.

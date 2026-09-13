@@ -270,6 +270,32 @@ def configured_grouped_verdict(name, problem, *, correctness, costs=None):
 
 
 class ScoringTests(unittest.TestCase):
+    def test_retired_saw_is_not_scoreable_or_loadable_from_local_results(self):
+        self.assertEqual(score.STAGE1_PROBLEMS, {
+            "fib", "ca-rule110", "mertens", "partition", "permanent", "polydisc",
+            "primecount", "sha256",
+        })
+        legacy = verdict("retained-legacy", [100, 100, 100], problem="saw")
+        grouped = make_official_grouped(grouped_verdict("retained-official", [100] * 4))
+        grouped["problem"] = "saw"
+        grouped["evaluation_cohort"]["policy"]["problem"] = "saw"
+        _reseal_policy(grouped)
+        for item in (legacy, grouped):
+            with self.subTest(submission=item["submission"]):
+                row = score._score_row(item, "perf_instructions")
+                self.assertFalse(row["scoreable"])
+                self.assertIn("retired", row["reason"])
+                self.assertIsNone(row["points"])
+                self.assertFalse(score._is_stage1_public_verdict(item))
+                self.assertEqual(score._groups([item]), {})
+        with tempfile.TemporaryDirectory() as temp:
+            path = pathlib.Path(temp) / "saw/retained.json"
+            path.parent.mkdir()
+            path.write_text(json.dumps(grouped))
+            with mock.patch.object(score, "RESULTS", temp):
+                self.assertEqual(score._load_verdicts(), [])
+            self.assertTrue(path.is_file())
+
     def test_full_plan_failures_tie_below_passes_for_every_shipped_problem(self):
         for problem in sorted(score.STAGE1_PROBLEMS):
             with self.subTest(problem=problem):
@@ -330,7 +356,7 @@ class ScoringTests(unittest.TestCase):
                 score.RESULTS = old_results
 
     def test_shipped_problem_policies_use_only_the_declared_work_comparison(self):
-        combined = {"saw", "ca-rule110", "sha256"}
+        combined = {"ca-rule110", "sha256"}
         target = {"fib", "partition", "mertens", "primecount", "permanent", "polydisc"}
         for problem in sorted(target | combined):
             with self.subTest(problem=problem):
@@ -351,7 +377,7 @@ class ScoringTests(unittest.TestCase):
                                      ["z-cheap-proof", "a-expensive-proof"])
 
     def test_shipped_combined_policies_tie_when_total_work_is_equal(self):
-        for problem in ("saw", "ca-rule110", "sha256"):
+        for problem in ("ca-rule110", "sha256"):
             with self.subTest(problem=problem):
                 cheap = configured_grouped_verdict("cheap-proof", problem, correctness=10)
                 count = len(cheap["stages"]["perf_inputs"])
@@ -1218,7 +1244,7 @@ class ScoringTests(unittest.TestCase):
     def test_full_plan_work_and_proof_policies_must_pair(self):
         # Every shipped policy pairs total/include or curve/gate; a mixed pair would
         # publish one comparison and score another.
-        for problem, work, proof in (("fib", "curve", "include"), ("saw", "total", "gate")):
+        for problem, work, proof in (("fib", "curve", "include"), ("sha256", "total", "gate")):
             item = configured_grouped_verdict("mixed", problem, correctness=100)
             policy = item["evaluation_cohort"]["policy"]
             self.assertIsNone(score._grouped_evaluation_shape_error(
