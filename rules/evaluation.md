@@ -110,16 +110,21 @@ cgroup kills a child while building/exporting a case theorem, auditing it, or re
 target, the case fails with `resource-limit` and later cases are still attempted. Non-official
 KTP/3 binds each replay request to the applicable problem memory limit. If resource enforcement
 terminates the evaluator before it can write a complete case record, the run is investigated and
-rerun against the same sealed plan; an incomplete run never receives a score.
+must be rerun against the same sealed plan before it can receive a score. Daily processing
+completion follows the provisional-standings rules below; it does not make an incomplete run
+scoreable.
 
 Before evaluation, the judge resolves every hidden group/case coordinate into a complete
 performance plan. The cohort seals that plan, its hash, and the grouped evaluation policy. The
 verdict records an explicit outcome for every planned case. A timeout does not by itself stop the
 plan: every later case is still attempted under its own limits. Grouped evaluation has no shared
-aggregate deadline, so one case's work does not reduce another case's configured time allowance. A platform interruption
-or fatal evaluator error makes the run incomplete and requires re-evaluation; fatal evaluator
-errors require organizer review before the run is repeated. Unattempted cases cannot be turned
-into zero-point results. The legacy `conv` development schedule retains its separate
+aggregate deadline, so one case's work does not reduce another case's configured time allowance.
+A platform interruption or fatal evaluator error makes the run incomplete. An incomplete final
+official run requires re-evaluation; fatal evaluator errors require organizer review before the
+run is repeated. For a daily reference run, the completion rules below allow a classified terminal
+error to count as processed, but a complete re-evaluation is still required before it can receive
+a score. Unattempted cases cannot be turned into zero-point results. The legacy `conv`
+development schedule retains its separate
 aggregate development budget and is not eligible for a Stage 1 leaderboard.
 
 Official evaluation requires a secret `PERF_SEED`, rotated between evaluation cohorts. Hidden
@@ -149,16 +154,44 @@ including the whole final second; a day is the interval from 00:00 UTC inclusive
 00:00 UTC exclusive. Each edition must display its **generation timestamp and time zone**,
 and identify its submission cutoff or coverage date. A cutoff assigns submissions to an edition;
 it does not promise that evaluation and publication finish at that instant. The publication lag
-will be announced before launch. A team's entry reflects their latest
-submission's terminal verdict — a rejected or unscored newer submission replaces an accepted
-older one. Selection uses the platform's recorded submission time, regardless of when evaluation
-finishes. The same latest-submission rule selects
-the official entry at the cutoff, as specified in [`overview.md`](overview.md#submission).
-The organizers may publish the temporary board during the submission window. It is provisional,
-never shows raw verdicts or hidden inputs, and does not determine the official result.
-An incomplete daily edition is never published. After the cutoff the last complete temporary
-edition may stay visible with a final-evaluation notice
-until the published final leaderboard replaces it.
+and the handling of editions that miss their planned publication time will be announced before
+launch. Neither the daily cutoff nor the planned publication time is an evaluation timeout or
+shortens the published resource limits.
+
+Freeze the selected submission identities for each edition. Selection uses the platform's
+recorded submission time, regardless of when evaluation finishes. The same latest-submission
+rule selects the official entry at the cutoff, as specified in
+[`overview.md`](overview.md#submission). A newer rejected,
+accepted-but-unscored, or terminal-error submission replaces an older success for that
+team/problem; it does not restore the older result or create a public failure row. Only scoreable
+results receive a public entry and rank.
+
+For a daily edition, **processing is complete** when every selected submission has a recorded
+terminal outcome: accepted, rejected, or an explicitly classified judge or infrastructure error.
+Each outcome must be established from trusted evaluation-task evidence and belong to the selected
+submission. A failed attempt with a retry still pending is not a terminal outcome. Queued, running,
+retrying, missing, and unknown outcomes remain unfinished; neither elapsed time, missing metrics,
+nor an approaching publication time permits dropping an entry or declaring it a terminal error.
+
+A terminal error counts as processed for that daily edition. Retain its submission identity and
+error record; it receives no score or rank and is not a zero-point contestant failure. Once every
+selected submission has a terminal outcome, the edition may complete processing and later daily
+scopes may proceed without first obtaining successful reruns of those errors. Organizer review
+and any recovery still apply. This daily completion rule does not change the requirements for
+scoreability or the final official evaluation.
+
+When a terminal error is recorded, the team entitled to view that submission must be able to
+query its error status and an understandable, sanitized reason. Its private status must reflect
+the recorded error rather than continue to show the task as waiting. This does not disclose raw
+verdicts, hidden inputs, or secrets, or publish a public leaderboard entry.
+
+The organizers may publish the temporary board during the submission window. It is provisional
+and does not determine the official result. An incomplete daily edition is never published. If
+an edition is unfinished at its planned publication time, retain the previous complete edition
+with a delay notice; before the first complete edition, show that it is being prepared. Publish
+complete editions under the announced schedule and publication controls, without exposing raw
+verdicts or hidden inputs. After the submission deadline, the last complete temporary edition
+may stay visible with a final-evaluation notice until the published final leaderboard replaces it.
 
 **Hardcoding and proof cost.** A table or special case is legal only if it is covered by the
 universal correctness proof. Exact inputs remain hidden during evaluation. Final official inputs

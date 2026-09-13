@@ -90,6 +90,13 @@ was recorded by the platform before the deadline. This selection does not fall b
 submission if the latest submission is rejected or unscored. Pending evaluation or infrastructure
 retries apply to the selected submission and do not change that selection.
 
+Source availability or integrity-check results must not change which submission is selected.
+If the stored source is missing, unreadable, or fails integrity verification, preserve the
+selected submission's identity and record a platform error. Do not omit the team/problem or substitute an older
+submission. The final selection is not completely frozen until the original formal source is
+recovered and verified against its original manifest and hash. Later Playground edits or
+post-deadline submissions cannot replace it.
+
 ## Rules
 
 Participation is also subject to the team, anti-cheating, and participant-cost policies in
