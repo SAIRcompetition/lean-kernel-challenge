@@ -33,6 +33,18 @@ and synchronizes the published rules. Platform integration and production accept
 - Verify the platform's entry selection: use the latest formal submission by recorded submission
   time for each team/problem, including when it is rejected or unscored. Pending evaluation and
   infrastructure retries must not cause fallback to an older submission.
+  Exercise missing, unreadable, and corrupt retained source: preserve the selected identity,
+  neither omit the team/problem nor use an older submission, and block complete final freeze
+  until the original formal source is recovered and verified. Later Playground edits and
+  post-deadline submissions must not substitute for that source.
+- Verify a daily edition containing accepted, rejected, accepted-but-unscored, and classified
+  terminal-error outcomes. Terminal errors count as processed, displace older successes without
+  a public failure row, and create no score or rank. The entitled team must be able to query a
+  sanitized error status/reason instead of seeing the task remain waiting. Once all selected
+  entries are terminal, later dates must proceed without first recovering errors successfully.
+  Pending, running, retrying, missing, or unknown outcomes must still prevent completion; a
+  missing result or elapsed time alone must not classify an error. Retain error evidence and
+  verify that daily settlement does not change final-evaluation or scoring requirements.
 - Apply the confirmed daily mode limits: Standard 2 and Light 5. First resolve whether limits are
   per team across all problems or per team/problem, whether formal submissions share the Standard
   allowance, and how rejected submissions, cancellations, and infrastructure retries affect it.
@@ -40,7 +52,10 @@ and synchronizes the published rules. Platform integration and production accept
   `23:59:59`; implement the interval as inclusive midnight to exclusive next midnight. Display
   each leaderboard edition's generation timestamp with its time zone. Also identify its submission
   cutoff or coverage date so users can distinguish publication time from submission coverage.
-  Specify the publication lag; a submission cutoff does not imply instant evaluation completion.
+  Specify the publication lag and handling of editions that finish after their planned publication
+  time; neither the cutoff nor the publication target is an evaluation timeout. Verify that an
+  unfinished edition retains the previous complete board with a delay notice, or a preparation
+  notice before the first edition, without publishing partial results or shortening resource limits.
 - Complete the published code-release policy by specifying the submission versions covered,
   license, and applicable participation terms. Private during competition / public afterward is
   already stated in the rules.

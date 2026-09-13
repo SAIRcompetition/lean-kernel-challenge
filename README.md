@@ -187,6 +187,10 @@ groups. An otherwise scoreable submission earns **100 points only when every hid
 **any failed case gives 0 points and infinite ranking cost**. There is no partial credit or
 comparison by harder groups or successful subsets. Infrastructure failures and incomplete runs
 remain unscored and require investigation or re-evaluation.
+For daily provisional standings, a classified terminal error counts as processed without a
+score or public rank. A daily edition can complete once every selected submission has a terminal
+outcome; queued, running, retrying, missing, and unknown outcomes still prevent completion.
+See [`rules/evaluation.md`](rules/evaluation.md) for daily completion and publication rules.
 
 Among full-plan passes, lower instruction cost wins. Target work sums all target-declaration
 replay medians. Combined work adds the correctness-closure replay median once; `saw`,
