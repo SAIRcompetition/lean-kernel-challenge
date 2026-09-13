@@ -140,6 +140,8 @@ Participation is also subject to the team, anti-cheating, and participant-cost p
 Stage 1 begins with nine computational problems from algebra, number theory, combinatorics,
 cryptography, discrete mathematics, and related fields. Their public definitions and scoring
 groups are listed in [`problem-scoring.md`](problem-scoring.md).
+See the [Problem Statements](problems/README.md) for each problem's description, input and
+output formats, examples, constraints, submission requirements, and quick tests.
 
 ## Status
 

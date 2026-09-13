@@ -4,6 +4,9 @@ Stage 1 has nine independent 100-point problem leaderboards. There is no
 cross-problem total or relative-placement aggregation. `conv` is an experimental
 development task and is excluded.
 
+For detailed task descriptions, input and output formats, worked examples, and starter code,
+see the [Problem Statements](problems/README.md).
+
 Every submission must pass the universal correctness and axiom gate. For each
 problem, an otherwise scoreable submission receives **100 points only if every
 case in the complete hidden plan passes**. Any failed case gives **0 points and
