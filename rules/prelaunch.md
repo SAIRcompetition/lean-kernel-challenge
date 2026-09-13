@@ -17,9 +17,9 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 [SAIR Foundation](https://sair.foundation/).
 
 <p align="center">
-  <a href="https://lean-fro.org/"><img src="../assets/lean-fro-logo.svg" alt="Lean FRO" width="260"></a>
+  <a href="https://lean-fro.org/"><img src="assets/lean-fro-logo.svg" alt="Lean FRO" width="260"></a>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://sair.foundation/"><img src="../assets/sair-foundation-logo.png" alt="SAIR Foundation" width="260"></a>
+  <a href="https://sair.foundation/"><img src="assets/sair-foundation-logo.png" alt="SAIR Foundation" width="260"></a>
 </p>
 
 ## Background
@@ -55,15 +55,15 @@ Participants submit:
 2. a machine-checked proof that the implementation agrees with the
    specification on every input.
 
-The judge first checks the proof of correctness for all inputs. Scoring
-measures the work performed by a pinned Lean kernel when replaying the complete
-verified correctness artifact and the generated checks for judge-selected
-inputs.
+The judge first verifies correctness for all inputs; only submissions that pass
+are Accepted. Each problem has its own leaderboard, listing the computation
+instruction count for every test case and ranking complete results by their sum,
+lowest first. Correctness-proof checking does not contribute to ranking.
 
 The problem set spans areas of computational mathematics including algebra,
 number theory, combinatorics, cryptography, and discrete mathematics. The eight
 Stage 1 problems and their scoring groups are published in this repository
-(see [`problem-scoring.md`](problem-scoring.md)); submissions open at the
+(see the [problem and scoring guide](problems/README.md#scoring)); submissions open at the
 official launch.
 
 ## Key Dates

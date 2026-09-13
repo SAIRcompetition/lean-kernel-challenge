@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run a one-repetition local evaluation through the canonical judge.
 
-This command intentionally delegates to ``judge/judge.py`` instead of maintaining a
+This command intentionally delegates to ``evaluation/judge/judge.py`` instead of maintaining a
 second timing implementation.  It therefore uses the same comparator-verified export,
 identity pins, axiom audits, ``kernel-replay-v2`` boundaries, and timer-internal wall
 clock as an ordinary local judge run.
@@ -19,7 +19,7 @@ import tempfile
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(BASE / "judge"))
+sys.path.insert(0, str(BASE / "evaluation" / "judge"))
 import judge as _judge
 from problem_layout import evaluation_problem_dir
 

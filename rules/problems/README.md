@@ -1,141 +1,166 @@
-# Stage 1 — Problem Statements
+# Stage 1 — Problems and Scoring
 
-Each page below presents one of the eight scored problems in contest-statement format:
-problem statement, input, output, examples, constraints and scoring, and submission requirements.
-Starter-code and local-testing instructions follow the statement. Unlike a standard-input /
-standard-output programming contest, a submission here is a Lean function and a proof.
-The pages do not add tasks or change their three evaluation groups.
+Stage 1 has eight independent problem leaderboards. Submit a Lean function and a
+proof, not a program that reads standard input. Each page below defines the task,
+examples, and its three evaluation groups.
 
-## Choose a problem
+## Problems
 
-| Problem | Computation | Input | Output | Ranking work |
-| --- | --- | --- | --- | --- |
-| [Fibonacci (`fib`)](fib.md) | Fibonacci number | Index | `Nat` | Target |
-| [Integer partitions (`partition`)](partition.md) | Number of unordered integer partitions | Integer to partition | `Nat` | Target |
-| [Mertens function (`mertens`)](mertens.md) | Sum of the Möbius function | Inclusive upper bound | `Int` | Target |
-| [Prime counting (`primecount`)](primecount.md) | Number of primes up to a bound | Inclusive upper bound | `Nat` | Target |
-| [Matrix permanent (`permanent`)](permanent.md) | Permanent of a generated 0/1 matrix | Packed dimension and seed | `Nat` | Target |
-| [Rule 110 (`ca-rule110`)](ca-rule110.md) | Evolution of a 256-cell cyclic row | Packed steps and seed | `Nat` | Combined |
-| [SHA-256 chain (`sha256`)](sha256.md) | Repeated hashing of a 32-byte digest | Packed chain length and seed | `Nat` | Combined |
-| [Polynomial discriminant (`polydisc`)](polydisc.md) | Discriminant of a generated monic degree-24 polynomial | Width-band and instance selector | `Int` | Target |
-
-The full schedule and common resource limits are in
-[Problem Leaderboards](../problem-scoring.md). The exact judging and failure rules are in
-[Evaluation](../evaluation.md).
-
-## Read the specification before implementing
-
-The fixed evaluation files define the interface. All eight scored tasks keep them
-in `evaluation/problems/<id>/`, separately from participant files:
-
-- `Spec.lean` defines or imports the function the implementation must equal, including any
-  input decoder and instance generator. `fib`, `mertens`, and `primecount` use
-  APIs from the pinned Mathlib v4.33.1 dependency; their problem pages identify
-  the exact declarations and fixed-version sources.
-- `Challenge.lean` states the implementation and theorem to provide.
-- `Solution.lean` connects the submitted declarations to that fixed statement.
-- `config.json` specifies the evaluation groups, sampling policy, resource limits, and ranking
-  policy.
-
-The eight participant packages contain runnable `Submission.lean` files
-with two short TODOs and a generated fixed `Spec.lean` dependency; do not edit
-the latter. Fib, Mertens, and prime counting additionally provide their own
-pinned Mathlib dependency setup. No participant package contains the judge
-interfaces or scoring configuration.
-
-The completed starting implementations are under `examples/submissions/<id>/baseline/`.
-Some problems also have another example implementation. A baseline is a starting point, not a
-promise that it completes every official case within the configured limits.
-
-Mathematical descriptions explain the intended computation. The formal correctness target is
-the definition supplied or imported by the locked `Spec.lean`, not every related definition
-that happens to exist in Mathlib.
-
-## Mathlib status
-
-This table records the current target separately from possible future library bridges.
-“Candidate” does not change the competition target and does not claim that the repository
-algorithm has already been certified against that Mathlib definition.
-
-| Problem | Current formal target | Mathlib status |
+| Problem | Input | Output |
 | --- | --- | --- |
-| `fib` | `Nat.fib` | Direct Mathlib v4.33.1 target. |
-| `primecount` | `primeCountSpec`, backed by `Nat.primeCounting` | Direct Mathlib v4.33.1 target. |
-| `mertens` | `mertensSpec`, an inclusive sum of `ArithmeticFunction.moebius` | Uses Mathlib's Möbius function in the current target. |
-| `partition` | Repository `partitionSpec` recurrence | Mathlib has `Nat.Partition`; `Fintype.card (Nat.Partition n)` is a future candidate, but no all-`n` bridge from `partitionSpec` is supplied. |
-| `permanent` | Repository `permanentSpecN` mask traversal | Mathlib has `Matrix.permanent`, but no all-input bridge from the current traversal and generated matrices is supplied. |
-| `polydisc` | Repository `discSpec` resultant algorithms | Mathlib has `Polynomial.discr`, but no all-input bridge from the generated polynomial and current algorithms is supplied. |
-| `ca-rule110` | Repository `caSpecN` | Mathlib has generic iteration tools, but no dedicated Rule 110 specification. |
-| `sha256` | Repository `sha256Spec` | Mathlib has general fixed-width bit-vector APIs, but no dedicated SHA-256 implementation. |
+| [Fibonacci (`fib`)](fib.md) | Fibonacci index | `Nat` |
+| [Integer partitions (`partition`)](partition.md) | Integer to partition | `Nat` |
+| [Mertens function (`mertens`)](mertens.md) | Inclusive Möbius-sum bound | `Int` |
+| [Prime counting (`primecount`)](primecount.md) | Inclusive prime-counting bound | `Nat` |
+| [Matrix permanent (`permanent`)](permanent.md) | Packed dimension and seed | `Nat` |
+| [Rule 110 (`ca-rule110`)](ca-rule110.md) | Packed evolution steps and seed | `Nat` |
+| [SHA-256 chain (`sha256`)](sha256.md) | Packed chain length and seed | `Nat` |
+| [Polynomial discriminant (`polydisc`)](polydisc.md) | Degree-24 width-band and instance selector | `Int` |
 
-## What a submission must establish
+## Quick start
 
-Submit one `Submission.lean` file, at most 1 MiB, with the implementation, proof, and helpers
-inside `namespace Submission`. The interface is:
-
-```text
-impl : Nat → Output
-impl_correct : ∀ n, impl n = spec n
-```
-
-`Output` and `spec` stand for the concrete type and specification name listed on each problem
-page. They are not declarations to add to the submission.
-
-The proof covers **every natural-number input**, not just the three scored groups or the
-worked examples. For packed-input problems, this means all instances defined by the locked
-decoder and generator; it does not mean all possible matrices, graphs, or byte strings.
-
-The implementation may use a different algorithm or representation. The correctness proof may
-use induction, rewriting, and other permitted Lean reasoning; it need not be `rfl`. Separately,
-the implementation must be total and kernel-reducible to its output literal. Use only the
-dependencies supplied by the locked problem workspace: fib, Mertens, and prime counting
-include pinned Mathlib import closures; the other five tasks remain core-Lean-only. Only `propext`,
-`Quot.sound`, and `Classical.choice` are permitted proof axioms; `sorry` and `native_decide`
-are not accepted. See
-[Rules R1–R5](../overview.md#rules).
-
-## How performance and scores are determined
-
-The judge first checks the universal correctness proof. It then checks a generated direct
-equation `impl n = v` for each hidden input, where `v` is the official standard output.
-Checking that equation forces the kernel to compute the submitted implementation; it does not
-require the implementation to follow the specification's algorithm.
-
-For an otherwise scoreable submission:
-
-- Every case must pass to earn **100 points**. Any failed case gives **0 points** and infinite
-  ranking cost; there is no partial credit for a group or a subset of cases.
-- Among full-plan passes, lower instruction cost ranks better. Equal costs remain tied.
-- **Target work** sums the median kernel instruction count for each target declaration.
-- **Combined work** adds the correctness-closure replay median once to target work.
-
-Official medians use three repetitions. Every submission must complete all correctness
-replays, including on target-work problems where that cost is not added to ranking work.
-Infrastructure errors and incomplete runs are unscored, not zero-point contestant failures.
-The eight problem leaderboards are independent; there is no combined competition score.
-
-The tables on individual pages give per-repetition target-process watchdogs, not a time budget
-shared by a whole group. Preparation and correctness checks have their own limits. The official
-metric counts kernel instructions, not compiled runtime or total process wall time. Refer to
-[Evaluation](../evaluation.md) for the precise measurement boundary and resource rules.
-
-## Local participant build
-
-For any scored task, install `elan` and run from the repository root:
+Install [elan](https://github.com/leanprover/elan), then run from the repository root:
 
 ```bash
 cd problems/partition
 lake build
 ```
 
-Replace `partition` with the chosen task. For fib, Mertens, and prime counting,
-install Git and Python 3.9+ and run `python3 setup.py` before building; each
-participant package documents that step. The other five need only core Lean.
-Edit `Submission.lean` and repeat `lake build`.
-Building compiles definitions and proofs; it does not independently check the official
-interface or permitted axioms, benchmark, or score the submission.
+Replace `partition` with your problem. For **fib, mertens, and primecount**, also
+install Git and Python 3.9+, and run `python3 setup.py` in that problem's folder
+before building to prepare pinned Mathlib dependencies. First setup needs network
+access. All packages use Lean 4.33.1.
 
-For optional kernel measurements, follow the separate
-[evaluation setup](../../evaluation/README.md). It uses the canonical judge on the
-selected task's complete unseeded public plan with one wall-time repetition,
-not official scores. Only `Submission.lean` is passed to the judge.
+Edit and submit only `Submission.lean`. Keep `Spec.lean` and environment files
+unchanged. The starter implementation and proof already compile, but a starter
+is not guaranteed to finish every performance case within its limits.
+
+`lake build` checks compilation and proofs, not the official interface, axiom
+policy, or performance. The evaluator is optional for development; follow
+[local evaluation](../../evaluation/README.md) to run it separately.
+
+## Submission
+
+Submit one `Submission.lean` file, at most 1 MiB, containing these declarations
+and any helpers inside `namespace Submission`:
+
+```text
+impl : Nat → Output
+impl_correct : ∀ n, impl n = spec n
+```
+
+Use the concrete output type and specification name from your problem page.
+The proof covers **every `n : Nat`**, not just test cases. For packed inputs, this
+means all instances produced by the fixed decoder and generator, not every
+possible matrix or byte string.
+
+You may change the algorithm or representation; the proof need not use `rfl`.
+The implementation must be total and kernel-reducible to its output literal.
+Use only locked dependencies. Permitted proof axioms are `propext`, `Quot.sound`,
+and `Classical.choice`; `sorry` and `native_decide` are not accepted.
+See [Rules R1–R5](../overview.md#rules).
+
+The fixed files in `evaluation/problems/<id>/` define the contract:
+
+- `Spec.lean`: formal target, decoder, and generator; participant copies are identical.
+- `Challenge.lean` and `Solution.lean`: required interface and submission bridge.
+- `config.json`: test groups, sampling, and limits. Its ranking fields still describe
+  the [legacy implementation](#implementation-status).
+
+## Mathlib status
+
+| Problem | Current formal target | Dependency |
+| --- | --- | --- |
+| `fib` | `Nat.fib` | Mathlib v4.33.1 |
+| `mertens` | `mertensSpec`, summing `ArithmeticFunction.moebius` | Mathlib v4.33.1 |
+| `primecount` | `primeCountSpec`, backed by `Nat.primeCounting` | Mathlib v4.33.1 |
+| `partition` | Custom `partitionSpec` recurrence | Core Lean |
+| `permanent` | Custom `permanentSpecN` mask traversal | Core Lean |
+| `ca-rule110` | Custom `caSpecN` | Core Lean |
+| `sha256` | Custom `sha256Spec` | Core Lean |
+| `polydisc` | Custom `discSpec` resultant algorithms | Core Lean |
+
+Each problem page links to its exact definitions. Mathlib's `Nat.Partition`,
+`Matrix.permanent`, and `Polynomial.discr` are possible future targets, not the
+current specifications: no all-input equivalence bridge is supplied. Rule 110
+and SHA-256 use custom specifications rather than dedicated Mathlib implementations.
+
+## Scoring
+
+The judge first checks the interface, permitted axioms, and universal proof
+`∀ n, impl n = spec n`. Only a pass is **Accepted** and proceeds to performance
+evaluation. Passing sampled tests alone does not establish correctness.
+
+For each case, measure kernel computation of `impl n` against the exact official
+output three times. Take the median instruction count, then sum all case medians:
+
+```text
+I_i = median(instructions_i,1, instructions_i,2, instructions_i,3)
+T = I_1 + I_2 + ... + I_N
+```
+
+- Rank by **T, lowest first**, only when all cases pass and required verification
+  completes. Equal totals tie. There are no group weights or point conversions.
+- Checking `impl_correct` is verification only: its instruction count is excluded
+  from T and tie-breaking for **all eight problems**. The per-case kernel check
+  reducing `impl n` to the exact output remains measured.
+- Performance failures, timeouts, or resource-limit failures leave an otherwise
+  Accepted submission without a complete total or rank. Partial totals are not ranked.
+- Leaderboards are independent; there is no cross-problem total.
+
+Reports list **every planned case**: ID, group, outcome, and median computation
+instruction count. Failed or unattempted cases show `—`, never zero. Show T only
+for complete passes; label any proof-checking measurements **verification only**.
+Case IDs must not reveal hidden input values. Publication follows the
+[results policy](../overview.md#evaluation-and-results).
+
+Infrastructure failures require review or re-evaluation and are not contestant
+performance failures. See [evaluation](../evaluation.md) for measurement boundaries.
+
+## Limits
+
+The complete test-group table appears on each problem page. Groups define
+workloads, not separate awards. Every submission in one cohort receives the same
+resolved plan. Exact final inputs and the seed are released after evaluation;
+this does not apply to provisional reference inputs or seeds.
+
+| Check | Time limit |
+| --- | --- |
+| Universal correctness comparator | 3,600 s |
+| Correctness axiom audit | 300 s |
+| Correctness replay | 1,800 s per repetition; all three must finish |
+| Per-case theorem build and export | 1,800 s combined per case |
+| Per-case axiom audit | 300 s per case |
+| Target replay | Per-repetition watchdog in the problem's test table |
+
+All three target replays must finish within their watchdog; any published
+instruction limit applies to the median. Watchdogs include whole-process overhead,
+while instruction counts cover only target replay. Cases have independent budgets:
+one timeout does not consume later cases' limits or stop them being attempted.
+Reference-answer preparation is independent of submissions and outside these budgets.
+
+Memory is **8192 MiB (8 GiB) for permanent** and provisionally **4096 MiB (4 GiB)
+for each other problem**, with no extra swap. Limits cover the entire evaluation
+job and are fixed in each `evaluation/problems/<id>/config.json`. Official-host
+validation remains pending; limits do not guarantee baseline completion. Changing
+a limit requires a new cohort and a complete rescore of that problem's comparison set.
+
+Sampling terms:
+
+- **Geometric range:** distinct, increasing integers in the inclusive range, with
+  deterministic 15% seed-derived jitter. For two cases the endpoints are jittered
+  inward; unseeded local runs use the endpoints.
+- **Uniform integer:** distinct, unbiased seed-derived integers in the inclusive range.
+- **Packed:** public scale in the high bits and a distinct seed-derived 32-bit
+  instance seed in the low bits. Different seeds may generate the same instance.
+
+## Implementation status
+
+The scoring rule above is a **documentation-only update**. The checked-in evaluator,
+scorer, and result display still use legacy `full-plan-v1` 100/0-point scoring;
+Rule 110 and SHA-256 also still include correctness-replay work in ranking.
+Their current aggregate scores do **not** implement the rule above.
+
+Before official use, code and per-case reporting must be aligned and verified
+under a new sealed ranking-policy version and cohort. Old cohorts retain their
+original rules and must not be relabeled or mixed with the new policy.

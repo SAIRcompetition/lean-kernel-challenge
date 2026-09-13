@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "judge"))
+sys.path.insert(0, str(ROOT / "evaluation" / "judge"))
 import judge
 import reference_answers
 from problem_dependencies import specification_fingerprint

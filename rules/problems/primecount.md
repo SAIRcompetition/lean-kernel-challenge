@@ -21,17 +21,12 @@ which counts primes less than or equal to its argument; see the
 One argument `n : Nat`, an **inclusive** upper bound. The judge calls `impl n`
 directly; there is no standard-input parser or input file to implement.
 
-The function must be defined for every natural number, including zero. The
-performance-test ranges below do not restrict the correctness theorem's domain.
-
 ## Output
 
 Return `π(n)` as a `Nat`. Do not print the answer. Return the exact count, not
 a list of primes, an approximation, or a Boolean primality result.
 
 ## Examples
-
-Each row is a separate function call.
 
 | Input `n` | Output `impl n` |
 | ---: | ---: |
@@ -58,20 +53,10 @@ groups and six hidden cases in total.
 Each group uses `geometric_range`: two distinct, increasing values with
 deterministic 15% seed-derived jitter inward from the endpoints. Unseeded local
 plans use the endpoints. Official exact values remain hidden during evaluation.
-The current memory limit is **4,096 MiB (4 GiB)**, provisional pending
-official-host validation and fixed within a cohort.
 
-An otherwise scoreable submission earns **100 points only if all six cases
-pass**. Any failed case gives 0 points and infinite ranking cost; there is no
-partial credit. Full-plan passes rank by **target work `T`**: the sum of the
-median kernel instruction count for each case's three target replays. Lower is
-better; equal costs remain tied. Correctness replay must complete but its cost
-is not added to this problem's ranking metric. Infrastructure errors are unscored.
-
-All three target replays must finish within the case's per-repetition limit.
-Preparation and correctness checks have separate limits, not a shared group
-budget. See the [scoring plan](../problem-scoring.md#primecount),
-[configuration](../../evaluation/problems/primecount/config.json), and [evaluation rules](../evaluation.md).
+Memory: **4096 MiB (4 GiB)**. The [shared scoring rules](README.md#scoring)
+and [resource limits](README.md#limits) apply.
+The [fixed configuration](../../evaluation/problems/primecount/config.json) records this plan.
 
 ## Submission Requirements
 
@@ -83,13 +68,11 @@ impl : Nat → Nat
 impl_correct : ∀ n, impl n = primeCountSpec n
 ```
 
-The [locked bridge](../../evaluation/problems/primecount/Solution.lean) exposes them to the
-judge. Prove equality for **all `n`**, including zero and inputs outside the
-official ranges. The proof need not use `rfl`, and your algorithm need not use
-Mathlib's counting implementation. Separately, the kernel must reduce `impl n`
-to the exact answer. Use only this problem's supplied pinned Mathlib closure,
-total kernel-reducible code, and permitted axioms; see the
-[shared requirements](README.md#what-a-submission-must-establish).
+The [locked bridge](../../evaluation/problems/primecount/Solution.lean) fixes the interface.
+Prove equality for **all `n`**, including zero and inputs outside the test ranges.
+Your algorithm may differ from Mathlib's. Use only this problem's supplied pinned
+Mathlib closure and follow the
+[shared requirements](README.md#submission).
 
 ## Starter Code and Local Testing
 
@@ -98,8 +81,7 @@ It includes a complete baseline using Mathlib's `Nat.minFac`, with a proof again
 `Nat.primeCounting`. The
 [square-root trial-division example](../../examples/submissions/primecount/sqrt/Submission.lean)
 shows another proved implementation.
-The implementation and proof are complete; use the two TODOs to make your changes.
-A starting implementation is not guaranteed to pass every performance case.
+The two TODOs mark the implementation and proof to edit.
 
 Install `elan`, Git, and Python 3.9+, then run from the repository root:
 
@@ -109,21 +91,11 @@ python3 setup.py
 lake build
 ```
 
-The setup command prepares the dependency versions pinned by this package. Keep
-`Spec.lean` and the environment files unchanged; edit and submit only
-`Submission.lean`. Building compiles your
-definitions and proofs. It does not independently check the official interface or
-permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/primecount/README.md).
-
-For optional kernel evaluation, run from the repository root:
-
-```bash
-bash evaluation/setup.sh --problem primecount
-python3 evaluation/run.py --problem primecount --submission problems/primecount/Submission.lean
-```
-
-This uses the full unseeded public plan with one wall-time repetition, not official
-PMU scores. See the [evaluation guide](../../evaluation/README.md).
+Setup prepares pinned dependencies. Edit and submit only `Submission.lean`;
+keep `Spec.lean` and the environment files unchanged. `lake build` compiles the
+code and proof; it is not an acceptance check or performance measurement.
+See the [participant guide](../../problems/primecount/README.md) and
+[optional kernel evaluation](../../evaluation/README.md).
 
 ## Notes
 
@@ -131,7 +103,6 @@ The baseline tests each integer using Mathlib's least-prime-factor function
 `Nat.minFac`. The [direct Mathlib example](../../examples/submissions/primecount/mathlib-direct/Submission.lean)
 uses `Nat.primeCounting` itself; it is correct but can time out on larger cases.
 The square-root example stops when `d × d > p` and proves its alternative predicate
-correct. Reusing prime
-information or changing the counting representation are possible alternatives,
+correct. Reusing prime information or changing the counting representation are possible alternatives,
 but native performance does not predict kernel-reduction performance. Any
 replacement must preserve the inclusive endpoint and the cases 0 and 1.

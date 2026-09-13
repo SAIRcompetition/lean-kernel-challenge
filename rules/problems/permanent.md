@@ -89,17 +89,8 @@ The packed sampler fixes the dimension and derives five distinct 32-bit seeds
 per group. Distinct seeds need not produce distinct matrices. All submissions
 in the same cohort receive the same hidden plan.
 
-Memory is **8192 MiB (8 GiB)**; official-host acceptance remains required.
-Each target has three repetitions, all of which must finish within its watchdog.
-Separate build/export, audit, and correctness budgets follow the
-[common evaluation rules](../evaluation.md#scoring).
-
-An otherwise scoreable submission earns **100 points only if all 15 cases pass**.
-A failed case gives **0 points and infinite ranking cost**; infrastructure errors
-or incomplete evaluations remain unscored. Among full-plan passes, lower
-**target work** wins: the sum of the 15 target-replay instruction-count medians.
-Correctness replay is mandatory but is not added to ranking cost. There is
-no partial credit per dimension. See the [scoring policy](../problem-scoring.md).
+Memory: **8192 MiB (8 GiB)**. The [shared scoring rules](README.md#scoring)
+and [resource limits](README.md#limits) apply.
 
 ## Submission Requirements
 
@@ -112,9 +103,9 @@ impl_correct : ∀ n, impl n = permanentSpecN n
 
 The proof covers **every `Nat`**, not just the scored dimensions or sampled seeds.
 It must handle dimensions below 3 and arbitrarily large decoded dimensions.
-The implementation may use another algorithm, and the proof need not use `rfl`.
-Current rules require total, kernel-reducible core Lean without Mathlib and
-restrict axioms; see [R1–R4](../overview.md#rules). The locked
+Any algorithm satisfying the
+[shared requirements](README.md#submission) is permitted;
+this problem uses core Lean without Mathlib. The locked
 [challenge](../../evaluation/problems/permanent/Challenge.lean) and
 [solution bridge](../../evaluation/problems/permanent/Solution.lean) fix the interface.
 
@@ -122,8 +113,7 @@ restrict axioms; see [R1–R4](../overview.md#rules). The locked
 
 Start from [problems/permanent/Submission.lean](../../problems/permanent/Submission.lean).
 It uses the existing `permanentSpecN` baseline and proves correctness by reflexivity.
-The implementation and proof are complete; use the two TODOs to make your changes.
-A starting implementation is not guaranteed to pass every performance case.
+The two TODOs mark the implementation and proof to edit.
 
 Install `elan`, then run from the repository root:
 
@@ -132,20 +122,11 @@ cd problems/permanent
 lake build
 ```
 
-No Mathlib or separate setup is needed. Keep the generated `Spec.lean` and environment
-files unchanged; edit and submit only `Submission.lean`. Building compiles your
-definitions and proofs. It does not independently check the official interface or
-permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/permanent/README.md).
-
-For optional kernel evaluation, run from the repository root:
-
-```bash
-bash evaluation/setup.sh --problem permanent
-python3 evaluation/run.py --problem permanent --submission problems/permanent/Submission.lean
-```
-
-This uses the full unseeded public plan with one wall-time repetition, not official
-PMU scores. See the [evaluation guide](../../evaluation/README.md).
+No separate setup is needed. Edit and submit only `Submission.lean`; keep
+`Spec.lean` and the environment files unchanged. `lake build` compiles the code
+and proof; it is not an acceptance check or performance measurement.
+See the [participant guide](../../problems/permanent/README.md) and
+[optional kernel evaluation](../../evaluation/README.md).
 
 ## Notes
 

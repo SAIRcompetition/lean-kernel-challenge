@@ -115,9 +115,6 @@ This is a public specification example, not an official hidden input.
 
 ## Constraints and Scoring
 
-The current problem memory limit is **4096 MiB**, with zero additional swap.
-This value is provisional pending official-host validation; a revision requires a new cohort
-and a complete rescore under the rules.
 Each group samples two distinct hidden integers uniformly from its inclusive range.
 
 | Group | Inclusive input range | Maximum width | Cases | Target watchdog per repetition |
@@ -129,29 +126,12 @@ Each group samples two distinct hidden integers uniformly from its inclusive ran
 These are the three current scoring groups; the other two supported bands do not create
 additional Stage 1 cases or tiers.
 
-Each target declaration is replayed three times.
-Its median kernel instruction count is recorded, and all three repetitions must finish
-within the listed per-repetition watchdog.
-The correctness closure must also complete three replays under the common limits.
-
-This problem uses **target work (`T`)**:
-
-- `T` is the sum of all six target-declaration replay medians.
-- Correctness replay is a scoreability gate but is not added to ranking work.
-
-An otherwise scoreable submission earns **100 points** only if all six cases pass.
-Any failed case gives **0 points** and infinite ranking cost; there is no partial credit.
-Among complete passes, lower `T` ranks better, and equal costs remain tied.
-Infrastructure errors and incomplete evaluations are unscored, not zero-point failures.
-
-The final official cohort's exact inputs remain hidden during evaluation and are released
-after it closes.
-See [`problem-scoring.md`](../problem-scoring.md) and
-[`evaluation.md`](../evaluation.md) for the binding plan and common judge rules.
+Memory: **4096 MiB (4 GiB)**. The [shared scoring rules](README.md#scoring)
+and [resource limits](README.md#limits) apply.
 
 ## Submission Requirements
 
-Submit exactly one `Submission.lean` file, at most 1 MiB, with these declarations inside
+Submit one `Submission.lean` with these declarations inside
 `namespace Submission`:
 
 ```text
@@ -159,21 +139,18 @@ impl : Nat → Int
 impl_correct : ∀ n, impl n = discSpec n
 ```
 
-All helpers must also be inside `namespace Submission`.
-The universal theorem covers every input and all five bands, while the measured closed
-theorem `impl n = v` evaluates one hidden instance against its exact `Int` literal.
+The theorem covers **every input and all five bands**, not just the measured cases.
 
 Use total, kernel-reducible core Lean code without Mathlib. The
-[shared submission requirements](README.md#what-a-submission-must-establish)
-apply, including the permitted axioms and proof restrictions.
+[shared submission requirements](README.md#submission)
+apply.
 
 ## Starter Code and Local Testing
 
 Start from [problems/polydisc/Submission.lean](../../problems/polydisc/Submission.lean).
 It uses the existing `discSpec` baseline and proves correctness by reflexivity.
 The underlying computation retains the normal subresultant algorithm and Bareiss fallback.
-The implementation and proof are complete; use the two TODOs to make your changes.
-A starting implementation is not guaranteed to pass every performance case.
+The two TODOs mark the implementation and proof to edit.
 
 Install `elan`, then run from the repository root:
 
@@ -182,20 +159,11 @@ cd problems/polydisc
 lake build
 ```
 
-No Mathlib or separate setup is needed. Keep the generated `Spec.lean` and environment
-files unchanged; edit and submit only `Submission.lean`. Building compiles your
-definitions and proofs. It does not independently check the official interface or
-permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/polydisc/README.md).
-
-For optional kernel evaluation, run from the repository root:
-
-```bash
-bash evaluation/setup.sh --problem polydisc
-python3 evaluation/run.py --problem polydisc --submission problems/polydisc/Submission.lean
-```
-
-This uses the full unseeded public plan with one wall-time repetition, not official
-PMU scores. See the [evaluation guide](../../evaluation/README.md).
+No separate setup is needed. Edit and submit only `Submission.lean`; keep
+`Spec.lean` and the environment files unchanged. `lake build` compiles the code
+and proof; it is not an acceptance check or performance measurement.
+See the [participant guide](../../problems/polydisc/README.md) and
+[optional kernel evaluation](../../evaluation/README.md).
 
 ## Notes
 

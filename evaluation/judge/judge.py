@@ -68,7 +68,7 @@ import reference_answers
 if hasattr(sys, "set_int_max_str_digits"):
     sys.set_int_max_str_digits(0)
 
-ROOT = Path(__file__).resolve().parent.parent            # lean-kernel-challenge/
+ROOT = Path(__file__).resolve().parents[2]               # lean-kernel-challenge/
 sys.path.insert(0, str(ROOT / "scripts"))
 from memory_policy import memory_mb_from_envelope as _memory_mb_from_envelope, problem_memory_mb
 from problem_layout import RETIRED_PROBLEMS, evaluation_problem_dir, iter_evaluation_problem_dirs
@@ -103,8 +103,8 @@ def _problem_dirs():
                 if path.parent.name not in RETIRED_PROBLEMS)
     return iter_evaluation_problem_dirs(ROOT)
 
-# Judge budgets + timing/sandbox policy live in pipeline/config.json (SAIR convention).
-_CFG = json.loads((ROOT / "pipeline" / "config.json").read_text())
+# Judge budgets and timing/sandbox policy live in evaluation/config.json.
+_CFG = json.loads((ROOT / "evaluation" / "config.json").read_text())
 _J = _CFG["judge"]
 COMPARATOR_TIMEOUT = _J["comparator_timeout_seconds"]
 AUDIT_TIMEOUT = _J["audit_timeout_seconds"]
@@ -117,7 +117,7 @@ def _int_env(name, default):
         return default
 
 
-# Dev override so the green gate can shrink the budget WITHOUT editing pipeline/config.json —
+# Dev override so the green gate can shrink the budget WITHOUT editing evaluation/config.json —
 # hand-editing it risks committing a tiny debug budget into the official configuration.
 TIMING_TIMEOUT = _int_env("TIMING_TIMEOUT_SECONDS", _J["timing_timeout_seconds"])
 # Legacy-v1 whole-phase ceiling retained for compatibility tests.
@@ -174,7 +174,7 @@ _PINNED_EXECUTOR_IDENTITY = [None]
 REPRO = ROOT.parent / "repro"
 COMPARATOR = Path(os.environ.get("COMPARATOR_BIN", REPRO / "comparator/.lake/build/bin/comparator"))
 LEAN4EXPORT_BIN = Path(os.environ.get("LEAN4EXPORT_BIN", REPRO / "lean4export/.lake/build/bin"))
-TIMER = Path(os.environ.get("TIMER_BIN", ROOT / "judge/timer-kernel/.lake/build/bin/kernel"))
+TIMER = Path(os.environ.get("TIMER_BIN", ROOT / "evaluation/judge/timer-kernel/.lake/build/bin/kernel"))
 # Versioned measurement protocol shared by this judge, timer-kernel, and KTP/3 executors.
 # Changing any boundary semantics must change at least one of these strings so the cohort hash
 # prevents old and new samples from being ranked together.
@@ -213,7 +213,7 @@ MAX_SLUG_LENGTH = 96
 # `perf` range and these global defaults remain only for evaluation-policy-v1 compatibility.
 # Every submission in one cohort receives the same schedule; the
 # operator rotates its hidden seed between cohorts. An unseeded plan is deterministic local
-# development only. See rules/evaluation.md and rules/problem-scoring.md.
+# development only. See rules/evaluation.md and rules/problems/README.md.
 _PERF_DEFAULTS = _CFG.get("perf_defaults", {"count": 10, "spacing": "geometric", "jitter": 0.15})
 PERF_SEED = os.environ.pop("PERF_SEED", "")
 _PERF_SEED_SOURCE = ["environment" if PERF_SEED else None]
@@ -2291,22 +2291,22 @@ def _evaluator_bundle_digest():
     """Hash the repository files that define judging, timing, scoring, and isolation policy."""
     paths = [
         ROOT / "Dockerfile",
-        ROOT / "judge" / "judge.py",
-        ROOT / "judge" / "reference_answers.py",
+        ROOT / "evaluation" / "judge" / "judge.py",
+        ROOT / "evaluation" / "judge" / "reference_answers.py",
         ROOT / "scripts" / "prepare_reference.py",
         ROOT / "scripts" / "problem_dependencies.py",
         ROOT / "scripts" / "prepare_problem_dependencies.py",
         ROOT / "scripts" / "problem_layout.py",
-        ROOT / "judge" / "timer-kernel" / "Main.lean",
-        ROOT / "judge" / "timer-kernel" / "timer_control.c",
-        ROOT / "judge" / "timer-kernel" / "lakefile.lean",
-        ROOT / "pipeline" / "config.json",
+        ROOT / "evaluation" / "judge" / "timer-kernel" / "Main.lean",
+        ROOT / "evaluation" / "judge" / "timer-kernel" / "timer_control.c",
+        ROOT / "evaluation" / "judge" / "timer-kernel" / "lakefile.lean",
+        ROOT / "evaluation" / "config.json",
         ROOT / "lean-toolchain",
         ROOT / "scripts" / "run_isolated.sh",
         ROOT / "scripts" / "setup.sh",
         ROOT / "scripts" / "score.py",
         ROOT / "scripts" / "memory_policy.py",
-        ROOT / "patches" / "comparator-emit-export.patch",
+        ROOT / "evaluation" / "patches" / "comparator-emit-export.patch",
     ]
     digest = hashlib.sha256()
     for path in paths:

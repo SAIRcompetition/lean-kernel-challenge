@@ -18,7 +18,7 @@ if [ "$#" -ne 0 ]; then
 fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # lean-kernel-challenge/
-CFG="$HERE/pipeline/config.json"
+CFG="$HERE/evaluation/config.json"
 TOOLS_DIR="${TOOLS_DIR:-$(cd "$HERE/.." && pwd)/repro}"
 
 jqget() { python3 -c "import json,sys;print(json.load(open('$CFG'))['toolchain']['$1'])"; }
@@ -57,12 +57,12 @@ clone_build() {
 echo "== building comparator @ $COMPARATOR_REV (+ emit-export patch) =="
 # The Lean Kernel Challenge requires comparator to emit the exact export it verified,
 # so the judge can time that immutable file (closes the comparator→timed-export TOCTOU).
-clone_build comparator https://github.com/leanprover/comparator.git "$COMPARATOR_REV" comparator patches/comparator-emit-export.patch
+clone_build comparator https://github.com/leanprover/comparator.git "$COMPARATOR_REV" comparator evaluation/patches/comparator-emit-export.patch
 echo "== building lean4export @ $LEAN4EXPORT_REV =="
 clone_build lean4export https://github.com/leanprover/lean4export.git "$LEAN4EXPORT_REV" lean4export
 
 echo "== building timer-kernel =="
-( cd "$HERE/judge/timer-kernel" && lake build )
+( cd "$HERE/evaluation/judge/timer-kernel" && lake build )
 
 if [ "$PREPARE_DEPENDENCIES" -eq 1 ]; then
   echo "== preparing pinned problem dependency closures =="
@@ -74,7 +74,7 @@ cat <<EOF
 Setup complete. Point the judge at the tools with:
   export COMPARATOR_BIN=$TOOLS_DIR/comparator/.lake/build/bin/comparator
   export LEAN4EXPORT_BIN=$TOOLS_DIR/lean4export/.lake/build/bin
-  export TIMER_BIN=$HERE/judge/timer-kernel/.lake/build/bin/kernel
+  export TIMER_BIN=$HERE/evaluation/judge/timer-kernel/.lake/build/bin/kernel
 (Defaults already resolve to $TOOLS_DIR when it is the sibling 'repro/' dir.)
 EOF
 if [ "$PREPARE_DEPENDENCIES" -eq 1 ]; then

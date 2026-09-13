@@ -31,11 +31,28 @@ prebuilt-tools/
 /tests/retired_saw_quick_test.py
 
 # Local development experiments and historical review notes.
-# Keep the supported problem checks and reproduction tools in scripts/ and tests/.
+# Keep problem-specific tools and the evaluator's reproducible image checks.
 /examples/prototypes/
 /scripts/analyze_polydisc_candidates.py
 /scripts/benchmark_polydisc_bareiss_variants.py
 /scripts/benchmark_polydisc_representations.py
 /scripts/run_polydisc_bareiss_probe.py
-/docs/history/
-/docs/wording-review-2026-09-08.md
+
+# Internal development and release administration stay local.
+# The manifest is required by the Docker image's end-to-end build check.
+/tests/*
+!/tests/harness_manifest.json
+/.github/workflows/
+/CONTRIBUTING.md
+/contributing.md
+/scripts/sync_fib_participant.py
+
+# Root documentation/assets stay local; published logos live in rules/assets/.
+/docs/
+/assets/
+
+# Retired paths after consolidation; active files live under evaluation/ and rules/problems/.
+/judge/
+/pipeline/
+/patches/
+/rules/problem-scoring.md
