@@ -8,7 +8,7 @@ Evolve a seeded 256-cell Rule 110 cellular automaton on a cyclic row.
 Return the final row as a natural-number bit vector.
 
 The trusted function is `caSpecN` in
-[`Spec.lean`](../../problems/ca-rule110/Spec.lean).
+[`Spec.lean`](../../evaluation/problems/ca-rule110/Spec.lean).
 Your algorithm and representation may differ, but the result must equal `caSpecN` for every
 natural-number input.
 
@@ -30,9 +30,9 @@ Cell 0 therefore reads cell 255 on its left, and cell 255 reads cell 0 on its ri
 All cells update simultaneously from the previous row.
 At zero steps, the seeded initial row is returned unchanged.
 
-The binding files are [`Challenge.lean`](../../problems/ca-rule110/Challenge.lean),
-[`Solution.lean`](../../problems/ca-rule110/Solution.lean), and
-[`config.json`](../../problems/ca-rule110/config.json).
+The binding files are [`Challenge.lean`](../../evaluation/problems/ca-rule110/Challenge.lean),
+[`Solution.lean`](../../evaluation/problems/ca-rule110/Solution.lean), and
+[`config.json`](../../evaluation/problems/ca-rule110/config.json).
 
 ## Input
 
@@ -143,33 +143,34 @@ Submissions may not rely on `sorry`, `native_decide`, `partial`, or `unsafe`.
 
 ## Starter Code and Local Testing
 
-The [baseline](../../examples/submissions/ca-rule110/baseline/Submission.lean) defines
-`impl := caSpecN` and proves correctness by reflexivity.
+Start from [problems/ca-rule110/Submission.lean](../../problems/ca-rule110/Submission.lean).
+It uses `caSpecN` directly with a reflexivity proof. The
+[bit-packed example](../../examples/submissions/ca-rule110/bitpacked/Submission.lean)
+shows an alternative row representation with its own correctness proof.
+The implementation and proof are complete; use the two TODOs to make your changes.
+A starting implementation is not guaranteed to pass every performance case.
 
-The [bit-packed example](../../examples/submissions/ca-rule110/bitpacked/Submission.lean)
-stores the entire row in one `Nat`, masks it by `M = 2^256 - 1`, forms cyclic rotations
-with shifts and ors, and applies a bitwise Rule 110 formula to all cells at once.
-Its proof relates `encodeRow` to `Nat.testBit`, verifies both rotations and all eight Boolean
-neighborhoods, and then inducts over the step count.
-These are starting points and are not guaranteed to pass every official case within its limits.
-
-From the repository root, after the [quick-start setup](README.md#quick-test-before-using-the-judge),
-run the baseline public demo:
+Install `elan`, then run from the repository root:
 
 ```bash
-python3 scripts/quick_test.py --problem ca-rule110
+cd problems/ca-rule110
+lake build
 ```
 
-Run another file or directory:
+No Mathlib or separate setup is needed. Keep the generated `Spec.lean` and environment
+files unchanged; edit and submit only `Submission.lean`. Building compiles your
+definitions and proofs. It does not independently check the official interface or
+permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/ca-rule110/README.md).
+
+For optional kernel evaluation, run from the repository root:
 
 ```bash
-python3 scripts/quick_test.py --problem ca-rule110 --submission path/to/Submission.lean
+bash evaluation/setup.sh
+python3 evaluation/run.py --problem ca-rule110 --submission problems/ca-rule110/Submission.lean
 ```
 
-The helper builds the universal proof and compares compiled outputs at
-`(1 << 32) | 1` and `(2 << 32) | 2`.
-It does not exercise hidden inputs, the axiom audit, PMU measurement, production isolation,
-verdict generation, or scoring. Compiled execution is not the official metric.
+This uses the full unseeded public plan with one wall-time repetition, not official
+PMU scores. See the [evaluation guide](../../evaluation/README.md).
 
 ## Notes
 

@@ -16,7 +16,7 @@ The Möbius function `μ` is defined as follows:
 - Otherwise `μ(k) = (−1)^r`, where `r` is the number of distinct prime divisors.
 
 Your implementation must agree with the locked
-[`mertensSpec`](../../problems/mertens/Spec.lean) for every input. That definition
+[`mertensSpec`](../../evaluation/problems/mertens/Spec.lean) for every input. That definition
 sums from 0 through `n`; the extra zero term does not change the result.
 
 ## Input
@@ -76,7 +76,7 @@ is not added to this problem's ranking metric. Infrastructure errors are unscore
 All three target replays must finish within the case's per-repetition limit.
 Preparation and correctness checks have separate limits, not a shared group
 budget. See the [scoring plan](../problem-scoring.md#mertens),
-[configuration](../../problems/mertens/config.json), and [evaluation rules](../evaluation.md).
+[configuration](../../evaluation/problems/mertens/config.json), and [evaluation rules](../evaluation.md).
 
 ## Submission Requirements
 
@@ -88,7 +88,7 @@ impl : Nat → Int
 impl_correct : ∀ n, impl n = mertensSpec n
 ```
 
-The [locked bridge](../../problems/mertens/Solution.lean) exposes them to the
+The [locked bridge](../../evaluation/problems/mertens/Solution.lean) exposes them to the
 judge. Prove equality for **all `n`**, not just the examples or hidden cases.
 The proof need not use `rfl`, and the algorithm need not perform the same
 trial divisions as the specification. Separately, the kernel must reduce
@@ -98,25 +98,32 @@ without Mathlib, total kernel-reducible code, and permitted axioms only; see the
 
 ## Starter Code and Local Testing
 
-Start from the [completed baseline](../../examples/submissions/mertens/baseline/Submission.lean),
-which uses `mertensSpec` directly. There is currently no separate optimized
-Mertens submission example. The problem workspace's `Submission.lean` is a
-template with placeholders.
+Start from [problems/mertens/Submission.lean](../../problems/mertens/Submission.lean).
+It uses the existing `mertensSpec` baseline and proves correctness by reflexivity.
+The implementation and proof are complete; use the two TODOs to make your changes.
+A starting implementation is not guaranteed to pass every performance case.
 
-From the repository root, after following the
-[setup instructions](README.md#quick-test-before-using-the-judge), run:
+Install `elan`, then run from the repository root:
 
 ```bash
-python3 scripts/quick_test.py --problem mertens
-python3 scripts/quick_test.py --problem mertens --submission path/to/Submission.lean
+cd problems/mertens
+lake build
 ```
 
-The demo builds the implementation and universal proof, then compares compiled
-outputs on public inputs `1`, `10`, and `25`. It is not a formal submission or
-official evaluation: it performs no official axiom audit, hidden-case evaluation,
-PMU measurement, or scoring. Passing does not establish official acceptance or
-kernel performance. For local kernel measurements, use the
-[shared testing guide](README.md#quick-test-before-using-the-judge).
+No Mathlib or separate setup is needed. Keep the generated `Spec.lean` and environment
+files unchanged; edit and submit only `Submission.lean`. Building compiles your
+definitions and proofs. It does not independently check the official interface or
+permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/mertens/README.md).
+
+For optional kernel evaluation, run from the repository root:
+
+```bash
+bash evaluation/setup.sh
+python3 evaluation/run.py --problem mertens --submission problems/mertens/Submission.lean
+```
+
+This uses the full unseeded public plan with one wall-time repetition, not official
+PMU scores. See the [evaluation guide](../../evaluation/README.md).
 
 ## Notes
 

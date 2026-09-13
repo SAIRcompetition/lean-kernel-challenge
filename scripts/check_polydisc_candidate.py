@@ -19,9 +19,10 @@ from pathlib import Path
 
 import sympy
 
+from problem_layout import evaluation_problem_dir
 
 ROOT = Path(__file__).resolve().parents[1]
-PROBLEM_DIR = ROOT / "problems" / "polydisc"
+PROBLEM_DIR = evaluation_problem_dir(ROOT, "polydisc")
 CANDIDATE_SPEC = PROBLEM_DIR / "Spec.lean"
 CANDIDATE_SUBMISSION = (
     ROOT / "examples" / "submissions" / "polydisc" / "baseline" / "Submission.lean"

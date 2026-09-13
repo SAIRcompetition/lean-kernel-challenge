@@ -27,7 +27,7 @@
   },
   "scoring": {
     "contract": "nine independent problem leaderboards; full-plan passes score 100 and rank by configured target work or combined work; any failed case gives 0 points and infinite cost, with all such failures tied",
-    "policy_source": "evaluation/problems/fib/config.json for fib; problems/<id>/config.json for other tasks. The evaluation block (grouped-evaluation-v1) is sealed into each evaluation-policy-v2 cohort.",
+    "policy_source": "evaluation/problems/<id>/config.json for migrated tasks; problems/<id>/config.json for legacy saw and conv. The evaluation block (grouped-evaluation-v1) is sealed into each evaluation-policy-v2 cohort.",
     "legacy_conv_contract": "completed_slots_desc, coverage_desc, harder_slot_profile_desc, total_work_asc",
     "total_work": "full_correctness_closure_replay_median + sum(successful_target_declaration_replay_medians)",
     "metric_groups": [

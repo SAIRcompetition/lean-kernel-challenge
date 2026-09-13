@@ -191,10 +191,10 @@ CASES = {
 }
 
 
-# Frozen known answers for `problems/polydisc/Spec.lean` (`discSpec`).  The
+# Frozen known answers for `evaluation/problems/polydisc/Spec.lean` (`discSpec`).  The
 # input is a plain seed, not a packed (scale, seed) pair; the six seeds cover
 # coefficient-width bands 0-2 with two seeds each, taken from the sampling
-# ranges of evaluation groups D1-D3 in `problems/polydisc/config.json`.  The
+# ranges of evaluation groups D1-D3 in `evaluation/problems/polydisc/config.json`.  The
 # expected discriminants were computed with the repository's own Python mirror
 # (`scripts/check_polydisc_candidate.py`) plus SymPy, then cross-checked
 # against Lean's `discSpec` before freezing.  They are stored as decimal

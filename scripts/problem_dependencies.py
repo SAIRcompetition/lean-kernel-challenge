@@ -192,7 +192,7 @@ def runtime_lakefile(problem_dir: Path, lock: dict | None = None) -> bytes:
 def validate_prepared_packages(problem_dir: Path, *, validate_lock: bool = True) -> Path:
     """Validate exact git revisions in ``.lake/packages`` and return that path.
 
-    This is for trusted preparation and the public native quick test.  Evaluation
+    This is for trusted dependency preparation. Evaluation
     uses :func:`stage_problem_dependencies` and never exposes package checkouts.
     """
     problem_dir = Path(problem_dir)

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Run public, non-scoring smoke tests for Stage 1 submissions.
 
-This helper deliberately does not invoke ``judge/judge.py``. It supports the
-eight core-only tasks; fib has no quick demo.
+This legacy helper deliberately does not invoke ``judge/judge.py``. It supports
+only saw; the eight migrated participant packages use ``lake build`` instead.
 It copies the required local files and one submission into a temporary Lake workspace,
 builds the universal proof, and compares compiled executions of ``impl`` and
 the trusted spec on a few small, fixed, public inputs.  It never reads hidden
@@ -10,8 +10,8 @@ seeds, uses PMU counters, or writes an official verdict/result.
 
 Usage:
   python3 scripts/quick_test.py
-  python3 scripts/quick_test.py --problem partition
-  python3 scripts/quick_test.py --problem partition --submission path/to/Submission.lean
+  python3 scripts/quick_test.py --problem saw
+  python3 scripts/quick_test.py --problem saw --submission path/to/Submission.lean
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from problem_layout import MIGRATED_PROBLEMS
 
 ROOT = Path(__file__).resolve().parent.parent
 PROBLEMS = ROOT / "problems"
@@ -35,22 +36,18 @@ EXAMPLES = ROOT / "examples" / "submissions"
 # evaluation plan.  Packed inputs have the scale in the high bits and a small
 # public seed in the low 32 bits.
 DEMO_CASES: dict[str, tuple[str, tuple[int, ...]]] = {
-    "partition": ("partitionSpec", (0, 5, 10)),
-    "mertens": ("mertensSpec", (1, 10, 25)),
-    "primecount": ("primeCountSpec", (1, 10, 50)),
-    "permanent": ("permanentSpecN", ((3 << 32) | 1, (4 << 32) | 2)),
     "saw": ("sawSpec", ((2 << 32) | 1, (4 << 32) | 2)),
-    "ca-rule110": ("caSpecN", ((1 << 32) | 1, (2 << 32) | 2)),
-    "sha256": ("sha256Spec", ((1 << 32) | 1, (2 << 32) | 2)),
-    "polydisc": ("discSpec", (0,)),
 }
 
 LOCKED_FILES = ("Spec.lean", "Solution.lean", "lakefile.toml", "lean-toolchain")
 DEMO_EXECUTABLE = "quick_test_demo"
-FIB_GUIDANCE = (
-    "fib no longer has a quick demo; run `lake build` in problems/fib, "
-    "or use `python3 evaluation/run.py` for optional local evaluation"
-)
+def migration_guidance(problem: str) -> str:
+    return (
+        f"{problem} no longer has a quick demo; run `lake build` in problems/{problem}, "
+        f"or use `python3 evaluation/run.py --problem {problem}` for optional local evaluation"
+    )
+
+
 EXCLUDED_ENV_PREFIXES = (
     "EVAL_",
     "OFFICIAL_",
@@ -142,7 +139,7 @@ def _failure_output(proc: subprocess.CompletedProcess[str]) -> str:
 def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 120) -> QuickResult:
     """Build and execute one public demo in an automatically removed workspace."""
     if problem not in DEMO_CASES:
-        detail = FIB_GUIDANCE if problem == "fib" else f"unknown scored problem: {problem}"
+        detail = migration_guidance(problem) if problem in MIGRATED_PROBLEMS else f"unknown scored problem: {problem}"
         return QuickResult(problem, False, detail)
 
     try:
@@ -202,8 +199,8 @@ def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 
 
 
 def _supported_problem(value: str) -> str:
-    if value == "fib":
-        raise argparse.ArgumentTypeError(FIB_GUIDANCE)
+    if value in MIGRATED_PROBLEMS:
+        raise argparse.ArgumentTypeError(migration_guidance(value))
     return value
 
 
@@ -213,13 +210,13 @@ def _parser() -> argparse.ArgumentParser:
             "Compile and run public demo inputs only. This command does not reproduce "
             "the official judge and does not produce a score."
         ),
-        epilog=FIB_GUIDANCE,
+        epilog="Migrated packages use lake build; see evaluation/ for optional kernel evaluation.",
     )
     parser.add_argument(
         "--problem",
         type=_supported_problem,
         choices=tuple(DEMO_CASES),
-        help="run one problem (default: run all eight supported baseline demos)",
+        help="legacy demo problem (default: saw)",
     )
     parser.add_argument(
         "--submission",

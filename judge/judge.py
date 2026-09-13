@@ -86,7 +86,7 @@ RESULTS = ROOT / "results"
 
 def _problem_dir(problem):
     # Retain explicit custom-workspace overrides used by local integration fixtures.
-    # The repository layout always resolves fib to its evaluator-owned workspace.
+    # Migrated packages always resolve to their evaluator-owned workspaces.
     if PROBLEMS != _DEFAULT_PROBLEMS:
         return PROBLEMS / problem
     return evaluation_problem_dir(ROOT, problem)

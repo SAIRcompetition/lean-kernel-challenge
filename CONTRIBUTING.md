@@ -5,10 +5,10 @@ Contributions we welcome:
 
 ## New problems
 
-A problem has a locked evaluation workspace. In the fib pilot, this lives under
-`evaluation/problems/fib/`, separate from the editable `problems/fib/` participant
-package. The other eight scored problems and experimental `conv` retain their
-`problems/<id>/` layout. Use the routing helpers in `scripts/problem_layout.py`
+A problem has a locked evaluation workspace. Eight scored tasks now use
+`evaluation/problems/<id>/`, separate from the editable `problems/<id>/` participant
+package. `saw` and experimental `conv` retain their existing `problems/<id>/` layout.
+Use the routing helpers in `scripts/problem_layout.py`
 when locating evaluation files. A good kernel-computation problem has:
 
 - a **correct, total** parametric spec `spec : Nat → Output` that the kernel can
@@ -42,18 +42,19 @@ manifest with a `reason_contains` substring.
 
 ## Green gate
 
-For fib, follow the [participant setup](README.md#quick-start) and run `lake build`
-inside `problems/fib/`. This compiles the submitted definitions and proofs, not an
+For each separated task, run `lake build` inside `problems/<id>/`. Only fib needs
+its [participant setup](README.md#quick-start) first. This compiles the definitions and proofs, not an
 independent check against the official interface or permitted axioms.
 
-`python3 scripts/quick_test.py` checks the other eight problems' example baselines
+`python3 scripts/quick_test.py` retains only the legacy `saw` baseline demo
 on small, fixed public inputs. This compiled demo does not run the official judge,
 hidden plan, PMU measurement, axiom audit, or scoring path.
 
-For fib dependency changes, regenerate participant configuration with
-`python3 scripts/sync_fib_participant.py`; use `--check` to verify that its
-toolchain, Lake configuration, and manifest still match the canonical evaluation
-pins. Do not edit those generated participant files independently.
+Regenerate participant dependencies with `python3 scripts/sync_participants.py`;
+use `--check` to verify their toolchains, Lake configuration, and fixed Spec copies
+against the canonical evaluation files. Fib additionally has a pinned Mathlib manifest.
+Do not edit generated participant dependencies independently. The older
+`sync_fib_participant.py` command remains compatible for fib only.
 
 Every change must also keep the repository test suite and `python3 scripts/run_harness.py`
 green. The harness requires the separate [judge setup](README.md#maintainer-regression-and-judge-checks)

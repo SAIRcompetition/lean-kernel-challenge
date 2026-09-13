@@ -10,7 +10,7 @@ Given a non-negative integer `n`, count the prime numbers at most `n`:
 
 A prime is an integer at least 2 with no divisor other than 1 and itself.
 Neither 0 nor 1 is prime. Your implementation must agree with the locked
-[`primeCountSpec`](../../problems/primecount/Spec.lean) for every input.
+[`primeCountSpec`](../../evaluation/problems/primecount/Spec.lean) for every input.
 
 ## Input
 
@@ -67,7 +67,7 @@ is not added to this problem's ranking metric. Infrastructure errors are unscore
 All three target replays must finish within the case's per-repetition limit.
 Preparation and correctness checks have separate limits, not a shared group
 budget. See the [scoring plan](../problem-scoring.md#primecount),
-[configuration](../../problems/primecount/config.json), and [evaluation rules](../evaluation.md).
+[configuration](../../evaluation/problems/primecount/config.json), and [evaluation rules](../evaluation.md).
 
 ## Submission Requirements
 
@@ -79,7 +79,7 @@ impl : Nat → Nat
 impl_correct : ∀ n, impl n = primeCountSpec n
 ```
 
-The [locked bridge](../../problems/primecount/Solution.lean) exposes them to the
+The [locked bridge](../../evaluation/problems/primecount/Solution.lean) exposes them to the
 judge. Prove equality for **all `n`**, including zero and inputs outside the
 official ranges. The proof need not use `rfl`, and your algorithm need not use
 the specification's trial divisions. Separately, the kernel must reduce
@@ -89,26 +89,34 @@ Mathlib, total kernel-reducible code, and permitted axioms only; see the
 
 ## Starter Code and Local Testing
 
-Start from the [completed baseline](../../examples/submissions/primecount/baseline/Submission.lean),
-which uses `primeCountSpec` directly, or inspect the
-[square-root trial-division example](../../examples/submissions/primecount/sqrt/Submission.lean).
-The problem workspace's `Submission.lean` is a template with placeholders.
+Start from [problems/primecount/Submission.lean](../../problems/primecount/Submission.lean).
+It uses `primeCountSpec` directly with a reflexivity proof. The
+[square-root trial-division example](../../examples/submissions/primecount/sqrt/Submission.lean)
+shows another proved implementation.
+The implementation and proof are complete; use the two TODOs to make your changes.
+A starting implementation is not guaranteed to pass every performance case.
 
-From the repository root, after following the
-[setup instructions](README.md#quick-test-before-using-the-judge), run:
+Install `elan`, then run from the repository root:
 
 ```bash
-python3 scripts/quick_test.py --problem primecount
-python3 scripts/quick_test.py --problem primecount --submission examples/submissions/primecount/sqrt/Submission.lean
-python3 scripts/quick_test.py --problem primecount --submission path/to/Submission.lean
+cd problems/primecount
+lake build
 ```
 
-The demo builds the implementation and universal proof, then compares compiled
-outputs on public inputs `1`, `10`, and `50`. It is not a formal submission or
-official evaluation: it performs no official axiom audit, hidden-case evaluation,
-PMU measurement, or scoring. Passing does not establish official acceptance or
-kernel performance. For local kernel measurements, use the
-[shared testing guide](README.md#quick-test-before-using-the-judge).
+No Mathlib or separate setup is needed. Keep the generated `Spec.lean` and environment
+files unchanged; edit and submit only `Submission.lean`. Building compiles your
+definitions and proofs. It does not independently check the official interface or
+permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/primecount/README.md).
+
+For optional kernel evaluation, run from the repository root:
+
+```bash
+bash evaluation/setup.sh
+python3 evaluation/run.py --problem primecount --submission problems/primecount/Submission.lean
+```
+
+This uses the full unseeded public plan with one wall-time repetition, not official
+PMU scores. See the [evaluation guide](../../evaluation/README.md).
 
 ## Notes
 

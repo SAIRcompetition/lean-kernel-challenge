@@ -13,7 +13,7 @@ per(A) = sum over permutations σ of {0, ..., d - 1}
 Unlike the determinant, there is no sign attached to a permutation. For a 0/1
 matrix, the result counts ways to choose one `1` from each row, using each
 column exactly once. Equivalently, it counts perfect matchings of the matrix's
-bipartite graph. The locked Lean [specification](../../problems/permanent/Spec.lean)
+bipartite graph. The locked Lean [specification](../../evaluation/problems/permanent/Spec.lean)
 is the submission's proof target.
 
 ## Input
@@ -68,7 +68,7 @@ the generator only produces 0/1 entries.
 
 ## Constraints and Scoring
 
-The current [configuration](../../problems/permanent/config.json) uses three
+The current [configuration](../../evaluation/problems/permanent/config.json) uses three
 groups and **15 hidden cases**:
 
 | Group | Dimension | Distinct hidden seeds | Target watchdog per repetition |
@@ -107,24 +107,37 @@ It must handle dimensions below 3 and arbitrarily large decoded dimensions.
 The implementation may use another algorithm, and the proof need not use `rfl`.
 Current rules require total, kernel-reducible core Lean without Mathlib and
 restrict axioms; see [R1–R4](../overview.md#rules). The locked
-[challenge](../../problems/permanent/Challenge.lean) and
-[solution bridge](../../problems/permanent/Solution.lean) fix the interface.
+[challenge](../../evaluation/problems/permanent/Challenge.lean) and
+[solution bridge](../../evaluation/problems/permanent/Solution.lean) fix the interface.
 
 ## Starter Code and Local Testing
 
-Start from the [baseline Submission.lean](../../examples/submissions/permanent/baseline/Submission.lean).
-It defines `impl := permanentSpecN` with a reflexivity proof.
-From the repository root, after the [quick-start setup](../../README.md#quick-start):
+Start from [problems/permanent/Submission.lean](../../problems/permanent/Submission.lean).
+It uses the existing `permanentSpecN` baseline and proves correctness by reflexivity.
+The implementation and proof are complete; use the two TODOs to make your changes.
+A starting implementation is not guaranteed to pass every performance case.
+
+Install `elan`, then run from the repository root:
 
 ```bash
-python3 scripts/quick_test.py --problem permanent
-python3 scripts/quick_test.py --problem permanent --submission path/to/Submission.lean
+cd problems/permanent
+lake build
 ```
 
-The demo builds the proof and compares compiled outputs at `(dimension, seed)`
-pairs `(3, 1)` and `(4, 2)`. It does not invoke the official judge, hidden plan,
-canonical axiom audit, PMU measurement, or scoring. Passing it does not establish
-official acceptance or kernel performance. See the [shared contestant guide](README.md).
+No Mathlib or separate setup is needed. Keep the generated `Spec.lean` and environment
+files unchanged; edit and submit only `Submission.lean`. Building compiles your
+definitions and proofs. It does not independently check the official interface or
+permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/permanent/README.md).
+
+For optional kernel evaluation, run from the repository root:
+
+```bash
+bash evaluation/setup.sh
+python3 evaluation/run.py --problem permanent --submission problems/permanent/Submission.lean
+```
+
+This uses the full unseeded public plan with one wall-time repetition, not official
+PMU scores. See the [evaluation guide](../../evaluation/README.md).
 
 ## Notes
 

@@ -27,8 +27,9 @@ The full schedule and common resource limits are in
 
 ## Read the specification before implementing
 
-The fixed evaluation files define the interface. For fib they live separately in
-`evaluation/problems/fib/`; for the other eight problems they remain in `problems/<id>/`:
+The fixed evaluation files define the interface. All scored tasks except `saw` now
+keep them in `evaluation/problems/<id>/`, separately from participant files.
+`saw` and experimental `conv` retain their original `problems/<id>/` workspaces:
 
 - `Spec.lean` defines or imports the function the implementation must equal, including any
   input decoder and instance generator. `fib` imports Mathlib v4.33.1's official
@@ -40,10 +41,11 @@ The fixed evaluation files define the interface. For fib they live separately in
 - `config.json` specifies the evaluation groups, sampling policy, resource limits, and ranking
   policy.
 
-Fib's [participant workspace](../../problems/fib/README.md) contains a completed,
-runnable `Submission.lean` with implementation and proof TODOs, plus dependency
-setup. It has no judge files. The other eight problem workspaces
-still contain `Submission.lean` templates with placeholders.
+The eight separated participant packages contain runnable `Submission.lean` files
+with two short TODOs. The seven core-Lean packages also contain a generated fixed
+`Spec.lean` dependency; do not edit it. Fib imports Mathlib directly and provides
+its own dependency setup. No participant package contains the judge interfaces or
+scoring configuration. The legacy `saw` template is unchanged.
 
 The completed starting implementations are under `examples/submissions/<id>/baseline/`.
 Some problems also have another example implementation. A baseline is a starting point, not a
@@ -105,44 +107,42 @@ shared by a whole group. Preparation and correctness checks have their own limit
 metric counts kernel instructions, not compiled runtime or total process wall time. Refer to
 [Evaluation](../evaluation.md) for the precise measurement boundary and resource rules.
 
-## Local build for fib
+## Local participant build
 
-Install Git, Python 3.9 or later, and `elan`. To start fib, run from the repository root:
+For any separated task, install `elan` and run from the repository root:
 
 ```bash
-cd problems/fib
-python3 setup.py
+cd problems/partition
 lake build
 ```
 
-First-time setup downloads the pinned Lean/Mathlib dependencies, without building
-evaluation tools. Edit `Submission.lean` and repeat `lake build`. Building compiles
-your definitions and proofs; it does not independently check the official interface
-or permitted axioms, benchmark, or score the submission. See the
-[participant guide](../../problems/fib/README.md).
+Replace `partition` with the chosen task. For fib alone, install Git and Python 3.9+
+and run `python3 setup.py` before building; see its [guide](../../problems/fib/README.md).
+The other seven need only core Lean. Edit `Submission.lean` and repeat `lake build`.
+Building compiles definitions and proofs; it does not independently check the official
+interface or permitted axioms, benchmark, or score the submission.
 
-For optional fib kernel measurements, follow the separate
+For optional kernel measurements, follow the separate
 [evaluation setup](../../evaluation/README.md). It uses the canonical judge on the
-six-case unseeded public plan with one wall-time repetition, not official scores.
+selected task's complete unseeded public plan with one wall-time repetition,
+not official scores. Only `Submission.lean` is passed to the judge.
 
 ## Quick test before using the judge
 
-The existing helper checks only the other eight example baselines. Run from the
-repository root:
+This legacy helper now supports only `saw`. Run from the repository root:
 
 ```bash
 python3 scripts/quick_test.py
-python3 scripts/quick_test.py --problem partition
-python3 scripts/quick_test.py --problem partition --submission path/to/Submission.lean
+python3 scripts/quick_test.py --problem saw
+python3 scripts/quick_test.py --problem saw --submission path/to/Submission.lean
 ```
 
-Replace `partition` with another supported problem ID from the table, excluding fib.
 The helper creates a temporary workspace, builds the submitted implementation and
 universal proof, and compares compiled outputs against
 the specification on fixed public inputs. It does not submit anything, invoke the official
 judge, audit permitted axioms, use hidden inputs or PMU counters, or produce a score.
 Passing the demo does not establish official acceptance or kernel performance.
 
-For kernel measurements on these tasks, see [Local development](../evaluation.md#local-development)
+For kernel measurements on `saw`, see [Local development](../evaluation.md#local-development)
 and the [judge setup](../../README.md#maintainer-regression-and-judge-checks).
 Keep compiled quick tests, local kernel measurements, and official PMU scores separate.

@@ -8,7 +8,7 @@ Compute the exact discriminant of a deterministically generated monic degree-24 
 polynomial.
 
 The trusted function is `discSpec : Nat → Int` in
-[`Spec.lean`](../../problems/polydisc/Spec.lean).
+[`Spec.lean`](../../evaluation/problems/polydisc/Spec.lean).
 Your implementation may use another representation or algorithm, but it must equal
 `discSpec` for every natural-number input.
 
@@ -34,9 +34,9 @@ The formal proof target is the complete locked `discSpec` computation. A formal 
 theorem to another library's discriminant is not supplied; Mathlib imports are currently
 not allowed.
 
-The binding files are [`Challenge.lean`](../../problems/polydisc/Challenge.lean),
-[`Solution.lean`](../../problems/polydisc/Solution.lean), and
-[`config.json`](../../problems/polydisc/config.json).
+The binding files are [`Challenge.lean`](../../evaluation/problems/polydisc/Challenge.lean),
+[`Solution.lean`](../../evaluation/problems/polydisc/Solution.lean), and
+[`config.json`](../../evaluation/problems/polydisc/config.json).
 
 ## Input
 
@@ -164,28 +164,33 @@ Do not use `sorry`, `native_decide`, `partial`, or `unsafe` to bypass the contra
 
 ## Starter Code and Local Testing
 
-The [baseline](../../examples/submissions/polydisc/baseline/Submission.lean) defines
-`impl := discSpec` and proves the universal equality by reflexivity.
-Its path is the trusted normal subresultant computation with the reduced-matrix Bareiss
-fallback; it is not guaranteed to pass every official case within its limits.
+Start from [problems/polydisc/Submission.lean](../../problems/polydisc/Submission.lean).
+It uses the existing `discSpec` baseline and proves correctness by reflexivity.
+The underlying computation retains the normal subresultant algorithm and Bareiss fallback.
+The implementation and proof are complete; use the two TODOs to make your changes.
+A starting implementation is not guaranteed to pass every performance case.
 
-From the repository root, after the [quick-start setup](README.md#quick-test-before-using-the-judge),
-run the public baseline demo:
-
-```bash
-python3 scripts/quick_test.py --problem polydisc
-```
-
-Run a candidate file or directory:
+Install `elan`, then run from the repository root:
 
 ```bash
-python3 scripts/quick_test.py --problem polydisc --submission path/to/Submission.lean
+cd problems/polydisc
+lake build
 ```
 
-The helper builds the universal proof and compares compiled `impl` and `discSpec` at `n = 0`.
-It is compiled-only smoke testing, not a formal cross-check with another polynomial library.
-It does not use hidden inputs, count PMU instructions, apply the production sandbox, audit
-axioms, issue a verdict, or compute a score.
+No Mathlib or separate setup is needed. Keep the generated `Spec.lean` and environment
+files unchanged; edit and submit only `Submission.lean`. Building compiles your
+definitions and proofs. It does not independently check the official interface or
+permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/polydisc/README.md).
+
+For optional kernel evaluation, run from the repository root:
+
+```bash
+bash evaluation/setup.sh
+python3 evaluation/run.py --problem polydisc --submission problems/polydisc/Submission.lean
+```
+
+This uses the full unseeded public plan with one wall-time repetition, not official
+PMU scores. See the [evaluation guide](../../evaluation/README.md).
 
 ## Notes
 

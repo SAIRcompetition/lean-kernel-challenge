@@ -1,11 +1,12 @@
 import Spec
 
-/-! SUBMISSION (yours to edit). Fill both holes. -/
-
 namespace Submission
 
-def impl : Nat → Int := sorry
+/-- TODO 1: Optimize this implementation. Keep it total and kernel-reducible. -/
+def impl : Nat → Int := mertensSpec
 
-theorem impl_correct : ∀ n, impl n = mertensSpec n := sorry
+/-- TODO 2: Prove that `impl n` equals `mertensSpec n` for every natural number n.
+Keep the theorem statement unchanged. -/
+theorem impl_correct : ∀ n, impl n = mertensSpec n := fun _ => rfl
 
 end Submission

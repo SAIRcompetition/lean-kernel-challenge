@@ -4,7 +4,16 @@
 from pathlib import Path
 
 
-MIGRATED_PROBLEMS = frozenset({"fib"})
+MIGRATED_PROBLEMS = frozenset({
+    "fib",
+    "ca-rule110",
+    "mertens",
+    "partition",
+    "permanent",
+    "polydisc",
+    "primecount",
+    "sha256",
+})
 
 
 def evaluation_problem_dir(root: Path, problem: str) -> Path:

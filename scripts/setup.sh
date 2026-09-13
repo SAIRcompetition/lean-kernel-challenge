@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
-# Full evaluator bootstrap; ordinary fib participants only need problems/fib.
+# Full evaluator bootstrap; participants only need their problems/<id> package.
 # Builds the pinned verification tools (comparator, lean4export, timer-kernel)
 # and reports where the judge will find them. Idempotent.
 #
 # Env:
 #   TOOLS_DIR   where to clone/build comparator + lean4export (default: ../repro)
 set -euo pipefail
+
+PREPARE_DEPENDENCIES=1
+case "${1:-}" in
+  --tools-only) PREPARE_DEPENDENCIES=0; shift ;;
+  --help|-h) echo "Usage: bash scripts/setup.sh [--tools-only]"; exit 0 ;;
+esac
+if [ "$#" -ne 0 ]; then
+  echo "Unknown setup argument: $1" >&2
+  exit 2
+fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # lean-kernel-challenge/
 CFG="$HERE/pipeline/config.json"
@@ -54,8 +64,10 @@ clone_build lean4export https://github.com/leanprover/lean4export.git "$LEAN4EXP
 echo "== building timer-kernel =="
 ( cd "$HERE/judge/timer-kernel" && lake build )
 
-echo "== preparing evaluation/problems/fib's pinned Mathlib dependency closure =="
-python3 "$HERE/scripts/prepare_problem_dependencies.py" --problem fib
+if [ "$PREPARE_DEPENDENCIES" -eq 1 ]; then
+  echo "== preparing evaluation/problems/fib's pinned Mathlib dependency closure =="
+  python3 "$HERE/scripts/prepare_problem_dependencies.py" --problem fib
+fi
 
 cat <<EOF
 
@@ -64,7 +76,7 @@ Setup complete. Point the judge at the tools with:
   export LEAN4EXPORT_BIN=$TOOLS_DIR/lean4export/.lake/build/bin
   export TIMER_BIN=$HERE/judge/timer-kernel/.lake/build/bin/kernel
 (Defaults already resolve to $TOOLS_DIR when it is the sibling 'repro/' dir.)
-
-Smoke test:
-  python3 scripts/run_harness.py --quick --only fib
 EOF
+if [ "$PREPARE_DEPENDENCIES" -eq 1 ]; then
+  echo "Smoke test: python3 scripts/run_harness.py --quick --only fib"
+fi

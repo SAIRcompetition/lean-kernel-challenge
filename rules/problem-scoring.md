@@ -34,7 +34,8 @@ failure and measurement rules.
 The groups below define inputs and resource limits, not separate awards or
 prerequisites. Each problem's `evaluation.memory_mb` in its fixed `config.json`
 defines its memory limit in MiB, published before official use. The configuration is
-in `evaluation/problems/fib/` for fib and `problems/<id>/` for the other tasks. Matrix permanent uses
+in `evaluation/problems/<id>/` for the eight separated tasks and `problems/saw/`
+for saw. Matrix permanent uses
 8192 MiB (8 GiB); the other eight problems retain provisional 4096 MiB (4 GiB) limits.
 Official-host acceptance remains pending. Organizers may revise a limit; a revision requires
 a new cohort and a complete rescore of the problem's comparison set. Each target process has the table's

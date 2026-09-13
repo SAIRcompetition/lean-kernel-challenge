@@ -78,9 +78,10 @@ Submit exactly one **`Submission.lean`** file, at most **1 MiB**. It must contai
 You may also use the locked workspace's library declarations. All other workspace files are locked.
 
 The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, and `config.json`) are fixed,
-and the judge supplies its own copies. For fib, they are in `evaluation/problems/fib/`;
-the separate `problems/fib/` folder contains a runnable participant starter and dependency setup.
-The other eight problems retain their existing layout. The simplest valid submission defines `impl` as the trusted
+and the judge supplies its own copies. For all scored tasks except `saw`, these live
+in `evaluation/problems/<id>/`, separately from the runnable participant package in
+`problems/<id>/`. Core-Lean participant packages include a generated fixed Spec copy;
+fib imports Mathlib directly. `saw` retains its existing layout. The simplest valid submission defines `impl` as the trusted
 specification and proves correctness with `rfl`. This adds no optimization and does not
 guarantee that every performance case passes within its limits.
 
@@ -104,16 +105,14 @@ post-deadline submissions cannot replace it.
 
 ## Local development
 
-For fib, use the [participant workspace](../problems/fib/README.md): run
-`python3 setup.py` and `lake build` inside `problems/fib/`. No evaluation tools are
-needed. Building compiles your definitions and proofs; it does not independently
+For the eight separated tasks, run `lake build` inside `problems/<id>/`; fib alone
+needs `python3 setup.py` first. No evaluation tools are needed. See the
+[participant guide](problems/README.md). Building compiles your definitions and proofs; it does not independently
 check the official interface or permitted axioms, benchmark, or score the submission.
 
-The existing `python3 scripts/quick_test.py` supports only the other eight scored problems.
-It builds their checked-in baselines and compares compiled outputs with the trusted
-specifications on small, fixed, public inputs. Use
-`--problem <id>` to run one problem and `--submission <path>` to check your own
-`Submission.lean`.
+The existing `python3 scripts/quick_test.py` retains only the legacy `saw` demo.
+It compares compiled baseline outputs with the trusted specification on small public
+inputs. Use `--problem saw --submission <path>` to check another `saw` submission.
 
 This demo is a local convenience, not part of the competition or formal submission process. It
 does not invoke the official judge, hidden cases, PMU counters, production isolation, axiom audit,
@@ -146,8 +145,8 @@ Participation is also subject to the team, anti-cheating, and participant-cost p
   contracts.
 
 > Compiled execution, including `#eval` and the public quick test, does not predict
-> kernel-reduction performance. Use the optional [fib evaluator](../evaluation/README.md),
-> or `scripts/perf_eval.py` for the other tasks, for local wall-time checks that follow
+> kernel-reduction performance. Use the optional [local evaluator](../evaluation/README.md),
+> or `scripts/perf_eval.py` for legacy tasks, for local wall-time checks that follow
 > the judge's measurement boundary. These are not official scores.
 
 ## Stage 1 Problems

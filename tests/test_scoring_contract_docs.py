@@ -328,7 +328,7 @@ class TestLeanToolchainConsistency(unittest.TestCase):
         problem_toolchains = [path / "lean-toolchain"
                               for path in iter_evaluation_problem_dirs(ROOT)]
         # Participant packages are independent environments but share the official pin.
-        problem_toolchains.append(ROOT / "problems/fib/lean-toolchain")
+        problem_toolchains.extend((ROOT / "problems").glob("*/lean-toolchain"))
         self.assertTrue(
             problem_toolchains, "no evaluator problem toolchains found"
         )

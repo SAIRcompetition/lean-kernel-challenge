@@ -10,9 +10,10 @@ same schema, specification, and input plan.
 ## Prepare and evaluate
 
 Use the same checked-out evaluator and problem definitions as the official image.
-Fib's fixed spec, configuration, and dependency lock are in `evaluation/problems/fib/`,
-not the participant folder `problems/fib/`. The preparation command resolves this
-layout automatically; other tasks remain under `problems/<id>/`.
+For the eight separated tasks, the fixed spec and configuration are in
+`evaluation/problems/<id>/`, not the participant folder `problems/<id>/`.
+Fib's dependency lock also lives there. The preparation command resolves this
+layout automatically; `saw` and experimental `conv` retain their original workspaces.
 Pass the secret seed through stdin; do not commit answers or include them in logs:
 
 ```bash

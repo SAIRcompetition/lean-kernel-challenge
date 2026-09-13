@@ -103,10 +103,11 @@ end Submission
 ```
 
 Optimize the implementation and update its proof; keep the interface unchanged.
-For fib, the participant workspace is `problems/fib/`. The fixed `Spec.lean`,
+Eight tasks now have participant packages in `problems/<id>/`. The fixed `Spec.lean`,
 `Challenge.lean`, `Solution.lean`, and `config.json` live separately in
-`evaluation/problems/fib/`; the judge supplies them. The other eight problems
-retain their existing workspace layout. For the timeline, registration,
+`evaluation/problems/<id>/`; the judge supplies them. The seven core-Lean packages
+include a generated fixed Spec copy; fib imports Mathlib directly. `saw` retains
+its existing workspace layout and remains a scored problem. For the timeline, registration,
 participation policies, and co-organizers see
 **[`rules/prelaunch.md`](rules/prelaunch.md)**. See
 **[`rules/overview.md`](rules/overview.md)**
@@ -233,34 +234,38 @@ cohort; revising it requires a new cohort and a complete rescore of that problem
 
 ## Quick start
 
-For fib, install Git, Python 3.9 or later, and [elan](https://github.com/leanprover/elan).
-From the repository root:
+Eight participant packages are ready to build: `fib`, `partition`, `mertens`,
+`primecount`, `permanent`, `ca-rule110`, `sha256`, and `polydisc`.
+Install [elan](https://github.com/leanprover/elan), then run from the repository root:
 
 ```bash
-cd problems/fib
-python3 setup.py
+cd problems/partition
 lake build
 ```
 
+Replace `partition` with the chosen task. **For fib only**, install Git and Python
+3.9+, and run `python3 setup.py` before `lake build` to prepare its pinned Mathlib
+dependencies. The other seven use core Lean and need no separate setup.
+
 Edit only `Submission.lean`; its starting implementation and proof already work.
-Setup downloads the pinned Lean/Mathlib dependencies on first use, without the
-judge, Docker, comparator, exporter, or replay timer. After edits, repeat
-`lake build`. Submit only `Submission.lean`.
+No judge, Docker, comparator, exporter, or replay timer is needed. After edits,
+repeat `lake build`. Keep generated dependency files unchanged and submit only
+`Submission.lean`.
 
 This compiles your definitions and proofs; it does not independently check the
 official interface or permitted axioms, measure kernel performance, or award a
 score. A successful build does not guarantee official acceptance. See the
-[participant guide](problems/fib/README.md).
+[participant guide](rules/problems/README.md).
 
-The existing quick-test helper is only for the other eight scored problems.
-From the repository root, it checks their example baselines by default:
+`saw` and experimental `conv` keep their existing layouts. The legacy quick-test
+helper now checks only the `saw` baseline, from the repository root:
 
 ```bash
 python3 scripts/quick_test.py
-python3 scripts/quick_test.py --problem partition --submission path/to/Submission.lean
+python3 scripts/quick_test.py --problem saw --submission path/to/Submission.lean
 ```
 
-### Optional fib kernel evaluation
+### Optional kernel evaluation
 
 To run the canonical judge locally on the same file, separately prepare the
 evaluation tools. From the repository root:
@@ -270,8 +275,9 @@ bash evaluation/setup.sh
 python3 evaluation/run.py --problem fib --submission problems/fib/Submission.lean
 ```
 
-This uses the six-case unseeded public plan and one wall-time repetition, not
-official instruction-count scores. See the [evaluation guide](evaluation/README.md).
+Replace fib with the chosen separated task. This uses its complete unseeded public
+plan and one wall-time repetition, not official instruction-count scores.
+See the [evaluation guide](evaluation/README.md).
 
 ## Maintainer regression and judge checks
 
@@ -365,9 +371,9 @@ requires a rebuilt image, a new cohort, and rescoring that problem's comparison 
 ```
 lean-kernel-challenge/
 ├─ rules/           overview.md (rules) · evaluation.md (judge) · problem-scoring.md (leaderboards)
-├─ problems/fib/    participant-only starter and pinned Lean/Mathlib setup
-├─ evaluation/      optional fib evaluation entrypoint and fixed problems/fib workspace
-├─ problems/<other-id>/   unchanged locked workspaces: 8 scored problems + experimental conv
+├─ problems/<id>/   8 participant packages: editable Submission + fixed build dependencies
+├─ evaluation/      optional evaluation entrypoint and 8 fixed problems/<id>/ workspaces
+├─ problems/saw/ · problems/conv/   unchanged legacy workspaces
 ├─ examples/submissions/<problem>/<name>/   worked + adversarial example submissions
 ├─ judge/           judge.py (the judge) · timer-kernel/ (kernel replay + axiom audit)
 ├─ pipeline/        config.json (budgets, sandbox mode, toolchain pins)
@@ -390,7 +396,7 @@ The nine per-problem group schedules and scoring rules are published in
 `config.json`. Before launch, the production PMU measurements and container path still require
 end-to-end validation; see **[`docs/pre-launch-checklist.md`](docs/pre-launch-checklist.md)**.
 
-**Prototype / pre-launch.** All 10 workspaces compile, while nine are included in the Stage 1
+**Prototype / pre-launch.** All 10 evaluation workspaces compile, while nine are included in the Stage 1
 scoring contract. The correctness gate, axiom audit, grouped judge, canonical per-problem scorer,
 and green-gate harness are in place. The performance phase imports the byte-pinned `.olean` graph
 produced by the comparator instead of re-elaborating contestant source. Hidden cases are

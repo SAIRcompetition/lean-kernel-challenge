@@ -8,7 +8,7 @@ integers, ignoring the order of the summands. Repeated parts are allowed:
 partition of zero.
 
 Implement a total Lean function that computes this count, and prove that it
-agrees with the locked [specification](../../problems/partition/Spec.lean).
+agrees with the locked [specification](../../evaluation/problems/partition/Spec.lean).
 The specification uses `partAux k n`, the number of partitions of `n` whose
 parts are at most `k`:
 
@@ -59,7 +59,7 @@ The zero case counts the empty sum. These examples are kernel-checkable with
 
 ## Constraints and Scoring
 
-The current [configuration](../../problems/partition/config.json) uses three
+The current [configuration](../../evaluation/problems/partition/config.json) uses three
 groups and **six hidden cases**:
 
 | Group | Inclusive `n` range | Cases | Target watchdog per repetition |
@@ -99,24 +99,37 @@ outside the scored ranges. Your algorithm need not follow the spec's recurrence,
 and the proof need not use `rfl`. It must remain total and kernel-reducible.
 Current rules require core Lean without Mathlib and permit only the standard
 axioms listed in [R1–R4](../overview.md#rules). The locked
-[challenge](../../problems/partition/Challenge.lean) and
-[solution bridge](../../problems/partition/Solution.lean) fix the interface.
+[challenge](../../evaluation/problems/partition/Challenge.lean) and
+[solution bridge](../../evaluation/problems/partition/Solution.lean) fix the interface.
 
 ## Starter Code and Local Testing
 
-Start from the [baseline Submission.lean](../../examples/submissions/partition/baseline/Submission.lean).
-It defines `impl := partitionSpec` and proves correctness by reflexivity.
-From the repository root, after the [quick-start setup](../../README.md#quick-start):
+Start from [problems/partition/Submission.lean](../../problems/partition/Submission.lean).
+It uses the existing `partitionSpec` baseline and proves correctness by reflexivity.
+The implementation and proof are complete; use the two TODOs to make your changes.
+A starting implementation is not guaranteed to pass every performance case.
+
+Install `elan`, then run from the repository root:
 
 ```bash
-python3 scripts/quick_test.py --problem partition
-python3 scripts/quick_test.py --problem partition --submission path/to/Submission.lean
+cd problems/partition
+lake build
 ```
 
-The demo builds the universal proof and compares compiled outputs at `0, 5, 10`.
-It does not run official hidden cases, the canonical judge, the axiom audit,
-PMU measurement, or scoring. A pass is local feedback, not official acceptance
-or a kernel-performance result. See the [shared contestant guide](README.md).
+No Mathlib or separate setup is needed. Keep the generated `Spec.lean` and environment
+files unchanged; edit and submit only `Submission.lean`. Building compiles your
+definitions and proofs. It does not independently check the official interface or
+permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/partition/README.md).
+
+For optional kernel evaluation, run from the repository root:
+
+```bash
+bash evaluation/setup.sh
+python3 evaluation/run.py --problem partition --submission problems/partition/Submission.lean
+```
+
+This uses the full unseeded public plan with one wall-time repetition, not official
+PMU scores. See the [evaluation guide](../../evaluation/README.md).
 
 ## Notes
 
