@@ -1,4 +1,4 @@
-import Spec
+import Mathlib.Data.Nat.Fib.Basic
 
 /-!
 Fast-doubling submission with correctness proved against Mathlib's `Nat.fib`.

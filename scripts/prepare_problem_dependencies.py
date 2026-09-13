@@ -27,6 +27,7 @@ from problem_dependencies import (  # noqa: E402
     _strip_require_blocks,
     validate_prepared_packages,
 )
+from problem_layout import evaluation_problem_dir, iter_evaluation_problem_dirs
 
 
 _CLOSURE_READER = r'''
@@ -289,29 +290,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--skip-native-warmup", action="store_true",
-        help="skip the trusted baseline native build used to warm public quick-test artifacts",
+        help=argparse.SUPPRESS,  # backwards-compatible no-op; participant builds are independent
     )
     args = parser.parse_args(argv)
     if args.problem:
         names = args.problem
     else:
-        names = sorted(path.parent.name for path in (ROOT / "problems").glob(f"*/{LOCK_NAME}"))
+        names = [path.name for path in iter_evaluation_problem_dirs(ROOT)
+                 if (path / LOCK_NAME).is_file()]
     if not names:
         parser.error("no dependency-enabled problems found; pass --problem")
     try:
         for name in names:
-            problem_dir = ROOT / "problems" / name
+            problem_dir = evaluation_problem_dir(ROOT, name)
             if not problem_dir.is_dir():
                 raise DependencyError(f"unknown problem: {name}")
             lock = prepare_problem(problem_dir, refresh_lock=args.refresh_lock)
             total = sum(item["size"] for item in lock["artifacts"])
             print(f"Prepared {name}: {len(lock['artifacts'])} artifacts, {total} bytes.")
-            if name == "fib" and not args.skip_native_warmup:
-                import quick_test
-                result = quick_test.run_problem("fib", timeout=1800)
-                if not result.passed:
-                    raise DependencyError(f"fib native warmup failed: {result.detail}")
-                print("Prepared fib native quick-test baseline.")
         return 0
     except (DependencyError, OSError, subprocess.TimeoutExpired) as exc:
         parser.exit(2, f"Dependency preparation failed: {exc}\n")

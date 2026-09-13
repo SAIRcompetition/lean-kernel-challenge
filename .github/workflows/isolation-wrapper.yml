@@ -81,7 +81,7 @@ jobs:
           print(f'FAIL: forked {children} children with --pids-limit 64'); sys.exit(1)
           "
       - name: Resolve the official test problem's memory policy
-        run: echo "LKC_CI_MEMORY=$(python3 scripts/memory_policy.py problems/fib/config.json)" >> "$GITHUB_ENV"
+        run: echo "LKC_CI_MEMORY=$(python3 scripts/memory_policy.py evaluation/problems/fib/config.json)" >> "$GITHUB_ENV"
       - name: Prepare reference answers for the official entry tests
         run: |
           # This public CI seed is test data. Prepare with the same image as the

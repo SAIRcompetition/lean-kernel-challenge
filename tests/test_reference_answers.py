@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "judge"))
 import judge
 import reference_answers as reference
+from problem_layout import evaluation_problem_dir
 from test_packed_instance_specs import CASES, POLYDISC_VECTORS, lean_int_values
 
 
@@ -101,7 +102,7 @@ class ReferenceAnswerTests(unittest.TestCase):
             self.assertEqual(len(bundle["answers"]), 6)
             self.assertEqual(
                 bundle["spec_sha256"],
-                judge.specification_fingerprint(ROOT / "problems/fib"),
+                judge.specification_fingerprint(evaluation_problem_dir(ROOT, "fib")),
             )
             self.assertNotIn("test-only-seed", proc.stdout + proc.stderr)
 

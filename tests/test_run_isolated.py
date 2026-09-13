@@ -10,12 +10,16 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+from problem_layout import evaluation_problem_dir
+
 WRAPPER = ROOT / "scripts" / "run_isolated.sh"
 LANDRUN_SHIM = ROOT / "scripts" / "shims" / "landrun"
 
@@ -287,11 +291,15 @@ class RunIsolatedTests(unittest.TestCase):
         # Isolate fixture policies from the checked-in, provisional numeric values.
         scripts = self.base / "repo" / "scripts"
         scripts.mkdir(parents=True)
-        for name in ("run_isolated.sh", "memory_policy.py"):
+        for name in ("run_isolated.sh", "memory_policy.py", "problem_layout.py"):
             shutil.copy2(ROOT / "scripts" / name, scripts / name)
         self.wrapper = scripts / "run_isolated.sh"
+        # A stale or contestant-edited config in the participant package is not policy.
+        participant_config = scripts.parent / "problems/fib/config.json"
+        participant_config.parent.mkdir(parents=True)
+        participant_config.write_text('{"evaluation": {"memory_mb": 65536}}')
         for problem, memory in (("fib", 2048), ("permanent", 8192)):
-            cfg_path = scripts.parent / "problems" / problem / "config.json"
+            cfg_path = evaluation_problem_dir(scripts.parent, problem) / "config.json"
             cfg_path.parent.mkdir(parents=True)
             cfg_path.write_text(json.dumps({"evaluation": {"memory_mb": memory}}))
             with self.subTest(problem=problem):

@@ -21,6 +21,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE / "judge"))
 import judge as _judge
+from problem_layout import evaluation_problem_dir
 
 # Kept as a compatibility alias for tooling that checks the oracle policy here.  The
 # implementation itself lives in the canonical judge and disables Lean heartbeats.
@@ -51,7 +52,7 @@ def evaluate(problem, submission_dir, timeout=120):
         return _failure(problem, submission, "error", "timeout must be positive")
     if not _judge.valid_slug(problem):
         return _failure(problem, submission, "error", f"invalid problem slug {problem!r}")
-    if not (BASE / "problems" / problem / "config.json").is_file():
+    if not (evaluation_problem_dir(BASE, problem) / "config.json").is_file():
         return _failure(problem, submission, "error", f"unknown problem '{problem}'")
     if (_judge.OFFICIAL_EVAL or _judge.PERF_SEED or _judge.EVALUATION_COHORT
             or _judge.TIMING_EXECUTOR_URLS

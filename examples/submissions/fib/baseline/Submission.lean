@@ -1,4 +1,4 @@
-import Spec
+import Mathlib.Data.Nat.Fib.Basic
 
 /-! Baseline: use Mathlib's standard Fibonacci function directly.
 Correctness is reflexivity. Kernel-replay measurements, rather than compiled

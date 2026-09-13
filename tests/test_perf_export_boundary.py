@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "judge"))
 import judge
+from problem_layout import evaluation_problem_dir
 
 
 # The boundary tests need a tiny reducible function, not the published fib
@@ -73,7 +74,7 @@ class PerfExportBoundaryTests(unittest.TestCase):
         }.items():
             (self.work / name).write_text(source)
         shutil.copy2(ROOT / "lean-toolchain", self.work / "lean-toolchain")
-        shutil.copy2(ROOT / "problems/fib/config.json", self.work / "config.json")
+        shutil.copy2(evaluation_problem_dir(ROOT, "fib") / "config.json", self.work / "config.json")
         self.env = judge.tool_env()
         self.lean, prefix, core = judge._resolve_lean_runtime(self.work, self.env)
         self.lib = self.work / ".lake/build/lib/lean"

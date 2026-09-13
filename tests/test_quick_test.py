@@ -15,14 +15,14 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import quick_test  # noqa: E402
+from problem_layout import iter_evaluation_problem_dirs  # noqa: E402
 
 
 class QuickTestTests(unittest.TestCase):
     def test_every_scored_problem_has_public_demo_cases(self):
         scored = {
-            path.parent.name
-            for path in (ROOT / "problems").glob("*/config.json")
-            if path.parent.name != "conv"
+            path.name for path in iter_evaluation_problem_dirs(ROOT)
+            if path.name != "conv"
         }
         self.assertEqual(set(quick_test.DEMO_CASES), scored)
         self.assertTrue(all(inputs for _spec, inputs in quick_test.DEMO_CASES.values()))
@@ -59,6 +59,8 @@ class QuickTestTests(unittest.TestCase):
             self.assertTrue(cwd.is_dir())
             self.assertTrue((cwd / "Submission.lean").is_file())
             self.assertFalse((cwd / "results").exists())
+            for name in ("Spec.lean", "Challenge.lean", "Solution.lean", "config.json", "dependency-lock.json"):
+                self.assertFalse((cwd / name).exists(), name)
             generated.append((cwd / "QuickTest.lean").read_text())
             stdout = "  PASS input=0\n" if len(calls) == 2 else ""
             return subprocess.CompletedProcess(command, 0, stdout, "")
@@ -68,12 +70,14 @@ class QuickTestTests(unittest.TestCase):
             result = quick_test.run_problem("fib")
 
         self.assertTrue(result.passed)
-        self.assertEqual(calls[0], (["lake", "--no-cache", "build", quick_test.DEMO_EXECUTABLE], 120))
-        self.assertEqual(Path(calls[1][0][0]).name, quick_test.DEMO_EXECUTABLE)
+        self.assertEqual(calls[0], (["lake", "--no-cache", "build", quick_test.FIB_DEMO_EXECUTABLE], 120))
+        self.assertEqual(Path(calls[1][0][0]).name, quick_test.FIB_DEMO_EXECUTABLE)
         self.assertEqual(calls[1][1], 120)
         self.assertTrue(all("judge.py" not in " ".join(command) for command, _ in calls))
-        self.assertIn("def quickInputs : List Nat := [0, 10, 20]", generated[0])
-        self.assertIn("let expected := Nat.fib n", generated[0])
+        self.assertIn("[0, 1, 2, 10, 20]", generated[0])
+        self.assertIn("example : ∀ n : Nat, Submission.impl n = Nat.fib n := Submission.impl_correct", generated[0])
+        self.assertIn("import Submission", generated[0])
+        self.assertNotIn("import Solution", generated[0])
 
     def test_build_failure_stops_before_demo_execution(self):
         failed = subprocess.CompletedProcess(["lake"], 1, "", "bad proof")
@@ -141,7 +145,7 @@ class QuickTestTests(unittest.TestCase):
                 self.assertFalse(result.passed)
                 self.assertIn("dependency setup is missing or inconsistent", result.detail)
                 self.assertIn(
-                    "python3 scripts/prepare_problem_dependencies.py --problem fib", result.detail
+                    "python3 problems/fib/setup.py", result.detail
                 )
                 run.assert_not_called()
 

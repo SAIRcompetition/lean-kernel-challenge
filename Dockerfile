@@ -61,8 +61,8 @@ RUN if [ -d prebuilt-tools/tools ]; then \
 # stages only the pinned Fibonacci import closure and never fetches packages.
 # Native quick demos run from a developer checkout, not the evaluator image;
 # package source trees and their git history need not enter the runtime image.
-RUN python3 scripts/prepare_problem_dependencies.py --problem fib --skip-native-warmup \
-    && rm -rf /work/lean-kernel-challenge/problems/fib/.lake/packages
+RUN python3 scripts/prepare_problem_dependencies.py --problem fib \
+    && rm -rf /work/lean-kernel-challenge/evaluation/problems/fib/.lake/packages
 
 # Drop build-time-only content: every cloned git repository (tool repos and lake
 # package checkouts) keeps only its working tree.  Nothing at runtime reads .git;

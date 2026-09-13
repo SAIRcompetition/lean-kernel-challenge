@@ -37,7 +37,7 @@ Usage:
     [--tag SLUG] [--reps 3] [--image IMAGE] \
     [--memory SIZE] [--cpus 2] [--pids-limit 512] [--perfmon]
 
-Memory comes from problems/SLUG/config.json evaluation.memory_mb (MiB), with
+Memory comes from the trusted evaluator config's evaluation.memory_mb (MiB), with
 zero extra swap. --memory / JUDGE_MEMORY may only assert the same value.
 CPU and process counts are fixed at 2 and 512.
 PERF_SEED may be supplied in the environment instead of --perf-seed.
@@ -155,7 +155,8 @@ done
 
 valid_slug "$PROBLEM" || die "invalid problem slug: $PROBLEM"
 valid_slug "$COHORT" || die "invalid cohort slug: $COHORT"
-[[ -f "$ROOT/problems/$PROBLEM/config.json" ]] || die "unknown problem: $PROBLEM"
+PROBLEM_DIR="$(python3 "$ROOT/scripts/problem_layout.py" --root "$ROOT" --problem "$PROBLEM")" || \
+  die "unknown problem: $PROBLEM"
 [[ "$SUBMISSION" == /* ]] || die "--submission must be an absolute path"
 [[ "$RESULTS_DIR" == /* ]] || die "--results must be an absolute path"
 if [[ "$PROBLEM" != "conv" || -n "$REFERENCE_ANSWERS_FILE" ]]; then
@@ -210,7 +211,7 @@ fi
 awk -v c="$CPUS" 'BEGIN { exit !(c+0 <= 64) }' ||
   die "--cpus above the 64 ceiling: $CPUS"
 MEMORY="$(python3 "$ROOT/scripts/memory_policy.py" \
-  "$ROOT/problems/$PROBLEM/config.json" --envelope "$MEMORY")" || \
+  "$PROBLEM_DIR/config.json" --envelope "$MEMORY")" || \
   die "invalid memory policy for $PROBLEM"
 [[ "$CPUS" == "2" ]] || die "official Stage 1 evaluation requires --cpus 2"
 [[ "$PIDS_LIMIT" == "512" ]] || die "official Stage 1 evaluation requires --pids-limit 512"

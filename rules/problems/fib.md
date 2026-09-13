@@ -12,11 +12,22 @@ F(n + 2) = F(n) + F(n + 1)
 ```
 
 Your implementation must compute the exact value and equal Mathlib's official
-`Nat.fib` for every input. The locked [specification](../../problems/fib/Spec.lean)
-imports `Mathlib.Data.Nat.Fib.Basic` from Mathlib **v4.33.1**, pinned to commit
-`0df444a360eaa60ab8c11dca51a86af692955474` in the
-[dependency manifest](../../problems/fib/lake-manifest.json).
-There is no challenge-specific Fibonacci algorithm in the spec.
+`Nat.fib` for every input.
+
+### Mathlib specification
+
+The correctness target is **`Nat.fib : Nat → Nat`**, defined in
+`Mathlib.Data.Nat.Fib.Basic`. The locked [Spec.lean](../../evaluation/problems/fib/Spec.lean)
+imports this definition directly; it does not provide a separate Fibonacci algorithm.
+
+- Official API documentation: [Nat.fib](https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Nat/Fib/Basic.html#Nat.fib).
+- Exact competition version: [Mathlib v4.33.1 source](https://github.com/leanprover-community/mathlib4/blob/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/Data/Nat/Fib/Basic.lean#L59),
+  pinned to commit `0df444a360eaa60ab8c11dca51a86af692955474` in the
+  [evaluation dependency manifest](../../evaluation/problems/fib/lake-manifest.json).
+
+The API documentation is a reference, not a version pin. The competition uses
+the fixed source above. Prove `∀ n, impl n = Nat.fib n`; you do not have to use
+Mathlib's algorithm or beat its runtime by a specified factor.
 
 ## Input
 
@@ -73,7 +84,7 @@ is not added to this problem's ranking metric. Infrastructure errors are unscore
 All three target replays must finish within the case's per-repetition limit.
 Preparation and correctness checks have separate limits, not a shared group
 budget. See the [scoring plan](../problem-scoring.md#fib),
-[configuration](../../problems/fib/config.json), and [evaluation rules](../evaluation.md).
+[configuration](../../evaluation/problems/fib/config.json), and [evaluation rules](../evaluation.md).
 
 ## Submission Requirements
 
@@ -85,7 +96,7 @@ impl : Nat → Nat
 impl_correct : ∀ n, impl n = Nat.fib n
 ```
 
-The [locked bridge](../../problems/fib/Solution.lean) exposes them to the judge.
+The [locked bridge](../../evaluation/problems/fib/Solution.lean) exposes them to the judge.
 Prove equality for **all `n`**, not just the examples or hidden cases. The proof
 need not use `rfl`, and the algorithm need not follow the specification's
 recurrence. Separately, the kernel must reduce `impl n` to the exact answer.
@@ -96,38 +107,56 @@ Additional packages or Mathlib modules outside that supplied import closure
 are not part of this pilot. Total kernel-reducible code and the permitted-axiom
 rules still apply; see the [shared requirements](README.md#what-a-submission-must-establish).
 
-For compatibility, `fibSpec` remains an abbreviation for `Nat.fib`, so a theorem
-stated using that name has the same target. It is not a second implementation.
+For older judge submissions importing `Spec`, `fibSpec` remains an abbreviation
+for `Nat.fib`. The participant starter imports Mathlib directly and uses `Nat.fib`.
 
 ## Starter Code and Local Testing
 
-Start from the [completed baseline](../../examples/submissions/fib/baseline/Submission.lean),
-which uses `Nat.fib` directly, or inspect the
-[fast-doubling example](../../examples/submissions/fib/doubling/Submission.lean).
-The problem workspace's `Submission.lean` is a template with placeholders.
+Start from [problems/fib/Submission.lean](../../problems/fib/Submission.lean).
+It imports Mathlib directly, uses `Nat.fastFib`, and supplies a complete proof
+via `Nat.fastFib_eq`. Concise TODOs mark the implementation and correctness
+proof to edit. There are no unfinished proof placeholders.
+Using the starting implementation unchanged is permitted.
 
-From the repository root, after following the
-[setup instructions](README.md#quick-test-before-using-the-judge), run:
+For comparison, the [baseline](../../examples/submissions/fib/baseline/Submission.lean)
+uses `Nat.fib` directly, while the
+[fast-doubling example](../../examples/submissions/fib/doubling/Submission.lean)
+implements and proves its own algorithm.
+Install Git, Python 3.9+, and `elan`. From the repository root:
 
 ```bash
-python3 scripts/prepare_problem_dependencies.py --problem fib
-python3 scripts/quick_test.py --problem fib
-python3 scripts/quick_test.py --problem fib --submission examples/submissions/fib/doubling/Submission.lean
-python3 scripts/quick_test.py --problem fib --submission path/to/Submission.lean
+cd problems/fib
+python3 setup.py
+lake build
+lake exe quick_test
 ```
 
-The demo builds the implementation and universal proof, then compares compiled
-outputs on public inputs `0`, `10`, and `20`. It is not a formal submission or
-official evaluation: it performs no official axiom audit, hidden-case evaluation,
-PMU measurement, or scoring. Passing does not establish official acceptance or
-kernel performance. For local kernel measurements, use the
-[shared testing guide](README.md#quick-test-before-using-the-judge).
+Setup prepares the pinned dependencies on first use; it does not require evaluation
+tools or Docker. After edits, repeat `lake build` and `lake exe quick_test`.
+The quick test checks the required theorem and compiled outputs on `0`, `1`, `2`,
+`10`, and `20`. It is not an official axiom audit, hidden-case evaluation, kernel
+benchmark, submission, or score. Passing does not guarantee official acceptance
+or performance. Submit only `Submission.lean`, not the workspace.
+
+For optional kernel measurements on the same file, return to the repository root:
+
+```bash
+bash evaluation/setup.sh
+python3 evaluation/run.py --problem fib --submission problems/fib/Submission.lean
+```
+
+This uses the six-case unseeded public plan with one wall-time repetition, not
+official PMU scores. The fixed Spec, interfaces, and scoring configuration stay
+in `evaluation/problems/fib/`. See the [participant guide](../../problems/fib/README.md)
+and [evaluation guide](../../evaluation/README.md).
 
 ## Notes
 
 Mathlib's `Nat.fib` iterates a pair of consecutive Fibonacci numbers.
-Mathlib also provides `Nat.fastFib`, with a proof that it equals `Nat.fib`;
-using that implementation is allowed, not a correctness violation.
+Mathlib also provides [Nat.fastFib](https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Nat/Fib/Basic.html#Nat.fastFib)
+and [Nat.fastFib_eq](https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Nat/Fib/Basic.html#Nat.fastFib_eq),
+which proves it equals `Nat.fib`. You may use this faster implementation;
+the correctness target remains `Nat.fib`.
 The supplied fast-doubling example keeps its own algorithm and now proves
 correctness using Mathlib's doubling identities. Its logarithmic number of
 stages is not logarithmic bit-time:

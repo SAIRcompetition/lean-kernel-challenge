@@ -13,7 +13,7 @@
     "count": 4,
     "spacing": "geometric",
     "jitter": 0.15,
-    "note": "Legacy evaluation-policy-v1 defaults, retained only for the experimental conv task. The judge-level perf_phase_budget_seconds is likewise legacy-only. The nine scored Stage 1 problems define independent grouped cases in problems/<id>/config.json, and their evaluation-policy-v2 cohorts seal perf_phase_budget_seconds=0 so one case cannot consume another case's configured time allowance. Official evaluation requires a hidden PERF_SEED and seals the resolved schedule into the cohort policy; an unseeded schedule is for deterministic local development only."
+    "note": "Legacy evaluation-policy-v1 defaults, retained only for the experimental conv task. The judge-level perf_phase_budget_seconds is likewise legacy-only. The nine scored Stage 1 problems define independent grouped cases in their fixed config.json files, and their evaluation-policy-v2 cohorts seal perf_phase_budget_seconds=0 so one case cannot consume another case's configured time allowance. Official evaluation requires a hidden PERF_SEED and seals the resolved schedule into the cohort policy; an unseeded schedule is for deterministic local development only."
   },
   "timing": {
     "metric": "wall_time",
@@ -27,7 +27,7 @@
   },
   "scoring": {
     "contract": "nine independent problem leaderboards; full-plan passes score 100 and rank by configured target work or combined work; any failed case gives 0 points and infinite cost, with all such failures tied",
-    "policy_source": "problems/<id>/config.json evaluation (grouped-evaluation-v1), sealed into each evaluation-policy-v2 cohort",
+    "policy_source": "evaluation/problems/fib/config.json for fib; problems/<id>/config.json for other tasks. The evaluation block (grouped-evaluation-v1) is sealed into each evaluation-policy-v2 cohort.",
     "legacy_conv_contract": "completed_slots_desc, coverage_desc, harder_slot_profile_desc, total_work_asc",
     "total_work": "full_correctness_closure_replay_median + sum(successful_target_declaration_replay_medians)",
     "metric_groups": [
@@ -42,7 +42,7 @@
   },
   "sandbox": {
     "mode": "none",
-    "note": "'none' = local dev via the landrun pass-through shim (NO sandboxing). 'container' asserts a real landrun is present and is set by the Docker image. Resource/isolation limits (memory, cpus, pids, network, non-root, kill-all-on-exit) are ENFORCED BY scripts/run_isolated.sh and the container runtime, not by the judge process. Each scored problem declares evaluation.memory_mb in problems/<id>/config.json. The wrapper enforces that job-wide cap with zero extra swap; the judge checks the cgroup values and seals the limit into the cohort. Matrix permanent uses 8192 MiB (8 GiB); the other eight scored problems retain transitional 4096 MiB entries pending organizer confirmation. Official-host acceptance remains required for all problems. Memory changes require a new cohort and rescoring the comparison set.",
+    "note": "'none' = local dev via the landrun pass-through shim (NO sandboxing). 'container' asserts a real landrun is present and is set by the Docker image. Resource/isolation limits (memory, cpus, pids, network, non-root, kill-all-on-exit) are ENFORCED BY scripts/run_isolated.sh and the container runtime, not by the judge process. Each scored problem declares evaluation.memory_mb in its fixed config.json. The wrapper enforces that job-wide cap with zero extra swap; the judge checks the cgroup values and seals the limit into the cohort. Matrix permanent uses 8192 MiB (8 GiB); the other eight scored problems retain transitional 4096 MiB entries pending organizer confirmation. Official-host acceptance remains required for all problems. Memory changes require a new cohort and rescoring the comparison set.",
     "cpus": 2
   },
   "toolchain": {

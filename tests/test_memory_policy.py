@@ -1,5 +1,7 @@
 """Memory configuration must have identical units at launch, judging, and scoring."""
 import json
+import re
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -7,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from memory_policy import memory_mb_from_envelope, problem_memory_mb, valid_memory_mb
+from problem_layout import evaluation_problem_dir, iter_evaluation_problem_dirs
 
 
 class MemoryPolicyTests(unittest.TestCase):
@@ -32,12 +35,25 @@ class MemoryPolicyTests(unittest.TestCase):
         pipeline = json.loads((ROOT / "pipeline/config.json").read_text())
         self.assertNotIn("memory_mb", pipeline["sandbox"])
         count = 0
-        for path in (ROOT / "problems").glob("*/config.json"):
-            cfg = json.loads(path.read_text())
+        for path in iter_evaluation_problem_dirs(ROOT):
+            cfg = json.loads((path / "config.json").read_text())
             if "evaluation" in cfg:
                 count += 1
                 self.assertTrue(valid_memory_mb(problem_memory_mb(cfg)), path)
         self.assertEqual(count, 9)
+
+    def test_ci_memory_command_reads_the_evaluator_config(self):
+        workflow = (ROOT / ".github/workflows/isolation-wrapper.yml").read_text()
+        config_paths = re.findall(r"python3 scripts/memory_policy\.py ([^\s)]+)", workflow)
+        self.assertEqual(len(config_paths), 1)
+        config = evaluation_problem_dir(ROOT, "fib") / "config.json"
+        self.assertEqual(ROOT / config_paths[0], config)
+        result = subprocess.run(
+            [sys.executable, "scripts/memory_policy.py", config_paths[0]],
+            cwd=ROOT, capture_output=True, text=True, timeout=10, check=True,
+        )
+        expected = problem_memory_mb(json.loads(config.read_text()))
+        self.assertEqual(result.stdout.strip(), f"{expected}m")
 
 
 if __name__ == "__main__":

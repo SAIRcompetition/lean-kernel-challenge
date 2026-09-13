@@ -5,21 +5,29 @@ Contributions we welcome:
 
 ## New problems
 
-A problem is a locked workspace under `problems/<id>/` (see any existing problem
-for the layout). A good kernel-computation problem has:
+A problem has a locked evaluation workspace. In the fib pilot, this lives under
+`evaluation/problems/fib/`, separate from the editable `problems/fib/` participant
+package. The other eight scored problems and experimental `conv` retain their
+`problems/<id>/` layout. Use the routing helpers in `scripts/problem_layout.py`
+when locating evaluation files. A good kernel-computation problem has:
 
-- a **naive but correct** parametric spec `spec : Nat → Output` in core Lean (no
-  Mathlib), using **structural recursion** so the kernel can reduce it on any `n`;
-- a spec whose direct kernel evaluation blows up as `n` grows, so contestants must
-  be clever;
-- a long optimization ladder (mathematical shortcuts *and* kernel-fu), not just
-  a representation tweak;
+- a **correct, total** parametric spec `spec : Nat → Output` that the kernel can
+  reduce on every input, using only the dependencies pinned for that problem;
+- substantial room for algorithmic and representation improvements, measured
+  through kernel replay rather than compiled execution;
 - a `baseline` submission `impl := spec` with `impl_correct := fun _ => rfl`;
 - an `evaluation` block in `config.json` that defines the difficulty axis, ordered
   workload groups, a reproducible sampler, case counts, resource limits, and the
   per-problem instruction-cost policy. Under `full-plan-v1`, every case must pass to earn
   100 points; groups do not award partial points. See `rules/problem-scoring.md` and the
   existing scored problems.
+
+Specs may import a standard library definition instead of reimplementing it.
+For example, `fib` uses Mathlib v4.33.1's `Nat.fib` from `Mathlib.Data.Nat.Fib.Basic`;
+see its [official API and pinned source](rules/problems/fib.md#mathlib-specification).
+The other eight current scored tasks remain core-Lean-only. A library-backed task
+must document its exact declaration and version, link the official API and fixed-version
+source, and supply locked dependencies for offline evaluation.
 
 Add the workspace (Spec / Challenge / Solution / config with `definition_names = ["impl"]`,
 `theorem_names = ["impl_correct"]`, and a grouped `evaluation` policy) and at least the
@@ -34,14 +42,19 @@ manifest with a `reason_contains` substring.
 
 ## Green gate
 
-Run `python3 scripts/quick_test.py` for a fast check of all shipped baselines on small,
+After the [participant setup](README.md#quick-start), run `python3 scripts/quick_test.py`
+for a fast check of all shipped baselines on small,
 fixed public inputs. This compiled demo is participant-facing convenience only: it does
 not run the official judge, hidden plan, PMU measurement, axiom audit, or scoring path.
 
+For fib dependency changes, regenerate participant configuration with
+`python3 scripts/sync_fib_participant.py`; use `--check` to verify that its
+toolchain, Lake configuration, and manifest still match the canonical evaluation
+pins. Do not edit those generated participant files independently.
+
 Every change must also keep the repository test suite and `python3 scripts/run_harness.py`
-green. The harness exercises the judging pipeline; it is intentionally separate from the
-public quick test. See `README.md` for the development commands and `rules/overview.md` for
-the rules.
+green. The harness requires the separate [judge setup](README.md#maintainer-regression-and-judge-checks)
+and is not part of the public quick test. See `rules/overview.md` for the rules.
 
 ## Reporting a soundness issue
 

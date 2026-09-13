@@ -52,8 +52,10 @@ verify such computations.
 
 ## Task
 
-Each problem provides a trusted core-Lean specification `spec : Nat → Output`, where `Output` is
-the problem-specific output type. Participants submit:
+Each problem provides a trusted specification `spec : Nat → Output`, where `Output` is
+the problem-specific output type. For `fib`, the spec is Mathlib v4.33.1's `Nat.fib`
+from `Mathlib.Data.Nat.Fib.Basic`; see its [official API and pinned source](problems/fib.md#mathlib-specification).
+The other eight scored tasks use their repository-defined core-Lean specs. Participants submit:
 
 1. an implementation `impl : Nat → Output` optimized for kernel verification; and
 2. a proof `impl_correct : ∀ n, impl n = spec n`.
@@ -72,12 +74,15 @@ enter ranking according to the problem's declared work policy. See
 ## Submission
 
 Submit exactly one **`Submission.lean`** file, at most **1 MiB**. It must contain `impl`,
-`impl_correct`, and every helper definition or lemma used by the proof, all inside
-`namespace Submission`. All other workspace files are locked.
+`impl_correct`, and every helper you add, all inside `namespace Submission`.
+You may also use the locked workspace's library declarations. All other workspace files are locked.
 
 The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, and `config.json`) are fixed,
-and the judge supplies its own copies. The simplest valid submission defines `impl` as the trusted
-specification and proves correctness with `rfl`. It is correct but intentionally slow.
+and the judge supplies its own copies. For fib, they are in `evaluation/problems/fib/`;
+the separate `problems/fib/` folder contains a runnable participant starter and quick test.
+The other eight problems retain their existing layout. The simplest valid submission defines `impl` as the trusted
+specification and proves correctness with `rfl`. This adds no optimization and does not
+guarantee that every performance case passes within its limits.
 
 Formal submissions may be repeated before the cutoff. Daily mode limits are **2 Standard runs**
 and **5 Light runs**, with the UTC day resetting at 00:00 UTC. Before launch, the organizers will
@@ -99,7 +104,12 @@ post-deadline submissions cannot replace it.
 
 ## Public quick test
 
-`python3 scripts/quick_test.py` builds the checked-in baseline for all nine scored problems and
+For fib, use the [participant workspace](../problems/fib/README.md): run
+`python3 setup.py`, `lake build`, and `lake exe quick_test` inside `problems/fib/`.
+No evaluation tools are needed. It checks the required all-input theorem and
+compiled outputs on `0`, `1`, `2`, `10`, and `20`.
+
+The existing `python3 scripts/quick_test.py` builds the checked-in baseline for all nine scored problems and
 compares compiled outputs with the trusted specifications on small, fixed, public inputs. Use
 `--problem <id>` to run one problem and `--submission <path>` to check your own
 `Submission.lean`.
@@ -135,8 +145,9 @@ Participation is also subject to the team, anti-cheating, and participant-cost p
   contracts.
 
 > Compiled execution, including `#eval` and the public quick test, does not predict
-> kernel-reduction performance. Use `scripts/perf_eval.py` for local checks that follow the
-> judge's measurement boundary.
+> kernel-reduction performance. Use the optional [fib evaluator](../evaluation/README.md),
+> or `scripts/perf_eval.py` for the other tasks, for local wall-time checks that follow
+> the judge's measurement boundary. These are not official scores.
 
 ## Stage 1 Problems
 

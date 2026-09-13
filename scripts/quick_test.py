@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Run public, non-scoring smoke tests for Stage 1 submissions.
 
-This helper deliberately does not invoke ``judge/judge.py``.  It copies the
-locked problem files and one submission into a temporary Lake workspace,
+This helper deliberately does not invoke ``judge/judge.py``. For fib it uses
+the independent participant package; other tasks retain their legacy workspaces.
+It copies the required local files and one submission into a temporary Lake workspace,
 builds the universal proof, and compares compiled executions of ``impl`` and
 the trusted spec on a few small, fixed, public inputs.  It never reads hidden
 seeds, uses PMU counters, or writes an official verdict/result.
@@ -34,7 +35,7 @@ EXAMPLES = ROOT / "examples" / "submissions"
 # evaluation plan.  Packed inputs have the scale in the high bits and a small
 # public seed in the low 32 bits.
 DEMO_CASES: dict[str, tuple[str, tuple[int, ...]]] = {
-    "fib": ("Nat.fib", (0, 10, 20)),
+    "fib": ("Nat.fib", (0, 1, 2, 10, 20)),
     "partition": ("partitionSpec", (0, 5, 10)),
     "mertens": ("mertensSpec", (1, 10, 25)),
     "primecount": ("primeCountSpec", (1, 10, 50)),
@@ -46,7 +47,9 @@ DEMO_CASES: dict[str, tuple[str, tuple[int, ...]]] = {
 }
 
 LOCKED_FILES = ("Spec.lean", "Solution.lean", "lakefile.toml", "lean-toolchain")
+FIB_PARTICIPANT_FILES = ("QuickTest.lean", "lakefile.toml", "lean-toolchain")
 DEMO_EXECUTABLE = "quick_test_demo"
+FIB_DEMO_EXECUTABLE = "quick_test"
 EXCLUDED_ENV_PREFIXES = (
     "EVAL_",
     "OFFICIAL_",
@@ -157,7 +160,7 @@ def _stage_dependencies(problem: str, problem_dir: Path, work: Path) -> bool:
     except (ValueError, OSError) as error:
         raise ValueError(
             "fib dependency setup is missing or inconsistent: "
-            f"{error}. Run python3 scripts/prepare_problem_dependencies.py --problem fib"
+            f"{error}. Run python3 problems/fib/setup.py"
         ) from error
     return True
 
@@ -176,7 +179,9 @@ def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 
     try:
         with tempfile.TemporaryDirectory(prefix=f"lkc-quick-{problem}-") as raw_work:
             work = Path(raw_work)
-            for name in LOCKED_FILES:
+            files = FIB_PARTICIPANT_FILES if problem == "fib" else LOCKED_FILES
+            executable = FIB_DEMO_EXECUTABLE if problem == "fib" else DEMO_EXECUTABLE
+            for name in files:
                 locked = problem_dir / name
                 if not locked.is_file():
                     return QuickResult(problem, False, f"missing locked file: {locked}")
@@ -184,26 +189,27 @@ def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 
             shutil.copy2(source, work / "Submission.lean")
             has_dependencies = _stage_dependencies(problem, problem_dir, work)
 
-            spec_name, inputs = DEMO_CASES[problem]
-            (work / "QuickTest.lean").write_text(
-                _demo_source(spec_name, inputs), encoding="utf-8"
-            )
-            with (work / "lakefile.toml").open("a", encoding="utf-8") as lakefile:
-                lakefile.write(
-                    f'\n[[lean_exe]]\nname = "{DEMO_EXECUTABLE}"\nroot = "QuickTest"\n'
+            if problem != "fib":
+                spec_name, inputs = DEMO_CASES[problem]
+                (work / "QuickTest.lean").write_text(
+                    _demo_source(spec_name, inputs), encoding="utf-8"
                 )
+                with (work / "lakefile.toml").open("a", encoding="utf-8") as lakefile:
+                    lakefile.write(
+                        f'\n[[lean_exe]]\nname = "{executable}"\nroot = "QuickTest"\n'
+                    )
 
             # Build a native executable rather than using ``lean --run``.  The latter
             # interprets recursive specs and can make even tiny demo inputs surprisingly
             # slow; native execution is exactly the lightweight feedback intended here.
-            # Importing Solution still builds and type-checks Submission and its proof.
+            # Fib's QuickTest checks the exact theorem directly; legacy tasks import Solution.
             # Dependency setup is explicit. The locked prepared packages above
             # avoid checkout downloads; --no-cache also disables build-cache
             # downloads. Never run `lake update` or a fetch from the quick demo.
             build_command = ["lake"]
             if has_dependencies:
                 build_command.append("--no-cache")
-            build_command.extend(["build", DEMO_EXECUTABLE])
+            build_command.extend(["build", executable])
             build = _run(build_command, cwd=work, timeout=timeout)
             if build.returncode != 0:
                 return QuickResult(problem, False, "build failed:\n" + _failure_output(build))
@@ -216,7 +222,7 @@ def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 
                 )
 
             demo = _run(
-                [str(work / ".lake" / "build" / "bin" / DEMO_EXECUTABLE)],
+                [str(work / ".lake" / "build" / "bin" / executable)],
                 cwd=work,
                 timeout=timeout,
             )

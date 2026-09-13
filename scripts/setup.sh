@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-command environment bootstrap for the kernel-computation track.
+# Full evaluator bootstrap; ordinary fib participants only need problems/fib.
 # Builds the pinned verification tools (comparator, lean4export, timer-kernel)
 # and reports where the judge will find them. Idempotent.
 #
@@ -54,7 +54,7 @@ clone_build lean4export https://github.com/leanprover/lean4export.git "$LEAN4EXP
 echo "== building timer-kernel =="
 ( cd "$HERE/judge/timer-kernel" && lake build )
 
-echo "== preparing fib's pinned Mathlib dependency closure =="
+echo "== preparing evaluation/problems/fib's pinned Mathlib dependency closure =="
 python3 "$HERE/scripts/prepare_problem_dependencies.py" --problem fib
 
 cat <<EOF

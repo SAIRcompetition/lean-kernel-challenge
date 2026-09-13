@@ -78,6 +78,19 @@ class PerfEvalWrapperTests(unittest.TestCase):
         self.assertIn("local wall-time only", verdict["reason"])
         judge_mock.assert_not_called()
 
+    def test_participant_config_cannot_replace_missing_evaluator_workspace(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            participant_config = root / "problems/fib/config.json"
+            participant_config.parent.mkdir(parents=True)
+            participant_config.write_text("{}")
+            with mock.patch.object(perf_eval, "BASE", root), \
+                 mock.patch.object(perf_eval._judge, "judge") as judge_mock:
+                verdict = perf_eval.evaluate("fib", root / "submission")
+        self.assertEqual(verdict["status"], "error")
+        self.assertIn("unknown problem", verdict["reason"])
+        judge_mock.assert_not_called()
+
     def test_atomic_output_replaces_complete_file(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "nested" / "verdict.json"

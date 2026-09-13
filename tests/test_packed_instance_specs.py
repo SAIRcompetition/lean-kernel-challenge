@@ -13,11 +13,15 @@ import itertools
 import re
 import shutil
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from problem_layout import evaluation_problem_dir
+
 MASK32 = (1 << 32) - 1
 
 
@@ -264,7 +268,7 @@ def load_polydisc_mirror():
 
 
 def lean_values(problem, spec_name, vectors):
-    workspace = ROOT / "problems" / problem
+    workspace = evaluation_problem_dir(ROOT, problem)
     subprocess.run(
         ["lake", "build", "Spec"],
         cwd=workspace,
@@ -300,7 +304,7 @@ def lean_values(problem, spec_name, vectors):
 
 
 def lean_int_values(problem, spec_name, inputs):
-    workspace = ROOT / "problems" / problem
+    workspace = evaluation_problem_dir(ROOT, problem)
     subprocess.run(
         ["lake", "build", "Spec"],
         cwd=workspace,

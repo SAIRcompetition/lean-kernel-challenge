@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Prepare this standalone participant package's pinned Lean/Mathlib dependencies."""
+
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+
+HERE = Path(__file__).resolve().parent
+
+
+def package_pins(manifest):
+    if manifest.get("packagesDir") != ".lake/packages":
+        raise ValueError("expected the local .lake/packages directory")
+    pins = []
+    for package in manifest["packages"]:
+        name, url, rev = (package[key] for key in ("name", "url", "rev"))
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name) or not re.fullmatch(r"[0-9a-f]{40}", rev):
+            raise ValueError("dependency manifest must contain exact package revisions")
+        pins.append((name, url, rev))
+    if not pins:
+        raise ValueError("dependency manifest is empty")
+    return pins
+
+
+def main():
+    environment = dict(os.environ)
+    for key in ("ELAN_TOOLCHAIN", "LEAN_PATH", "LEAN_SRC_PATH", "LEAN_SYSROOT"):
+        environment.pop(key, None)
+    environment["MATHLIB_NO_CACHE_ON_UPDATE"] = "1"
+
+    def run(command, cwd=HERE):
+        subprocess.run(command, cwd=cwd, env=environment, check=True, timeout=1800)
+
+    try:
+        manifest_path = HERE / "lake-manifest.json"
+        pins = package_pins(json.loads(manifest_path.read_text()))
+        if any(not (HERE / ".lake/packages" / name / ".git").exists() for name, _, _ in pins):
+            run(["lake", "update"])
+        if package_pins(json.loads(manifest_path.read_text())) != pins:
+            raise ValueError("dependency revisions changed; restore the checked-in manifest")
+        for name, _, rev in pins:
+            checkout = HERE / ".lake/packages" / name
+            actual = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=checkout, env=environment, text=True
+            ).strip()
+            if actual != rev:
+                raise ValueError(f"dependency revision mismatch: {name}")
+        run(["lake", "exe", "cache", "get", "Mathlib/Data/Nat/Fib/Basic.lean"],
+            cwd=HERE / ".lake/packages/mathlib")
+        print("Dependencies ready. Run: lake build && lake exe quick_test")
+        return 0
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        print(f"Participant setup failed: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

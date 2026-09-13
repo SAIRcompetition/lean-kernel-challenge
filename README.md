@@ -58,7 +58,10 @@ kernel-level encodings rather than from bypassing the computation.
 ## The task
 
 Each problem gives you a **trusted spec**, `spec : Nat → Output`.
-For `fib`, this is Mathlib's official `Nat.fib`; the other tasks currently use
+For `fib`, this is Mathlib **v4.33.1**'s official
+[Nat.fib](https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Nat/Fib/Basic.html#Nat.fib),
+from `Mathlib.Data.Nat.Fib.Basic`. See the [fib specification reference](rules/problems/fib.md#mathlib-specification)
+for the fixed-version source and dependency pin. The other eight tasks currently use
 the definitions supplied in their core-Lean workspaces. You submit:
 
 1. a **function** `impl : Nat → Output` — your fast algorithm, and
@@ -83,22 +86,27 @@ enough to pass every performance case.
 
 Exactly one file, **`Submission.lean`**, at most 1 MiB. Every helper you add lives in that
 file, inside `namespace Submission`; you may also use the locked workspace's library declarations.
-You fill two holes in a
-locked workspace:
+For example, the runnable [fib starter](problems/fib/Submission.lean) contains:
 
 ```lean
+import Mathlib.Data.Nat.Fib.Basic
+
 namespace Submission
 
-def impl : Nat → Nat := sorry                       -- ① your fast algorithm (a total function)
+def impl (n : Nat) : Nat := Nat.fastFib n
 
-theorem impl_correct : ∀ n, impl n = Nat.fib n :=   -- ② proof it equals the spec on every n
-  sorry
+theorem impl_correct : ∀ n, impl n = Nat.fib n := by
+  intro n
+  exact Nat.fastFib_eq n
 
 end Submission
 ```
 
-The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, `config.json`) are
-fixed; the judge supplies its own copies. For the timeline, registration,
+Optimize the implementation and update its proof; keep the interface unchanged.
+For fib, the participant workspace is `problems/fib/`. The fixed `Spec.lean`,
+`Challenge.lean`, `Solution.lean`, and `config.json` live separately in
+`evaluation/problems/fib/`; the judge supplies them. The other eight problems
+retain their existing workspace layout. For the timeline, registration,
 participation policies, and co-organizers see
 **[`rules/prelaunch.md`](rules/prelaunch.md)**. See
 **[`rules/overview.md`](rules/overview.md)**
@@ -130,9 +138,9 @@ follow that shape (full text in [`rules/overview.md`](rules/overview.md)):
 Each scored problem still exposes `impl : Nat → Output`. Some problems pack a public scale and a
 hidden 32-bit seed into that `Nat`; their generators and encodings are part of the trusted spec.
 
-| Problem | `impl n` computes | Naive spec cost |
+| Problem | `impl n` computes | Spec algorithm / cost |
 |---|---|---|
-| `fib` *(tutorial)* | the n-th Fibonacci number | linear (`brecOn`) |
+| [`fib`](rules/problems/fib.md) | the n-th Fibonacci number | Mathlib `Nat.fib`: `n` pair-iteration steps |
 | `partition` | the partition function p(n) | ~p(n)·n |
 | `mertens` | the Mertens function M(n) | quadratic |
 | `primecount` | the prime-counting function π(n) | quadratic |
@@ -147,8 +155,12 @@ an experimental development task; it is not part of the nine scored leaderboards
 
 Most specs intentionally leave substantial algorithmic or representation overhead, so
 competitive submissions require better algorithms, kernel-level encodings, or both. The worked
-`fib` example ships two submissions — a
-baseline (`impl := spec`) and fast doubling with a full `∀ n` proof.
+`fib` example ships a [single-file starter](problems/fib/Submission.lean)
+using `Nat.fastFib`, a baseline using `Nat.fib`, and a custom fast-doubling
+implementation, each with a full `∀ n, impl n = Nat.fib n` proof. The starter's
+TODOs identify the implementation and correctness proof to edit. `Nat.fib` is the
+correctness target, not a requirement to use its algorithm or a relative-speed
+scoring baseline.
 
 ## How judging works
 
@@ -221,30 +233,46 @@ cohort; revising it requires a new cohort and a complete rescore of that problem
 
 ## Quick start
 
-Install Git, Python 3.9 or later, and [elan](https://github.com/leanprover/elan), which provides
-Lean and `lake`. Run these commands from the repository root. On first use, `elan` may download
-the pinned Lean 4.33.1 toolchain.
+For fib, install Git, Python 3.9 or later, and [elan](https://github.com/leanprover/elan).
+From the repository root:
 
 ```bash
-# Prepare fib's pinned Mathlib dependencies once (first use requires network access).
-python3 scripts/prepare_problem_dependencies.py --problem fib
+cd problems/fib
+python3 setup.py
+lake build
+lake exe quick_test
+```
 
-# Run the checked-in baseline demo for all nine scored problems.
+Edit only `Submission.lean`; its starting implementation and proof already work.
+Setup downloads the pinned Lean/Mathlib dependencies on first use, without the
+judge, Docker, comparator, exporter, or replay timer. After edits, repeat the last
+two commands. Submit only `Submission.lean`.
+
+The quick test checks the required all-input theorem and compares compiled
+outputs on `0`, `1`, `2`, `10`, and `20`. It is not an official audit, kernel
+benchmark, submission, or score. Passing does not guarantee official acceptance
+or performance. See the [participant guide](problems/fib/README.md).
+
+The existing all-problem helper remains available from the repository root
+(after fib's setup above). By default it checks the example baselines:
+
+```bash
 python3 scripts/quick_test.py
-
-# Run one baseline demo.
-python3 scripts/quick_test.py --problem fib
-
-# Quick-test your own file (a directory containing Submission.lean also works).
 python3 scripts/quick_test.py --problem fib --submission path/to/Submission.lean
 ```
 
-The quick test builds the selected `Submission.lean`, including its universal correctness proof,
-then compares compiled executions of `impl` and the trusted specification on a few small, fixed,
-public inputs. It is only a fast functional check. It does **not** submit anything, invoke the
-official judge, use hidden cases or PMU counters, run the production isolation or axiom audit, write
-an official verdict, or produce a score. Passing it does not mean that a submission will be accepted
-or competitive. Compiled execution and its timing are never competition metrics.
+### Optional fib kernel evaluation
+
+To run the canonical judge locally on the same file, separately prepare the
+evaluation tools. From the repository root:
+
+```bash
+bash evaluation/setup.sh
+python3 evaluation/run.py --problem fib --submission problems/fib/Submission.lean
+```
+
+This uses the six-case unseeded public plan and one wall-time repetition, not
+official instruction-count scores. See the [evaluation guide](evaluation/README.md).
 
 ## Maintainer regression and judge checks
 
@@ -324,7 +352,7 @@ hosts whose `perf_event_paranoid` setting already permits instruction counting. 
 Linux Docker host, the results directory must be writable by the image's judge UID 10001;
 the wrapper checks this before it starts elaborating the submission.
 
-Memory is configured independently in each `problems/<id>/config.json` as
+Memory is configured independently in each locked `config.json` as
 `evaluation.memory_mb` (MiB). The wrapper reads the chosen problem, applies the same value to
 `--memory` and `--memory-swap` (zero extra swap), and the judge checks it against both the image's
 problem policy and the actual cgroup. `--memory` / `JUDGE_MEMORY` can only assert that value;
@@ -338,7 +366,9 @@ requires a rebuilt image, a new cohort, and rescoring that problem's comparison 
 ```
 lean-kernel-challenge/
 ├─ rules/           overview.md (rules) · evaluation.md (judge) · problem-scoring.md (leaderboards)
-├─ problems/<id>/   10 locked workspaces: 9 scored problems + experimental conv
+├─ problems/fib/    participant-only starter, quick test, and pinned Lean/Mathlib setup
+├─ evaluation/      optional fib evaluation entrypoint and fixed problems/fib workspace
+├─ problems/<other-id>/   unchanged locked workspaces: 8 scored problems + experimental conv
 ├─ examples/submissions/<problem>/<name>/   worked + adversarial example submissions
 ├─ judge/           judge.py (the judge) · timer-kernel/ (kernel replay + axiom audit)
 ├─ pipeline/        config.json (budgets, sandbox mode, toolchain pins)

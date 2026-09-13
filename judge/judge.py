@@ -71,6 +71,7 @@ if hasattr(sys, "set_int_max_str_digits"):
 ROOT = Path(__file__).resolve().parent.parent            # lean-kernel-challenge/
 sys.path.insert(0, str(ROOT / "scripts"))
 from memory_policy import memory_mb_from_envelope as _memory_mb_from_envelope, problem_memory_mb
+from problem_layout import evaluation_problem_dir, iter_evaluation_problem_dirs
 from problem_dependencies import (
     ARTIFACT_SUFFIXES as DEPENDENCY_ARTIFACT_SUFFIXES,
     DependencyError,
@@ -79,7 +80,22 @@ from problem_dependencies import (
 )
 
 PROBLEMS = ROOT / "problems"
+_DEFAULT_PROBLEMS = PROBLEMS
 RESULTS = ROOT / "results"
+
+
+def _problem_dir(problem):
+    # Retain explicit custom-workspace overrides used by local integration fixtures.
+    # The repository layout always resolves fib to its evaluator-owned workspace.
+    if PROBLEMS != _DEFAULT_PROBLEMS:
+        return PROBLEMS / problem
+    return evaluation_problem_dir(ROOT, problem)
+
+
+def _problem_dirs():
+    if PROBLEMS != _DEFAULT_PROBLEMS:
+        return (path.parent for path in sorted(PROBLEMS.glob("*/config.json")))
+    return iter_evaluation_problem_dirs(ROOT)
 
 # Judge budgets + timing/sandbox policy live in pipeline/config.json (SAIR convention).
 _CFG = json.loads((ROOT / "pipeline" / "config.json").read_text())
@@ -1320,7 +1336,7 @@ def _preflight_payload(sd: Path):
 
 
 def assemble(job_dir: Path, problem, submission_dir):
-    prob_dir = PROBLEMS / problem
+    prob_dir = _problem_dir(problem)
     if not (prob_dir / "config.json").exists():
         raise InfraError(f"unknown problem '{problem}'")
     sd = Path(submission_dir)
@@ -2239,7 +2255,7 @@ def _canonical_work(correctness_timing, scaling, metric=None):
 
 def _problem_bundle_digest(problem):
     """Hash the locked files that define one problem and its build environment."""
-    base = PROBLEMS / problem
+    base = _problem_dir(problem)
     if not base.is_dir():
         raise InfraError(f"unknown problem '{problem}'")
     digest = hashlib.sha256()
@@ -2275,6 +2291,7 @@ def _evaluator_bundle_digest():
         ROOT / "scripts" / "prepare_reference.py",
         ROOT / "scripts" / "problem_dependencies.py",
         ROOT / "scripts" / "prepare_problem_dependencies.py",
+        ROOT / "scripts" / "problem_layout.py",
         ROOT / "judge" / "timer-kernel" / "Main.lean",
         ROOT / "judge" / "timer-kernel" / "timer_control.c",
         ROOT / "judge" / "timer-kernel" / "lakefile.lean",
@@ -2461,7 +2478,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
                              "was started without --network none (refusing to run unsandboxed)")
         result["stages"]["sandbox"] = {"mode": SANDBOX_MODE, "network_reachable": reachable}
 
-    cfg = json.loads((PROBLEMS / problem / "config.json").read_text())
+    cfg = json.loads((_problem_dir(problem) / "config.json").read_text())
     resolved_plan = _validated_performance_plan(cfg, problem)
     if resolved_plan is not None:
         try:
@@ -2475,7 +2492,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     if resolved_plan is not None:
         reference_inputs = [case["n"] for case in resolved_plan]
         try:
-            spec_digest = specification_fingerprint(PROBLEMS / problem)
+            spec_digest = specification_fingerprint(_problem_dir(problem))
         except DependencyError as exc:
             raise InfraError(f"invalid dependency-bound specification for '{problem}': {exc}") from exc
         try:
@@ -3071,7 +3088,8 @@ _METRIC_LABEL = {"perf_instructions": "instructions", "wall_time": "wall seconds
 def _stage1_problem_ids():
     """Return current grouped problem ids for non-ranked status reporting."""
     problem_ids = set()
-    for path in PROBLEMS.glob("*/config.json"):
+    for problem_dir in _problem_dirs():
+        path = problem_dir / "config.json"
         try:
             cfg = json.loads(path.read_text())
         except (OSError, UnicodeError, ValueError, RecursionError):
@@ -3305,8 +3323,8 @@ def main():
         _consume_perf_seed_stdin()
         if not valid_slug(problem):
             raise InfraError(f"invalid --problem slug '{problem}'")
-        if not (PROBLEMS / problem / "config.json").exists():
-            raise InfraError(f"unknown problem '{problem}' (not in problems/)")
+        if not (_problem_dir(problem) / "config.json").exists():
+            raise InfraError(f"unknown evaluator problem '{problem}'")
         if tag is not None and not valid_slug(tag):
             raise InfraError(f"invalid --tag slug '{tag}'")
         if not valid_slug(sub_name):

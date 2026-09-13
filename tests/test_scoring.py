@@ -4,12 +4,16 @@ import importlib.util
 import json
 import os
 import pathlib
+import sys
 import tempfile
 import unittest
 from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from problem_layout import evaluation_problem_dir
+
 SPEC = importlib.util.spec_from_file_location("challenge_score", ROOT / "scripts" / "score.py")
 score = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(score)
@@ -244,7 +248,7 @@ def grouped_verdict(name, costs, *, correctness=10, groups=None,
 def configured_grouped_verdict(name, problem, *, correctness, costs=None):
     """Exercise the shipped problem policy with synthetic replay measurements."""
     evaluation = json.loads(
-        (ROOT / "problems" / problem / "config.json").read_text())["evaluation"]
+        (evaluation_problem_dir(ROOT, problem) / "config.json").read_text())["evaluation"]
     inputs = []
     for group in evaluation["groups"]:
         sampling = group["sampling"]

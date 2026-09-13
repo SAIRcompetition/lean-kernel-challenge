@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import judge
 import score
+from problem_layout import evaluation_problem_dir, iter_evaluation_problem_dirs
 
 
 GROUPED_PROBLEMS = {
@@ -94,15 +95,15 @@ GROUPED_PROBLEMS = {
 
 
 def _config(problem):
-    return json.loads((ROOT / "problems" / problem / "config.json").read_text())
+    return json.loads((evaluation_problem_dir(ROOT, problem) / "config.json").read_text())
 
 
 class PublishedProblemPolicyTests(unittest.TestCase):
     def test_exactly_nine_grouped_leaderboards_and_conv_is_excluded(self):
         found = {
-            path.parent.name
-            for path in (ROOT / "problems").glob("*/config.json")
-            if "evaluation" in json.loads(path.read_text())
+            path.name
+            for path in iter_evaluation_problem_dirs(ROOT)
+            if "evaluation" in json.loads((path / "config.json").read_text())
         }
         self.assertEqual(found, set(GROUPED_PROBLEMS))
         self.assertEqual(score.STAGE1_PROBLEMS, set(GROUPED_PROBLEMS))

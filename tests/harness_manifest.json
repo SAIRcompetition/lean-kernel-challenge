@@ -7,6 +7,12 @@
       "expect": "accepted"
     },
     {
+      "problem": "fib",
+      "submission": "starter",
+      "expect": "accepted",
+      "scored": true
+    },
+    {
       "problem": "partition",
       "submission": "baseline",
       "expect": "accepted"

@@ -2,7 +2,7 @@
 """Machine-check the public scoring contract in rules/problem-scoring.md.
 
 rules/problem-scoring.md declares its per-problem tables to be the public
-scoring contract. The same facts live in problems/<p>/config.json under the
+scoring contract. The same facts live in each trusted evaluator config under the
 "evaluation" key. These tests parse the hand-maintained markdown tables and
 assert every row against the authoritative configs so the two copies cannot
 silently drift apart.
@@ -13,13 +13,15 @@ repository is identical.
 
 import json
 import re
+import sys
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCORING_DOC = ROOT / "rules" / "problem-scoring.md"
-PROBLEMS_DIR = ROOT / "problems"
+sys.path.insert(0, str(ROOT / "scripts"))
+from problem_layout import iter_evaluation_problem_dirs
 
 # The sampler each problem's doc section declares in prose. Keys double as
 # the closed list of scored Stage 1 problems (conv is explicitly excluded).
@@ -137,7 +139,8 @@ def _load_doc_rows():
 def _load_config_evaluations():
     """Load {problem: evaluation dict} for every config declaring one."""
     evaluations = {}
-    for config_path in sorted(PROBLEMS_DIR.glob("*/config.json")):
+    for problem_dir in iter_evaluation_problem_dirs(ROOT):
+        config_path = problem_dir / "config.json"
         with open(str(config_path), "r", encoding="utf-8") as handle:
             config = json.load(handle)
         if "evaluation" in config:
@@ -146,7 +149,7 @@ def _load_config_evaluations():
 
 
 class TestScoringContractDocs(unittest.TestCase):
-    """rules/problem-scoring.md tables must match problems/*/config.json."""
+    """rules/problem-scoring.md tables must match every trusted evaluator config."""
 
     @classmethod
     def setUpClass(cls):
@@ -322,9 +325,12 @@ class TestLeanToolchainConsistency(unittest.TestCase):
             .strip()
         )
 
-        problem_toolchains = sorted(PROBLEMS_DIR.glob("*/lean-toolchain"))
+        problem_toolchains = [path / "lean-toolchain"
+                              for path in iter_evaluation_problem_dirs(ROOT)]
+        # Participant packages are independent environments but share the official pin.
+        problem_toolchains.append(ROOT / "problems/fib/lean-toolchain")
         self.assertTrue(
-            problem_toolchains, "no problems/*/lean-toolchain files found"
+            problem_toolchains, "no evaluator problem toolchains found"
         )
         for path in problem_toolchains:
             rel = path.relative_to(ROOT).as_posix()

@@ -93,7 +93,8 @@ these per-case budgets. A timeout does not by itself prove that `impl` is not ke
 a confirmed violation of R2 is a rejection.
 
 Each problem has its own memory limit, declared in `evaluation.memory_mb` (MiB) in
-`problems/<id>/config.json` and published before official use. Matrix permanent (`permanent`)
+the locked `config.json` (`evaluation/problems/fib/` for fib;
+`problems/<id>/` for the other tasks) and published before official use. Matrix permanent (`permanent`)
 has an 8192 MiB (8 GiB) limit. The other eight problems retain provisional 4096 MiB (4 GiB)
 limits pending organizer confirmation. Official-host validation remains required for every
 problem; these allocations do not establish that every current baseline fits.
@@ -248,12 +249,10 @@ before launch.
 
 ## Local development
 
-For `fib`, run `python3 scripts/prepare_problem_dependencies.py --problem fib` once
-before testing. It prepares the pinned Mathlib Fibonacci import closure; the judge
-uses the prepared offline artifacts, not a network dependency resolver. The other
-eight scored tasks do not require Mathlib. The dependency lock is part of fib's
-specification identity, so a dependency change requires fresh reference answers
-and a new evaluation cohort.
+Fib's [participant workspace](../problems/fib/README.md) is independent of the evaluator.
+Inside `problems/fib/`, run `python3 setup.py`, `lake build`, and `lake exe quick_test`.
+This checks the required theorem and small compiled examples; it does not require
+the comparator, exporter, replay timer, or Docker.
 
 `scripts/quick_test.py` builds a submission and compares compiled executions of `impl` and the
 trusted specification on small, fixed, public inputs. It is a quick functional check only: it does
@@ -261,6 +260,23 @@ not invoke the judge, hidden plan, PMU counter, production isolation, axiom audi
 scorer. Compiled execution is not an official metric, and passing this demo does not establish
 acceptance or performance.
 
-`scripts/perf_eval.py` runs one wall-time repetition through the canonical judge. It uses the same
-export, audit, and measurement boundaries as the official path, but it is for development only and
-does not use official seeds, cohorts, remote timing, or production isolation.
+For optional fib kernel measurements, run from the repository root:
+
+```bash
+bash evaluation/setup.sh
+python3 evaluation/run.py --problem fib --submission problems/fib/Submission.lean
+```
+
+The entrypoint copies only the selected file and delegates to `scripts/perf_eval.py`.
+It runs the six-case unseeded public plan with one wall-time repetition through the
+canonical judge. This uses the same export, audit, and measurement boundaries as
+the official path, but no official seed, cohort, PMU score, or production isolation.
+See the [local evaluator guide](../evaluation/README.md). Other tasks can continue
+to use `scripts/perf_eval.py` directly.
+
+Fib's fixed evaluation files live in `evaluation/problems/fib/`. Judge setup prepares
+their pinned Mathlib Fibonacci import closure for offline use. The dependency lock
+is part of the specification identity; changing it requires fresh reference answers
+and a new cohort. Participant dependency files are generated from those same pins;
+maintainers verify them with `python3 scripts/sync_fib_participant.py --check`.
+The other eight scored tasks do not require Mathlib.

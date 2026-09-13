@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "judge"))
 import judge
 import reference_answers
 from problem_dependencies import specification_fingerprint
+from problem_layout import evaluation_problem_dir
 
 
 def main():
@@ -30,7 +31,7 @@ def main():
             # This command always prepares the complete plan, even in development.
             os.environ.pop("PERF_COUNT", None)
         import json
-        problem_dir = ROOT / "problems" / args.problem
+        problem_dir = evaluation_problem_dir(ROOT, args.problem)
         cfg = json.loads((problem_dir / "config.json").read_text())
         plan = judge._validated_performance_plan(cfg, args.problem)
         spec_digest = specification_fingerprint(problem_dir)
