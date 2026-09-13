@@ -12,8 +12,8 @@ same schema, specification, and input plan.
 Use the same checked-out evaluator and problem definitions as the official image.
 For all eight scored tasks, the fixed spec and configuration are in
 `evaluation/problems/<id>/`, not the participant folder `problems/<id>/`.
-Fib's dependency lock also lives there. The preparation command resolves this
-layout automatically.
+The dependency locks for fib, Mertens, and prime counting also live there. The
+preparation command resolves this layout automatically.
 Pass the secret seed through stdin; do not commit answers or include them in logs:
 
 ```bash
@@ -66,11 +66,11 @@ large exact integers without JSON number rounding. `mertens` and `polydisc` use
 duplicate or missing inputs, wrong output types, and mismatched specifications
 are rejected before contestant code executes.
 
-For core-only problems, the specification fingerprint remains the SHA-256 of
-`Spec.lean`. For `fib`, it also binds the pinned Mathlib dependency lock; changing
-that lock invalidates old answer bundles even when the import line is unchanged.
-Use the preparation script to compute the fingerprint rather than hashing the
-source file manually.
+For the five core-only problems, the specification fingerprint remains the
+SHA-256 of `Spec.lean`. For fib, Mertens, and prime counting, it also binds the
+pinned Mathlib dependency lock; changing that lock invalidates old answer bundles
+even when the import line is unchanged. Use the preparation script to compute the
+fingerprint rather than hashing the source file manually.
 
 The cohort seals the canonical JSON bundle's SHA-256, specification digest, and
 answer count, alongside its input plan and scoring policy. A changed answer

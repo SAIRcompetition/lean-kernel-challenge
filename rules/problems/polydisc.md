@@ -30,9 +30,15 @@ disc(P) = product over 1 ≤ i < j ≤ 24 of (ri - rj)^2
 ```
 
 The roots may be complex; the discriminant is an exact integer and can be negative.
-The formal proof target is the complete locked `discSpec` computation. A formal equivalence
-theorem to another library's discriminant is not supplied; Mathlib imports are currently
-not allowed.
+Mathlib v4.33.1 has the standard polynomial discriminant
+[`Polynomial.discr`](https://leanprover-community.github.io/mathlib4_docs/Mathlib/RingTheory/Polynomial/Resultant/Basic.html#Polynomial.discr),
+defined from a signed Sylvester determinant in the
+[fixed source](https://github.com/leanprover-community/mathlib4/blob/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/RingTheory/Polynomial/Resultant/Basic.lean#L924-L932).
+That noncomputable library definition is a possible future specification, not
+the current target. No all-input theorem connects the generated polynomial and
+the repository's subresultant/Bareiss computation to `Polynomial.discr`.
+`discSpec` remains the binding core-Lean specification; Mathlib imports are not
+supplied for this problem.
 
 The binding files are [`Challenge.lean`](../../evaluation/problems/polydisc/Challenge.lean),
 [`Solution.lean`](../../evaluation/problems/polydisc/Solution.lean), and

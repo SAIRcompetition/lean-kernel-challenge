@@ -11,7 +11,7 @@ import sys
 
 
 HERE = Path(__file__).resolve().parent
-CACHE_MODULES = ["Mathlib/Data/Nat/Fib/Basic.lean"]
+CACHE_MODULES = ["Mathlib/NumberTheory/ArithmeticFunction/Moebius.lean"]
 
 
 def package_pins(manifest):

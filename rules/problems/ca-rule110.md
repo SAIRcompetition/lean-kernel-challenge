@@ -12,6 +12,13 @@ The trusted function is `caSpecN` in
 Your algorithm and representation may differ, but the result must equal `caSpecN` for every
 natural-number input.
 
+Mathlib v4.33.1 has no dedicated Rule 110 or cellular-automaton specification.
+Its general [`Nat.iterate`](https://leanprover-community.github.io/mathlib4_docs/Mathlib/Logic/Function/Iterate.html#Nat.iterate),
+defined in the [fixed source](https://github.com/leanprover-community/mathlib4/blob/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/Logic/Function/Iterate.lean#L40-L46),
+can express repeated stepping but does not define Rule 110, the cyclic row, or
+this problem's seed and encoding. The current target therefore remains the
+repository's core-Lean `caSpecN`.
+
 For a neighborhood `(left, center, right)`, Rule 110 is:
 
 | Neighborhood | 111 | 110 | 101 | 100 | 011 | 010 | 001 | 000 |

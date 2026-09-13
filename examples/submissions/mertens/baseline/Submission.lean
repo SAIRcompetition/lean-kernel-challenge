@@ -1,11 +1,13 @@
 import Spec
 
-/-! Baseline: naive spec as implementation. -/
+/-! Baseline: sum Mathlib's Möbius function. -/
 
 namespace Submission
 
-def impl : Nat → Int := mertensSpec
+def impl (n : Nat) : Int := mertensSpec n
 
-theorem impl_correct : ∀ n, impl n = mertensSpec n := fun _ => rfl
+theorem impl_correct : ∀ n, impl n = mertensSpec n := by
+  intro n
+  rfl
 
 end Submission

@@ -182,6 +182,10 @@ class ProblemDependencyTests(unittest.TestCase):
             deps.specification_fingerprint(self.fixture.problem)
 
     def test_cold_preparation_fetches_pins_then_only_targeted_mathlib_cache(self):
+        (self.fixture.problem / "Spec.lean").write_text(
+            "import Mathlib.NumberTheory.PrimeCounting\n"
+            "import Mathlib.NumberTheory.ArithmeticFunction.Moebius\n"
+        )
         packages = self.fixture.problem / ".lake/packages"
         # Simulate a fresh checkout without prepared package directories.
         for child in list(packages.iterdir()):
@@ -202,9 +206,18 @@ class ProblemDependencyTests(unittest.TestCase):
         self.assertEqual(calls[0], (["lake", "update"], self.fixture.problem))
         self.assertEqual(
             calls[1],
-            (["lake", "exe", "cache", "get", "Mathlib/Data/Nat/Fib/Basic.lean"],
+            (["lake", "exe", "cache", "get", "Mathlib/NumberTheory/PrimeCounting.lean",
+              "Mathlib/NumberTheory/ArithmeticFunction/Moebius.lean"],
              packages / "mathlib"),
         )
+
+    def test_targeted_cache_requires_a_mathlib_import(self):
+        packages = self.fixture.problem / ".lake/packages"
+        (packages / "mathlib").mkdir()
+        with mock.patch.object(prepare_deps, "_run"), \
+             mock.patch.object(prepare_deps, "validate_prepared_packages", return_value=packages), \
+             self.assertRaisesRegex(deps.DependencyError, "no direct Mathlib import"):
+            prepare_deps._ensure_prepared_packages(self.fixture.problem, validate_lock=True)
 
     def test_cold_spec_build_can_create_pinned_package_artifact_roots(self):
         problem = self.fixture.problem
@@ -263,16 +276,26 @@ class ProblemDependencyTests(unittest.TestCase):
 
     def test_docker_checks_full_dependency_staging_as_nonroot_judge(self):
         dockerfile = (ROOT / "Dockerfile").read_text()
-        gates = [match for match in re.finditer(r"(?m)^RUN python3 -c '([^']+)'$", dockerfile)
+        gates = [match for match in re.finditer(r"(?m)^\s*python3 -c '([^']+)'", dockerfile)
                  if "stage_problem_dependencies(" in match.group(1)]
         self.assertEqual(len(gates), 1)
         gate = gates[0]
         users = re.findall(r"(?m)^USER\s+(\S+)\s*$", dockerfile[:gate.start()])
         self.assertTrue(users)
         self.assertEqual(users[-1], "judge")
-        self.assertIn('Path("evaluation/problems/fib")', gate.group(1))
+        self.assertIn('Path("evaluation/problems") / sys.argv[1]', gate.group(1))
+        self.assertIn('RUN for problem in fib mertens primecount; do', dockerfile[:gate.start()])
+        self.assertIn('"$problem" || exit 1', dockerfile[gate.end():])
         self.assertIn("tempfile.TemporaryDirectory()", gate.group(1))
         self.assertIn("result.artifact_count", gate.group(1))
+
+    def test_image_and_setup_prepare_all_dependency_enabled_problems(self):
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        setup = (ROOT / "scripts/setup.sh").read_text()
+        self.assertIn("RUN python3 scripts/prepare_problem_dependencies.py \\\n", dockerfile)
+        self.assertIn('python3 "$HERE/scripts/prepare_problem_dependencies.py"\n', setup)
+        for problem in ("fib", "mertens", "primecount"):
+            self.assertIn(f"/evaluation/problems/{problem}/.lake/packages", dockerfile)
 
 
 if __name__ == "__main__":

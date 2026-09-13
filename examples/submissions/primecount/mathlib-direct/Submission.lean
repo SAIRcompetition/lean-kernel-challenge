@@ -1,7 +1,6 @@
 import Spec
-import Mathlib
 
-/-! Negative fixture: the full Mathlib module is outside the pinned prime-counting import closure. -/
+/-! Use Mathlib's prime-counting implementation directly. -/
 
 namespace Submission
 

@@ -23,8 +23,19 @@
       "expect": "accepted"
     },
     {
+      "problem": "mertens",
+      "submission": "factor-list",
+      "expect": "accepted",
+      "scored": true
+    },
+    {
       "problem": "primecount",
       "submission": "baseline",
+      "expect": "accepted"
+    },
+    {
+      "problem": "primecount",
+      "submission": "mathlib-direct",
       "expect": "accepted"
     },
     {

@@ -1,6 +1,31 @@
 import Spec
 namespace Submission
 
+def isPrime (p : Nat) : Bool :=
+  decide (2 ≤ p) && (List.range p).all (fun d => decide (d < 2) || p % d != 0)
+
+theorem isPrime_iff (p : Nat) : isPrime p = true ↔ Nat.Prime p := by
+  rw [Nat.prime_def_lt']
+  simp only [isPrime, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true,
+    List.mem_range, Bool.or_eq_true, bne_iff_ne]
+  constructor
+  · rintro ⟨hp, h⟩
+    refine ⟨hp, ?_⟩
+    intro m hm hmp hd
+    rcases h m hmp with hsmall | hmod
+    · omega
+    · exact hmod (Nat.mod_eq_zero_of_dvd hd)
+  · rintro ⟨hp, h⟩
+    refine ⟨hp, ?_⟩
+    intro m hmp
+    by_cases hm : m < 2
+    · exact Or.inl hm
+    · exact Or.inr (fun hmod => h m (by omega) hmp (Nat.dvd_of_mod_eq_zero hmod))
+
+theorem isPrime_eq_mathlib (p : Nat) : isPrime p = decide (Nat.Prime p) := by
+  apply Bool.eq_iff_iff.mpr
+  simpa using isPrime_iff p
+
 def checkFrom (p : Nat) : Nat → Nat → Bool
   | 0, _ => false
   | fuel + 1, d => if d * d ≤ p then (p % d == 0 || checkFrom p fuel (d + 1)) else false
@@ -95,7 +120,7 @@ theorem isPrimeFast_eq (p : Nat) : isPrimeFast p = isPrime p := by
 
 theorem impl_correct : ∀ n, impl n = primeCountSpec n := by
   intro n
-  show ((List.range (n + 1)).filter isPrimeFast).length
-     = ((List.range (n + 1)).filter isPrime).length
-  rw [List.filter_congr (fun p _ => isPrimeFast_eq p)]
+  change ((List.range (n + 1)).filter isPrimeFast).length = Nat.primeCounting n
+  simp only [Nat.primeCounting, Nat.primeCounting', Nat.count, List.countP_eq_length_filter]
+  rw [List.filter_congr (fun p _ => (isPrimeFast_eq p).trans (isPrime_eq_mathlib p))]
 end Submission

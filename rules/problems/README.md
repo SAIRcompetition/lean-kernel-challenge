@@ -29,29 +29,44 @@ The fixed evaluation files define the interface. All eight scored tasks keep the
 in `evaluation/problems/<id>/`, separately from participant files:
 
 - `Spec.lean` defines or imports the function the implementation must equal, including any
-  input decoder and instance generator. `fib` imports Mathlib v4.33.1's official
-  [Nat.fib](https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Nat/Fib/Basic.html#Nat.fib)
-  from `Mathlib.Data.Nat.Fib.Basic`; its [specification reference](fib.md#mathlib-specification)
-  links the fixed-version source and dependency pin.
+  input decoder and instance generator. `fib`, `mertens`, and `primecount` use
+  APIs from the pinned Mathlib v4.33.1 dependency; their problem pages identify
+  the exact declarations and fixed-version sources.
 - `Challenge.lean` states the implementation and theorem to provide.
 - `Solution.lean` connects the submitted declarations to that fixed statement.
 - `config.json` specifies the evaluation groups, sampling policy, resource limits, and ranking
   policy.
 
 The eight participant packages contain runnable `Submission.lean` files
-with two short TODOs. The seven core-Lean packages also contain a generated fixed
-`Spec.lean` dependency; do not edit it. Fib imports Mathlib directly and provides
-its own dependency setup. No participant package contains the judge interfaces or
-scoring configuration.
+with two short TODOs and a generated fixed `Spec.lean` dependency; do not edit
+the latter. Fib, Mertens, and prime counting additionally provide their own
+pinned Mathlib dependency setup. No participant package contains the judge
+interfaces or scoring configuration.
 
 The completed starting implementations are under `examples/submissions/<id>/baseline/`.
 Some problems also have another example implementation. A baseline is a starting point, not a
 promise that it completes every official case within the configured limits.
 
 Mathematical descriptions explain the intended computation. The formal correctness target is
-the definition supplied or imported by the locked `Spec.lean`. For `fib`, it is `Nat.fib`
-itself. The other seven tasks use their repository-defined specs; no separate equivalence
-theorem to Mathlib is supplied for them.
+the definition supplied or imported by the locked `Spec.lean`, not every related definition
+that happens to exist in Mathlib.
+
+## Mathlib status
+
+This table records the current target separately from possible future library bridges.
+“Candidate” does not change the competition target and does not claim that the repository
+algorithm has already been certified against that Mathlib definition.
+
+| Problem | Current formal target | Mathlib status |
+| --- | --- | --- |
+| `fib` | `Nat.fib` | Direct Mathlib v4.33.1 target. |
+| `primecount` | `primeCountSpec`, backed by `Nat.primeCounting` | Direct Mathlib v4.33.1 target. |
+| `mertens` | `mertensSpec`, an inclusive sum of `ArithmeticFunction.moebius` | Uses Mathlib's Möbius function in the current target. |
+| `partition` | Repository `partitionSpec` recurrence | Mathlib has `Nat.Partition`; `Fintype.card (Nat.Partition n)` is a future candidate, but no all-`n` bridge from `partitionSpec` is supplied. |
+| `permanent` | Repository `permanentSpecN` mask traversal | Mathlib has `Matrix.permanent`, but no all-input bridge from the current traversal and generated matrices is supplied. |
+| `polydisc` | Repository `discSpec` resultant algorithms | Mathlib has `Polynomial.discr`, but no all-input bridge from the generated polynomial and current algorithms is supplied. |
+| `ca-rule110` | Repository `caSpecN` | Mathlib has generic iteration tools, but no dedicated Rule 110 specification. |
+| `sha256` | Repository `sha256Spec` | Mathlib has general fixed-width bit-vector APIs, but no dedicated SHA-256 implementation. |
 
 ## What a submission must establish
 
@@ -73,8 +88,8 @@ decoder and generator; it does not mean all possible matrices, graphs, or byte s
 The implementation may use a different algorithm or representation. The correctness proof may
 use induction, rewriting, and other permitted Lean reasoning; it need not be `rfl`. Separately,
 the implementation must be total and kernel-reducible to its output literal. Use only the
-dependencies supplied by the locked problem workspace: `fib` includes the pinned Mathlib
-Fibonacci import closure; the other seven tasks remain core-Lean-only. Only `propext`,
+dependencies supplied by the locked problem workspace: fib, Mertens, and prime counting
+include pinned Mathlib import closures; the other five tasks remain core-Lean-only. Only `propext`,
 `Quot.sound`, and `Classical.choice` are permitted proof axioms; `sorry` and `native_decide`
 are not accepted. See
 [Rules R1–R5](../overview.md#rules).
@@ -113,9 +128,10 @@ cd problems/partition
 lake build
 ```
 
-Replace `partition` with the chosen task. For fib alone, install Git and Python 3.9+
-and run `python3 setup.py` before building; see its [guide](../../problems/fib/README.md).
-The other seven need only core Lean. Edit `Submission.lean` and repeat `lake build`.
+Replace `partition` with the chosen task. For fib, Mertens, and prime counting,
+install Git and Python 3.9+ and run `python3 setup.py` before building; each
+participant package documents that step. The other five need only core Lean.
+Edit `Submission.lean` and repeat `lake build`.
 Building compiles definitions and proofs; it does not independently check the official
 interface or permitted axioms, benchmark, or score the submission.
 

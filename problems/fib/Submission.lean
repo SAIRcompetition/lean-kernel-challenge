@@ -1,4 +1,4 @@
-import Mathlib.Data.Nat.Fib.Basic
+import Spec
 
 namespace Submission
 

@@ -37,10 +37,10 @@ cd problems/partition
 lake build
 ```
 
-Replace `partition` with your chosen problem. For **fib only**, also install Git
-and Python 3.9+, then run `python3 setup.py` before `lake build` to prepare the
-pinned Mathlib dependencies. The other seven tasks use core Lean and need no
-separate setup.
+Replace `partition` with your chosen problem. For **fib**, **mertens**, and
+**primecount**, also install Git and Python 3.9+, then run `python3 setup.py`
+before `lake build` to prepare the pinned Mathlib dependencies. The other five
+tasks use core Lean and need no separate setup.
 
 Edit only `Submission.lean`. Each starter already contains a working implementation
 and correctness proof, with two short TODOs. After edits, repeat `lake build`.
@@ -93,10 +93,12 @@ impl : Nat → Output
 impl_correct : ∀ n, impl n = spec n
 ```
 
-The output type, specification, and input encoding are problem-specific. For fib,
-the target is Mathlib v4.33.1's `Nat.fib`; see the
-[official declaration and pinned source](rules/problems/fib.md#mathlib-specification).
-The other seven tasks use their repository-defined core-Lean specifications.
+The output type, specification, and input encoding are problem-specific. Fib
+targets Mathlib v4.33.1's `Nat.fib`, prime counting targets
+`Nat.primeCounting`, and Mertens sums Mathlib's `ArithmeticFunction.moebius`.
+The other five tasks use repository-defined core-Lean specifications. The
+[problem guide](rules/problems/README.md#mathlib-status) distinguishes current
+formal targets from possible future Mathlib bridges.
 
 The proof need not use `rfl`, and the implementation need not use the specification's
 algorithm. The starter may be submitted unchanged, but a correct starter is not a
@@ -110,8 +112,9 @@ declaration names, types, and theorem statement unchanged; put all helpers insid
 
 Participant packages live in `problems/<id>/`. The judge supplies its own fixed
 `Spec.lean`, `Challenge.lean`, `Solution.lean`, and configuration from
-`evaluation/problems/<id>/`. Core-Lean participant packages include a generated
-Spec copy for compilation; fib imports its pinned Mathlib dependency directly.
+`evaluation/problems/<id>/`. Every participant package includes a generated
+`Spec.lean` copy for compilation; fib, mertens, and primecount additionally
+prepare their pinned Mathlib dependencies with the package's `setup.py`.
 
 ## Rules in brief
 

@@ -125,7 +125,12 @@ def _ensure_prepared_packages(problem_dir: Path, *, validate_lock: bool) -> None
     mathlib_dir = problem_dir / ".lake/packages/mathlib"
     if not mathlib_dir.is_dir():
         raise DependencyError("prepared Mathlib checkout is missing")
-    _run(["lake", "exe", "cache", "get", "Mathlib/Data/Nat/Fib/Basic.lean"], mathlib_dir)
+    targets = [module.replace(".", "/") + ".lean"
+               for module in _direct_imports(problem_dir / "Spec.lean")
+               if module == "Mathlib" or module.startswith("Mathlib.")]
+    if not targets:
+        raise DependencyError("Spec.lean has no direct Mathlib import for targeted cache preparation")
+    _run(["lake", "exe", "cache", "get", *targets], mathlib_dir)
 
 
 def _artifact_roots(problem_dir: Path, packages: list[dict]) -> list[Path]:

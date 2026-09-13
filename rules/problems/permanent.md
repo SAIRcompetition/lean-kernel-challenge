@@ -16,6 +16,14 @@ column exactly once. Equivalently, it counts perfect matchings of the matrix's
 bipartite graph. The locked Lean [specification](../../evaluation/problems/permanent/Spec.lean)
 is the submission's proof target.
 
+Mathlib v4.33.1 has the standard permutation-sum definition
+[`Matrix.permanent`](https://leanprover-community.github.io/mathlib4_docs/Mathlib/LinearAlgebra/Matrix/Permanent.html#Matrix.permanent),
+defined in the [fixed source](https://github.com/leanprover-community/mathlib4/blob/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/LinearAlgebra/Matrix/Permanent.lean#L27-L32).
+It is a possible future specification, not the current target. No all-input
+theorem connects the repository's list matrix and mask traversal to
+`Matrix.permanent`; `permanentSpecN` therefore remains the binding core-Lean
+specification and must not be described as already Mathlib-certified.
+
 ## Input
 
 The argument `n : Nat` encodes a dimension and a 32-bit seed:

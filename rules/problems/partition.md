@@ -23,6 +23,16 @@ partitionSpec n   = partAux n n
 Here `j` is the multiplicity of the largest allowed part. Its bound ensures
 that the subtraction never removes more than `n`.
 
+Mathlib v4.33.1 separately represents an integer partition as
+[`Nat.Partition n`](https://leanprover-community.github.io/mathlib4_docs/Mathlib/Combinatorics/Enumerative/Partition/Basic.html#Nat.Partition)
+and supplies a finite instance, so `Fintype.card (Nat.Partition n)` is the
+standard library count; see the fixed definitions of
+[`Nat.Partition`](https://github.com/leanprover-community/mathlib4/blob/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/Combinatorics/Enumerative/Partition/Basic.lean#L55-L63)
+and its [`Fintype`](https://github.com/leanprover-community/mathlib4/blob/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/Combinatorics/Enumerative/Partition/Basic.lean#L203-L207).
+That cardinality is a possible future specification, not the current target:
+no theorem proving `partitionSpec n = Fintype.card (Nat.Partition n)` for all
+`n` is supplied. This problem remains core-Lean and repository-specified.
+
 ## Input
 
 The argument `n : Nat` of your Lean function. It is the integer to partition;

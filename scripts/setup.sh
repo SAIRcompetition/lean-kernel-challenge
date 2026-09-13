@@ -65,8 +65,8 @@ echo "== building timer-kernel =="
 ( cd "$HERE/judge/timer-kernel" && lake build )
 
 if [ "$PREPARE_DEPENDENCIES" -eq 1 ]; then
-  echo "== preparing evaluation/problems/fib's pinned Mathlib dependency closure =="
-  python3 "$HERE/scripts/prepare_problem_dependencies.py" --problem fib
+  echo "== preparing pinned problem dependency closures =="
+  python3 "$HERE/scripts/prepare_problem_dependencies.py"
 fi
 
 cat <<EOF

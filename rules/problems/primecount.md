@@ -11,6 +11,10 @@ Given a non-negative integer `n`, count the prime numbers at most `n`:
 A prime is an integer at least 2 with no divisor other than 1 and itself.
 Neither 0 nor 1 is prime. Your implementation must agree with the locked
 [`primeCountSpec`](../../evaluation/problems/primecount/Spec.lean) for every input.
+That target is backed directly by Mathlib v4.33.1's official
+[`Nat.primeCounting`](https://leanprover-community.github.io/mathlib4_docs/Mathlib/NumberTheory/PrimeCounting.html#Nat.primeCounting),
+which counts primes less than or equal to its argument; see the
+[fixed source](https://github.com/leanprover-community/mathlib4/blob/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/NumberTheory/PrimeCounting.lean#L47-L58).
 
 ## Input
 
@@ -82,29 +86,32 @@ impl_correct : ∀ n, impl n = primeCountSpec n
 The [locked bridge](../../evaluation/problems/primecount/Solution.lean) exposes them to the
 judge. Prove equality for **all `n`**, including zero and inputs outside the
 official ranges. The proof need not use `rfl`, and your algorithm need not use
-the specification's trial divisions. Separately, the kernel must reduce
-`impl n` to the exact answer. The current rules require core Lean without
-Mathlib, total kernel-reducible code, and permitted axioms only; see the
+Mathlib's counting implementation. Separately, the kernel must reduce `impl n`
+to the exact answer. Use only this problem's supplied pinned Mathlib closure,
+total kernel-reducible code, and permitted axioms; see the
 [shared requirements](README.md#what-a-submission-must-establish).
 
 ## Starter Code and Local Testing
 
 Start from [problems/primecount/Submission.lean](../../problems/primecount/Submission.lean).
-It uses `primeCountSpec` directly with a reflexivity proof. The
+It includes a complete baseline using Mathlib's `Nat.minFac`, with a proof against
+`Nat.primeCounting`. The
 [square-root trial-division example](../../examples/submissions/primecount/sqrt/Submission.lean)
 shows another proved implementation.
 The implementation and proof are complete; use the two TODOs to make your changes.
 A starting implementation is not guaranteed to pass every performance case.
 
-Install `elan`, then run from the repository root:
+Install `elan`, Git, and Python 3.9+, then run from the repository root:
 
 ```bash
 cd problems/primecount
+python3 setup.py
 lake build
 ```
 
-No Mathlib or separate setup is needed. Keep the generated `Spec.lean` and environment
-files unchanged; edit and submit only `Submission.lean`. Building compiles your
+The setup command prepares the dependency versions pinned by this package. Keep
+`Spec.lean` and the environment files unchanged; edit and submit only
+`Submission.lean`. Building compiles your
 definitions and proofs. It does not independently check the official interface or
 permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/primecount/README.md).
 
@@ -120,9 +127,11 @@ PMU scores. See the [evaluation guide](../../evaluation/README.md).
 
 ## Notes
 
-The baseline filters all integers from 0 through `n`, testing possible divisors
-of each candidate by trial division. The square-root example stops when
-`d × d > p` and proves the two primality predicates equivalent. Reusing prime
+The baseline tests each integer using Mathlib's least-prime-factor function
+`Nat.minFac`. The [direct Mathlib example](../../examples/submissions/primecount/mathlib-direct/Submission.lean)
+uses `Nat.primeCounting` itself; it is correct but can time out on larger cases.
+The square-root example stops when `d × d > p` and proves its alternative predicate
+correct. Reusing prime
 information or changing the counting representation are possible alternatives,
 but native performance does not predict kernel-reduction performance. Any
 replacement must preserve the inclusive endpoint and the cases 0 and 1.

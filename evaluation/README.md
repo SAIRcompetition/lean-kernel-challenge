@@ -12,8 +12,9 @@ Shared judge code remains in the root `judge/` and `scripts/` directories.
 ## Run from the repository root
 
 Install Python 3.9+, Git, and [elan](https://github.com/leanprover/elan). Initial
-setup builds the pinned judge tools and prepares evaluation dependencies;
-only fib's specification uses Mathlib. On macOS, also install GNU coreutils
+setup builds the pinned judge tools and prepares evaluation dependencies.
+The `fib`, `mertens`, and `primecount` specifications use pinned Mathlib;
+the other five are core-Lean-only. On macOS, also install GNU coreutils
 (`brew install coreutils`).
 
 ```sh

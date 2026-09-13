@@ -107,13 +107,14 @@ Additional packages or Mathlib modules outside that supplied import closure
 are not permitted for this problem. Total kernel-reducible code and the permitted-axiom
 rules still apply; see the [shared requirements](README.md#what-a-submission-must-establish).
 
-For older judge submissions importing `Spec`, `fibSpec` remains an abbreviation
-for `Nat.fib`. The participant starter imports Mathlib directly and uses `Nat.fib`.
+The participant package contains a generated copy of the locked `Spec.lean`.
+Import `Spec` in `Submission.lean` and keep the Spec file unchanged. It imports
+Mathlib's `Nat.fib`; `fibSpec` is only a compatibility abbreviation for the same function.
 
 ## Starter Code and Local Testing
 
 Start from [problems/fib/Submission.lean](../../problems/fib/Submission.lean).
-It imports Mathlib directly, uses `Nat.fastFib`, and supplies a complete proof
+It imports `Spec`, uses `Nat.fastFib`, and supplies a complete proof
 via `Nat.fastFib_eq`. Concise TODOs mark the implementation and correctness
 proof to edit. There are no unfinished proof placeholders.
 Using the starting implementation unchanged is permitted.
@@ -132,7 +133,8 @@ lake build
 ```
 
 Setup prepares the pinned dependencies on first use; it does not require evaluation
-tools or Docker. After edits, repeat `lake build`. Building compiles your definitions
+tools or Docker. Edit only `Submission.lean` and repeat `lake build`; leave the
+generated Spec and environment files unchanged. Building compiles your definitions
 and proofs; it does not independently check the official interface or permitted
 axioms, measure kernel performance, or score the submission. A successful build
 does not guarantee official acceptance. Submit only `Submission.lean`, not the workspace.

@@ -7,15 +7,16 @@ and scoring rules.
 
 ## Build
 
-Install [elan](https://github.com/leanprover/elan), then run from the repository root:
+Install [elan](https://github.com/leanprover/elan), Git, and Python 3.9+, then run from the repository root:
 
 ```bash
 cd problems/primecount
+python3 setup.py
 lake build
 ```
 
-The pinned Lean 4.33.1 toolchain is downloaded on first use if needed. This
-problem uses core Lean, not Mathlib; no separate setup command is required.
+The pinned Lean 4.33.1 toolchain is downloaded on first use if needed. The
+setup command prepares this package's pinned Mathlib dependencies.
 Keep `Spec.lean` and the environment files unchanged. They are generated from
 the fixed [evaluation workspace](../../evaluation/problems/primecount/).
 

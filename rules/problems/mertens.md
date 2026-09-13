@@ -17,7 +17,11 @@ The Möbius function `μ` is defined as follows:
 
 Your implementation must agree with the locked
 [`mertensSpec`](../../evaluation/problems/mertens/Spec.lean) for every input. That definition
-sums from 0 through `n`; the extra zero term does not change the result.
+is the inclusive finite sum of Mathlib v4.33.1's official
+[`ArithmeticFunction.moebius`](https://leanprover-community.github.io/mathlib4_docs/Mathlib/NumberTheory/ArithmeticFunction/Moebius.html#ArithmeticFunction.moebius).
+Mathlib defines the Möbius value from squarefreeness and the number of prime factors in the
+[fixed source](https://github.com/leanprover-community/mathlib4/blob/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/NumberTheory/ArithmeticFunction/Moebius.lean#L48-L52).
+The sum includes index zero, whose Möbius value is zero.
 
 ## Input
 
@@ -90,28 +94,30 @@ impl_correct : ∀ n, impl n = mertensSpec n
 
 The [locked bridge](../../evaluation/problems/mertens/Solution.lean) exposes them to the
 judge. Prove equality for **all `n`**, not just the examples or hidden cases.
-The proof need not use `rfl`, and the algorithm need not perform the same
-trial divisions as the specification. Separately, the kernel must reduce
-`impl n` to the exact integer answer. The current rules require core Lean
-without Mathlib, total kernel-reducible code, and permitted axioms only; see the
+The proof need not use `rfl`, and the algorithm need not evaluate the Möbius
+sum in the same way as Mathlib. Separately, the kernel must reduce `impl n` to
+the exact integer answer. Use only this problem's supplied pinned Mathlib
+closure, total kernel-reducible code, and permitted axioms; see the
 [shared requirements](README.md#what-a-submission-must-establish).
 
 ## Starter Code and Local Testing
 
 Start from [problems/mertens/Submission.lean](../../problems/mertens/Submission.lean).
-It uses the existing `mertensSpec` baseline and proves correctness by reflexivity.
+It directly sums Mathlib's Möbius function, with a reflexivity proof against `mertensSpec`.
 The implementation and proof are complete; use the two TODOs to make your changes.
 A starting implementation is not guaranteed to pass every performance case.
 
-Install `elan`, then run from the repository root:
+Install `elan`, Git, and Python 3.9+, then run from the repository root:
 
 ```bash
 cd problems/mertens
+python3 setup.py
 lake build
 ```
 
-No Mathlib or separate setup is needed. Keep the generated `Spec.lean` and environment
-files unchanged; edit and submit only `Submission.lean`. Building compiles your
+The setup command prepares the dependency versions pinned by this package. Keep
+`Spec.lean` and the environment files unchanged; edit and submit only
+`Submission.lean`. Building compiles your
 definitions and proofs. It does not independently check the official interface or
 permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/mertens/README.md).
 
@@ -127,8 +133,10 @@ PMU scores. See the [evaluation guide](../../evaluation/README.md).
 
 ## Notes
 
-The baseline tests squarefreeness, counts distinct prime divisors using
-trial-division primality, chooses each Möbius value's sign, and sums the results.
+The baseline directly sums `ArithmeticFunction.moebius`. A separate
+[factor-list example](../../examples/submissions/mertens/factor-list/Submission.lean)
+uses Mathlib's prime-factor lists and proves equality with the same sum.
+This is an alternative implementation, not a claim of better performance.
 A sieve or shared factor information could reduce repeated work, but any
 replacement needs a proof against `mertensSpec`. Intermediate representations
 must be tested under kernel replay, not only native execution; no speedup is

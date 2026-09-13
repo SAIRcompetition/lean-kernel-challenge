@@ -11,7 +11,7 @@ import sys
 
 
 HERE = Path(__file__).resolve().parent
-CACHE_MODULES = ["Mathlib/Data/Nat/Fib/Basic.lean"]
+CACHE_MODULES = __LKC_MATHLIB_MODULES__
 
 
 def package_pins(manifest):

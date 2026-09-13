@@ -25,12 +25,16 @@ SETUP_SPEC.loader.exec_module(setup)
 
 
 class FibParticipantTests(unittest.TestCase):
-    def test_participant_has_no_evaluator_files(self):
-        for name in ("Spec.lean", "Challenge.lean", "Solution.lean", "config.json", "dependency-lock.json"):
+    def test_participant_has_fixed_spec_but_no_evaluator_interfaces(self):
+        for name in ("Challenge.lean", "Solution.lean", "config.json", "dependency-lock.json"):
             self.assertFalse((PARTICIPANT / name).exists(), name)
+        self.assertEqual((PARTICIPANT / "Spec.lean").read_bytes(),
+                         (ROOT / "evaluation/problems/fib/Spec.lean").read_bytes())
+        self.assertTrue((PARTICIPANT / "Submission.lean").read_text().startswith("import Spec\n"))
         self.assertFalse((PARTICIPANT / "QuickTest.lean").exists())
         lakefile = (PARTICIPANT / "lakefile.toml").read_text()
         self.assertIn('defaultTargets = ["Submission"]', lakefile)
+        self.assertIn('[[lean_lib]]\nname = "Spec"', lakefile)
         self.assertNotIn("[[lean_exe]]", lakefile)
         self.assertNotIn("quick_test", lakefile)
         self.assertEqual(sync.synchronize(check=True), [])
@@ -40,7 +44,8 @@ class FibParticipantTests(unittest.TestCase):
             root = Path(raw)
             canonical = root / "evaluation/problems/fib"
             canonical.mkdir(parents=True)
-            for name in ("lake-manifest.json", "lean-toolchain"):
+            for name in ("Spec.lean", "lakefile.toml", "config.json",
+                         "lake-manifest.json", "lean-toolchain"):
                 shutil.copy2(ROOT / "evaluation/problems/fib" / name, canonical / name)
             participant = root / "problems/fib"
             participant.mkdir(parents=True)
@@ -58,6 +63,14 @@ class FibParticipantTests(unittest.TestCase):
             sync.synchronize(root)
             self.assertEqual(source.read_text(), "-- my solution\n")
             self.assertEqual(sync.synchronize(root, check=True), [])
+            fixed_spec = participant / "Spec.lean"
+            fixed_spec.write_text("def fibSpec (_ : Nat) : Nat := 0\n")
+            with self.assertRaisesRegex(ValueError, "out of sync: Spec.lean"):
+                sync.synchronize(root, check=True)
+            self.assertEqual(fixed_spec.read_text(), "def fibSpec (_ : Nat) : Nat := 0\n")
+            self.assertEqual(sync.synchronize(root), ["Spec.lean"])
+            self.assertEqual(fixed_spec.read_bytes(), (canonical / "Spec.lean").read_bytes())
+            self.assertEqual(source.read_text(), "-- my solution\n")
 
     def test_standalone_setup_only_prepares_dependencies(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -66,6 +79,8 @@ class FibParticipantTests(unittest.TestCase):
             pins = setup.package_pins(json.loads((participant / "lake-manifest.json").read_text()))
             source = participant / "Submission.lean"
             source.write_text("-- my solution\n")
+            fixed_spec = participant / "Spec.lean"
+            fixed_spec.write_text("-- fixed specification\n")
             calls = []
 
             def run(command, **kwargs):
@@ -86,6 +101,7 @@ class FibParticipantTests(unittest.TestCase):
                 self.assertNotIn("ELAN_TOOLCHAIN", options["env"])
                 self.assertNotIn("LEAN_PATH", options["env"])
             self.assertEqual(source.read_text(), "-- my solution\n")
+            self.assertEqual(fixed_spec.read_text(), "-- fixed specification\n")
 
     def test_setup_rejects_unpinned_manifest(self):
         manifest = {"packagesDir": ".lake/packages", "packages": [
@@ -102,7 +118,7 @@ class FibParticipantLeanTests(unittest.TestCase):
         # Reuse its dependency cache to avoid downloads, never judge-owned files.
         with tempfile.TemporaryDirectory(prefix="lkc-fib-participant-") as raw:
             work = Path(raw)
-            for name in ("Submission.lean", "lakefile.toml", "lake-manifest.json", "lean-toolchain"):
+            for name in ("Spec.lean", "Submission.lean", "lakefile.toml", "lake-manifest.json", "lean-toolchain"):
                 shutil.copy2(PARTICIPANT / name, work / name)
             (work / ".lake").mkdir()
             (work / ".lake/packages").symlink_to(PARTICIPANT / ".lake/packages", target_is_directory=True)
@@ -122,7 +138,7 @@ class FibParticipantLeanTests(unittest.TestCase):
 
     def test_incorrect_proof_is_rejected_by_build(self):
         result = self.build(
-            "import Mathlib.Data.Nat.Fib.Basic\nnamespace Submission\n"
+            "import Spec\nnamespace Submission\n"
             "def impl (_ : Nat) : Nat := 0\n"
             "theorem impl_correct : ∀ n, impl n = Nat.fib n := by intro n; rfl\nend Submission\n"
         )
@@ -131,7 +147,7 @@ class FibParticipantLeanTests(unittest.TestCase):
 
     def test_unfinished_proof_is_rejected_by_build(self):
         result = self.build(
-            "import Mathlib.Data.Nat.Fib.Basic\nnamespace Submission\n"
+            "import Spec\nnamespace Submission\n"
             "def impl : Nat → Nat := Nat.fastFib\n"
             "theorem impl_correct : ∀ n, impl n = Nat.fib n := by sorry\nend Submission\n"
         )

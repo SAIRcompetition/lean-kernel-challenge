@@ -58,11 +58,13 @@ RUN if [ -d prebuilt-tools/tools ]; then \
 
 # Problem dependencies are required even when verification tools came from the
 # host-prebuilt branch. Prepare them while networking is available; evaluation
-# stages only the pinned Fibonacci import closure and never fetches packages.
+# stages only each problem's pinned import closure and never fetches packages.
 # Participant builds run from a developer checkout, not the evaluator image;
 # package source trees and their git history need not enter the runtime image.
-RUN python3 scripts/prepare_problem_dependencies.py --problem fib \
-    && rm -rf /work/lean-kernel-challenge/evaluation/problems/fib/.lake/packages
+RUN python3 scripts/prepare_problem_dependencies.py \
+    && rm -rf /work/lean-kernel-challenge/evaluation/problems/fib/.lake/packages \
+              /work/lean-kernel-challenge/evaluation/problems/mertens/.lake/packages \
+              /work/lean-kernel-challenge/evaluation/problems/primecount/.lake/packages
 
 # Drop build-time-only content: every cloned git repository (tool repos and lake
 # package checkouts) keeps only its working tree.  Nothing at runtime reads .git;
@@ -151,7 +153,9 @@ USER judge
 
 # Exercise the complete pinned bundle read/copy path with the runtime UID.
 # A root-only build gate cannot detect inaccessible dependency directories.
-RUN python3 -c 'import sys, tempfile; from pathlib import Path; sys.path.insert(0, "scripts"); from problem_dependencies import stage_problem_dependencies; work = tempfile.TemporaryDirectory(); result = stage_problem_dependencies(Path("evaluation/problems/fib"), Path(work.name)); print("non-root dependency staging:", result.artifact_count, "verified artifacts"); work.cleanup()'
+RUN for problem in fib mertens primecount; do \
+      python3 -c 'import sys, tempfile; from pathlib import Path; sys.path.insert(0, "scripts"); from problem_dependencies import stage_problem_dependencies; work = tempfile.TemporaryDirectory(); result = stage_problem_dependencies(Path("evaluation/problems") / sys.argv[1], Path(work.name)); print("non-root dependency staging:", sys.argv[1], result.artifact_count, "verified artifacts"); work.cleanup()' "$problem" || exit 1; \
+    done
 
 # The supported host entry point is scripts/run_isolated.sh.  CMD remains a shell
 # solely for image diagnostics; it is not an evaluation command.

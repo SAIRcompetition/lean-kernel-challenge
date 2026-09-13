@@ -2,6 +2,7 @@
 
 Edit only `Submission.lean`: implement your algorithm and prove
 `∀ n, impl n = Nat.fib n`. The starting implementation and proof already work.
+`Submission.lean` imports the fixed `Spec.lean`, which imports Mathlib's `Nat.fib`.
 See the [problem statement](../../rules/problems/fib.md) for the official Mathlib
 specification, input groups, and scoring rules.
 
@@ -19,7 +20,8 @@ lake build
 Setup prepares this folder's pinned Lean 4.33.1 and Mathlib dependencies; first
 use needs network access. It does not build or require the evaluator, Docker,
 comparator, exporter, or replay timer. After editing your code, repeat `lake build`.
-Keep the checked-in environment files unchanged.
+Keep `Spec.lean` and the environment files unchanged; they are generated from the
+fixed [evaluation workspace](../../evaluation/problems/fib/).
 
 Building compiles your definitions and proofs. It does not independently check
 the official interface or permitted axioms, measure kernel performance, or award
