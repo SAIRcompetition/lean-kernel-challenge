@@ -212,12 +212,38 @@ cohort; revising it requires a new cohort and a complete rescore of that problem
 
 ## Quick start
 
+Install Git, Python 3.9 or later, and [elan](https://github.com/leanprover/elan), which provides
+Lean and `lake`. Run these commands from the repository root. On first use, `elan` may download
+the pinned Lean 4.33.1 toolchain.
+
 ```bash
-scripts/setup.sh                                  # build the pinned tools (comparator, lean4export, timer-kernel)
-python3 scripts/run_harness.py                    # green gate: judge every example, check verdicts
-python3 scripts/run_harness.py --quick --jobs 2     # same worker count as the image build; shorter smoke checks
-python3 judge/judge.py run --problem fib --submission examples/submissions/fib/doubling
-python3 scripts/score.py                          # canonical metric-separated scoring tables
+# Run the checked-in baseline demo for all nine scored problems.
+python3 scripts/quick_test.py
+
+# Run one baseline demo.
+python3 scripts/quick_test.py --problem fib
+
+# Quick-test your own file (a directory containing Submission.lean also works).
+python3 scripts/quick_test.py --problem fib --submission path/to/Submission.lean
+```
+
+The quick test builds the selected `Submission.lean`, including its universal correctness proof,
+then compares compiled executions of `impl` and the trusted specification on a few small, fixed,
+public inputs. It is only a fast functional check. It does **not** submit anything, invoke the
+official judge, use hidden cases or PMU counters, run the production isolation or axiom audit, write
+an official verdict, or produce a score. Passing it does not mean that a submission will be accepted
+or competitive. Compiled execution and its timing are never competition metrics.
+
+## Maintainer regression and judge checks
+
+The full repository checks require the pinned comparator, exporter, and replay timer:
+
+```bash
+scripts/setup.sh
+python3 scripts/run_harness.py
+python3 scripts/run_harness.py --quick --jobs 2
+python3 scripts/perf_eval.py --problem fib --submission examples/submissions/fib/doubling
+python3 scripts/score.py
 ```
 
 Each harness worker can consume several GiB during Lean compilation (the
@@ -251,10 +277,10 @@ build time, so a deployment pipeline that consumes it must label the image as
 not gated and must never promote it to a production environment, whose builds
 always run the full gate.
 
-The local judge reproduces the evaluation pipeline, so you can check a submission before
-sending it. (Note: the local sandbox is a pass-through shim — never run untrusted
+These tools exercise the evaluation pipeline for development, but local measurements are not
+official scores. The local sandbox is a pass-through shim; never run untrusted
 submissions on your own machine; real sandboxing is enforced by the wrapper-launched
-Docker container.)
+Docker container.
 
 ### Isolated evaluation of untrusted submissions
 
@@ -305,7 +331,7 @@ lean-kernel-challenge/
 ├─ judge/           judge.py (the judge) · timer-kernel/ (kernel replay + axiom audit)
 ├─ pipeline/        config.json (budgets, sandbox mode, toolchain pins)
 ├─ tests/           harness_manifest.json (expected verdicts — the green gate)
-├─ scripts/         setup.sh · run_harness.py · run_isolated.sh · perf_eval.py · score.py · shims/
+├─ scripts/         quick_test.py · setup.sh · run_harness.py · run_isolated.sh · perf_eval.py · score.py · shims/
 ├─ Dockerfile       Linux evaluation image (pinned toolchain, perf, landrun sandbox)
 └─ results/         verdict JSONs + scoring index + one generated leaderboard per problem
 ```

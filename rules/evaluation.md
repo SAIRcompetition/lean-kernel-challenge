@@ -215,6 +215,12 @@ before launch.
 
 ## Local development
 
+`scripts/quick_test.py` builds a submission and compares compiled executions of `impl` and the
+trusted specification on small, fixed, public inputs. It is a quick functional check only: it does
+not invoke the judge, hidden plan, PMU counter, production isolation, axiom audit, verdict, or
+scorer. Compiled execution is not an official metric, and passing this demo does not establish
+acceptance or performance.
+
 `scripts/perf_eval.py` runs one wall-time repetition through the canonical judge. It uses the same
 export, audit, and measurement boundaries as the official path, but it is for development only and
 does not use official seeds, cohorts, remote timing, or production isolation.

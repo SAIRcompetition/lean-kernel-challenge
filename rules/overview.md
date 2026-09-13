@@ -90,6 +90,18 @@ was recorded by the platform before the deadline. This selection does not fall b
 submission if the latest submission is rejected or unscored. Pending evaluation or infrastructure
 retries apply to the selected submission and do not change that selection.
 
+## Public quick test
+
+`python3 scripts/quick_test.py` builds the checked-in baseline for all nine scored problems and
+compares compiled outputs with the trusted specifications on small, fixed, public inputs. Use
+`--problem <id>` to run one problem and `--submission <path>` to check your own
+`Submission.lean`.
+
+This demo is a local convenience, not part of the competition or formal submission process. It
+does not invoke the official judge, hidden cases, PMU counters, production isolation, axiom audit,
+verdict generation, or scoring. Passing it does not establish official acceptance or performance.
+Compiled execution is not the competition metric.
+
 ## Rules
 
 Participation is also subject to the team, anti-cheating, and participant-cost policies in
@@ -112,8 +124,9 @@ Participation is also subject to the team, anti-cheating, and participant-cost p
   [`evaluation.md`](evaluation.md) and [`problem-scoring.md`](problem-scoring.md) for the exact
   contracts.
 
-> `#eval` measures compiled execution and does not predict kernel-reduction performance. Use
-> `scripts/perf_eval.py` for local checks that follow the judge's measurement boundary.
+> Compiled execution, including `#eval` and the public quick test, does not predict
+> kernel-reduction performance. Use `scripts/perf_eval.py` for local checks that follow the
+> judge's measurement boundary.
 
 ## Stage 1 Problems
 
