@@ -4,8 +4,7 @@ Each page below presents one of the eight scored problems in contest-statement f
 problem statement, input, output, examples, constraints and scoring, and submission requirements.
 Starter-code and local-testing instructions follow the statement. Unlike a standard-input /
 standard-output programming contest, a submission here is a Lean function and a proof.
-The pages do not add tasks or change their three evaluation groups. The experimental `conv`
-workspace is not a scored Stage 1 problem.
+The pages do not add tasks or change their three evaluation groups.
 
 ## Choose a problem
 

@@ -14,8 +14,8 @@ MIGRATED_PROBLEMS = frozenset({
     "primecount",
     "sha256",
 })
-RETIRED_PROBLEMS = frozenset({"saw"})
-EVALUATION_PROBLEMS = MIGRATED_PROBLEMS | {"conv"}
+RETIRED_PROBLEMS = frozenset({"saw", "conv"})
+EVALUATION_PROBLEMS = MIGRATED_PROBLEMS
 
 
 def evaluation_problem_dir(root: Path, problem: str) -> Path:
@@ -24,8 +24,7 @@ def evaluation_problem_dir(root: Path, problem: str) -> Path:
         raise ValueError(f"retired evaluator problem: {problem}")
     if problem not in EVALUATION_PROBLEMS:
         raise ValueError(f"unknown evaluator problem: {problem}")
-    parent = root / "evaluation" / "problems" if problem in MIGRATED_PROBLEMS else root / "problems"
-    return parent / problem
+    return root / "evaluation" / "problems" / problem
 
 
 def iter_evaluation_problem_dirs(root: Path):

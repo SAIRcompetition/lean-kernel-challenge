@@ -159,10 +159,8 @@ PROBLEM_DIR="$(python3 "$ROOT/scripts/problem_layout.py" --root "$ROOT" --proble
   die "unknown problem: $PROBLEM"
 [[ "$SUBMISSION" == /* ]] || die "--submission must be an absolute path"
 [[ "$RESULTS_DIR" == /* ]] || die "--results must be an absolute path"
-if [[ "$PROBLEM" != "conv" || -n "$REFERENCE_ANSWERS_FILE" ]]; then
-  [[ -f "$REFERENCE_ANSWERS_FILE" && -r "$REFERENCE_ANSWERS_FILE" ]] ||
-    die "--reference-answers must name a readable precomputed answer bundle"
-fi
+[[ -f "$REFERENCE_ANSWERS_FILE" && -r "$REFERENCE_ANSWERS_FILE" ]] ||
+  die "--reference-answers must name a readable precomputed answer bundle"
 [[ -d "$SUBMISSION" ]] || die "submission directory does not exist: $SUBMISSION"
 [[ -f "$SUBMISSION/Submission.lean" && ! -L "$SUBMISSION/Submission.lean" ]] ||
   die "submission must contain a regular, non-symlink Submission.lean"

@@ -270,31 +270,32 @@ def configured_grouped_verdict(name, problem, *, correctness, costs=None):
 
 
 class ScoringTests(unittest.TestCase):
-    def test_retired_saw_is_not_scoreable_or_loadable_from_local_results(self):
+    def test_retired_tasks_are_not_scoreable_or_loadable_from_local_results(self):
         self.assertEqual(score.STAGE1_PROBLEMS, {
             "fib", "ca-rule110", "mertens", "partition", "permanent", "polydisc",
             "primecount", "sha256",
         })
-        legacy = verdict("retained-legacy", [100, 100, 100], problem="saw")
-        grouped = make_official_grouped(grouped_verdict("retained-official", [100] * 4))
-        grouped["problem"] = "saw"
-        grouped["evaluation_cohort"]["policy"]["problem"] = "saw"
-        _reseal_policy(grouped)
-        for item in (legacy, grouped):
-            with self.subTest(submission=item["submission"]):
-                row = score._score_row(item, "perf_instructions")
-                self.assertFalse(row["scoreable"])
-                self.assertIn("retired", row["reason"])
-                self.assertIsNone(row["points"])
-                self.assertFalse(score._is_stage1_public_verdict(item))
-                self.assertEqual(score._groups([item]), {})
-        with tempfile.TemporaryDirectory() as temp:
-            path = pathlib.Path(temp) / "saw/retained.json"
-            path.parent.mkdir()
-            path.write_text(json.dumps(grouped))
-            with mock.patch.object(score, "RESULTS", temp):
-                self.assertEqual(score._load_verdicts(), [])
-            self.assertTrue(path.is_file())
+        for problem in ("saw", "conv"):
+            legacy = verdict("retained-legacy", [100, 100, 100], problem=problem)
+            grouped = make_official_grouped(grouped_verdict("retained-official", [100] * 4))
+            grouped["problem"] = problem
+            grouped["evaluation_cohort"]["policy"]["problem"] = problem
+            _reseal_policy(grouped)
+            for item in (legacy, grouped):
+                with self.subTest(problem=problem, submission=item["submission"]):
+                    row = score._score_row(item, "perf_instructions")
+                    self.assertFalse(row["scoreable"])
+                    self.assertIn("retired", row["reason"])
+                    self.assertIsNone(row["points"])
+                    self.assertFalse(score._is_stage1_public_verdict(item))
+                    self.assertEqual(score._groups([item]), {})
+            with tempfile.TemporaryDirectory() as temp:
+                path = pathlib.Path(temp) / problem / "retained.json"
+                path.parent.mkdir()
+                path.write_text(json.dumps(grouped))
+                with mock.patch.object(score, "RESULTS", temp):
+                    self.assertEqual(score._load_verdicts(), [])
+                self.assertTrue(path.is_file())
 
     def test_full_plan_failures_tie_below_passes_for_every_shipped_problem(self):
         for problem in sorted(score.STAGE1_PROBLEMS):

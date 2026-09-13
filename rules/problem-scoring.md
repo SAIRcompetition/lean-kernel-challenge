@@ -1,8 +1,7 @@
 # Lean Kernel Challenge Stage 1 — Problem Leaderboards
 
 Stage 1 has eight independent 100-point problem leaderboards. There is no
-cross-problem total or relative-placement aggregation. `conv` is an experimental
-development task and is excluded.
+cross-problem total or relative-placement aggregation.
 
 For detailed task descriptions, input and output formats, worked examples, and starter code,
 see the [Problem Statements](problems/README.md).

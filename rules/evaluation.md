@@ -68,8 +68,7 @@ the attested memory limit for that problem, a memory kill in the comparator or c
 audit is a terminal rejection, while a timed correctness-replay memory kill is accepted but unscored.
 
 Stage 1 has **eight independent 100-point problem leaderboards**. There is no cross-problem total or
-relative-placement aggregation. `conv` is retained as an experimental development task and is not
-part of these leaderboards.
+relative-placement aggregation.
 
 **Complete-plan scoring.** Each problem publishes three input groups with an input generator or
 range, case count, and target-replay limit. Groups specify workloads, not separate point awards.
@@ -124,9 +123,7 @@ A platform interruption or fatal evaluator error makes the run incomplete. An in
 official run requires re-evaluation; fatal evaluator errors require organizer review before the
 run is repeated. For a daily reference run, the completion rules below allow a classified terminal
 error to count as processed, but a complete re-evaluation is still required before it can receive
-a score. Unattempted cases cannot be turned into zero-point results. The legacy `conv`
-development schedule retains its separate
-aggregate development budget and is not eligible for a Stage 1 leaderboard.
+a score. Unattempted cases cannot be turned into zero-point results.
 
 Official evaluation requires a secret `PERF_SEED`, rotated between evaluation cohorts. Hidden
 values are derived from the problem, group, and case coordinates, so every submission in the same

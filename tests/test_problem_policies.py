@@ -91,7 +91,7 @@ def _config(problem):
 
 
 class PublishedProblemPolicyTests(unittest.TestCase):
-    def test_exactly_eight_grouped_leaderboards_and_conv_is_excluded(self):
+    def test_exactly_eight_grouped_leaderboards(self):
         found = {
             path.name
             for path in iter_evaluation_problem_dirs(ROOT)
@@ -100,9 +100,9 @@ class PublishedProblemPolicyTests(unittest.TestCase):
         self.assertEqual(found, set(GROUPED_PROBLEMS))
         self.assertEqual(score.STAGE1_PROBLEMS, set(GROUPED_PROBLEMS))
 
-        conv = _config("conv")
-        self.assertNotIn("evaluation", conv)
-        self.assertIn("perf", conv)
+        for problem in ("conv", "saw"):
+            with self.subTest(problem=problem), self.assertRaises(ValueError):
+                evaluation_problem_dir(ROOT, problem)
 
     def test_published_group_shape_and_hundred_point_total(self):
         global_cfg = json.loads((ROOT / "pipeline" / "config.json").read_text())

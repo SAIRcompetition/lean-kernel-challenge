@@ -83,8 +83,6 @@ the linked statements define its input, output, examples, limits, and ranking co
 | [SHA-256 chain (`sha256`)](rules/problems/sha256.md) | Repeated hashing of a 32-byte digest | [Submission](problems/sha256/Submission.lean) |
 | [Polynomial discriminant (`polydisc`)](rules/problems/polydisc.md) | The exact discriminant of a generated monic degree-24 polynomial | [Submission](problems/polydisc/Submission.lean) |
 
-The experimental `conv` workspace is not a scored Stage 1 problem.
-
 ## The task
 
 Provide a fast, total, kernel-reducible implementation and prove that it equals the
@@ -173,7 +171,6 @@ Do not run untrusted submissions through the unsandboxed local evaluation path.
 - `examples/submissions/`: worked implementations and rejection examples.
 - `judge/`, `scripts/`, `pipeline/`: evaluation implementation and pinned configuration.
 - `tests/`: regression tests and the example-submission manifest.
-- `problems/conv/`: experimental, non-scoring workspace.
 - `results/`: local generated artifacts, not tracked by Git.
 
 ## Toolchain

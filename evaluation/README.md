@@ -8,7 +8,6 @@ The eight Stage 1 tasks are `fib`, `partition`, `mertens`, `primecount`,
 `permanent`, `ca-rule110`, `sha256`, and `polydisc`. Their fixed workspaces live
 in `evaluation/problems/<id>/`, separate from editable `problems/<id>/Submission.lean`.
 Shared judge code remains in the root `judge/` and `scripts/` directories.
-Experimental `conv` is outside Stage 1 and retains its legacy development entrypoints.
 
 ## Run from the repository root
 

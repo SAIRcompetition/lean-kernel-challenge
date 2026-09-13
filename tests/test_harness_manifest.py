@@ -20,7 +20,7 @@ import run_harness  # noqa: E402
 
 
 class HarnessManifestTests(unittest.TestCase):
-    def test_retained_saw_examples_are_ignored_but_cannot_be_registered(self):
+    def test_retired_examples_are_ignored_but_cannot_be_registered(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             subs = root / "examples/submissions"
@@ -32,15 +32,16 @@ class HarnessManifestTests(unittest.TestCase):
                 example = subs / problem / "baseline/Submission.lean"
                 example.parent.mkdir(parents=True)
                 example.write_text("-- retained fixture\n")
-            cases = [{"problem": problem, "submission": "baseline", "expect": "accepted"}
-                     for problem in ("fib", "conv")]
+            cases = [{"problem": "fib", "submission": "baseline", "expect": "accepted"}]
             with mock.patch.object(run_harness, "ROOT", root), \
                  mock.patch.object(run_harness, "SUBS", subs):
                 run_harness.validate_manifest(cases)
-                with self.assertRaisesRegex(ValueError, "unknown problems: saw"):
-                    run_harness.validate_manifest(cases + [
-                        {"problem": "saw", "submission": "baseline", "expect": "accepted"},
-                    ])
+                for problem in ("saw", "conv"):
+                    with self.subTest(problem=problem), \
+                         self.assertRaisesRegex(ValueError, f"unknown problems: {problem}"):
+                        run_harness.validate_manifest(cases + [
+                            {"problem": problem, "submission": "baseline", "expect": "accepted"},
+                        ])
                 extra = subs / "fib/extra/Submission.lean"
                 extra.parent.mkdir(parents=True)
                 extra.write_text("-- must still register active examples\n")

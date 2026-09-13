@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from problem_layout import iter_evaluation_problem_dirs
 
 # The sampler each problem's doc section declares in prose. Keys double as
-# the closed list of scored Stage 1 problems (conv is explicitly excluded).
+# the closed list of eight scored Stage 1 problems.
 DOC_SAMPLER_KINDS = {
     "fib": "geometric_range",
     "partition": "geometric_range",

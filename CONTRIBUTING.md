@@ -7,7 +7,7 @@ Contributions we welcome:
 
 A problem has a locked evaluation workspace. All eight scored tasks use
 `evaluation/problems/<id>/`, separate from the editable `problems/<id>/` participant
-package. Experimental `conv` retains its existing `problems/conv/` layout and is not scored.
+package.
 Use the routing helpers in `scripts/problem_layout.py`
 when locating evaluation files. A good kernel-computation problem has:
 

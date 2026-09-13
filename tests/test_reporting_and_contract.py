@@ -126,6 +126,8 @@ class MalformedVerdictReporting(unittest.TestCase):
             make_official_grouped(grouped_verdict("good", [10, 20, 30, 40]))))
         (self.tmp / "fib" / "corrupt.json").write_text("{not json")
         (self.tmp / "fib" / "non_utf8.json").write_bytes(b"\xff\xfe")
+        (self.tmp / "fib" / "legacy-fib.json").write_text(json.dumps(
+            _verdict(submission="legacy-fib")))
         (self.tmp / "conv").mkdir()
         (self.tmp / "conv" / "legacy-conv.json").write_text(json.dumps(
             _verdict(problem="conv", submission="legacy-conv")))
@@ -160,8 +162,9 @@ class MalformedVerdictReporting(unittest.TestCase):
         # ranked problem section.
         canonical, _, informal = report.partition(
             "## Experimental / legacy verdicts (informal, unranked)")
-        self.assertNotIn("legacy-conv", canonical)
-        self.assertIn("legacy-conv", informal)
+        self.assertNotIn("legacy-fib", canonical)
+        self.assertIn("legacy-fib", informal)
+        self.assertNotIn("legacy-conv", report)
         self.assertNotIn("## conv", report)
         standalone = (self.tmp / "fib" / "leaderboard-local.md").read_text()
         self.assertIn("good", standalone)

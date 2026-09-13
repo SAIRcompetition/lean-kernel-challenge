@@ -120,7 +120,7 @@ def _int_env(name, default):
 # Dev override so the green gate can shrink the budget WITHOUT editing pipeline/config.json —
 # hand-editing it risks committing a tiny debug budget into the official configuration.
 TIMING_TIMEOUT = _int_env("TIMING_TIMEOUT_SECONDS", _J["timing_timeout_seconds"])
-# Legacy-v1 whole-phase ceiling (currently only the experimental ``conv`` schedule).
+# Legacy-v1 whole-phase ceiling retained for compatibility tests.
 # Grouped-v2 cases are independently bounded and deliberately do not share this deadline.
 # On legacy exhaustion, remaining slots are marked and a normal verdict is emitted.
 PERF_PHASE_BUDGET = _J.get("perf_phase_budget_seconds", 10800)
@@ -128,8 +128,8 @@ DEFAULT_REPS = _J["timing_reps"]
 MAX_SUBMISSION_BYTES = _J["max_submission_bytes"]
 MAX_SUBMISSION_FILES = _J["max_submission_files"]
 MAX_TOOL_OUTPUT_BYTES = _J.get("max_tool_output_bytes", 1_048_576)
-# Scored problems bind remote replays to their own policy. Only experimental conv
-# retains the legacy development replay limit. Each judge invocation resets the active value.
+# Scored problems bind remote replays to their own policy. The fallback below is for
+# legacy compatibility only. Each judge invocation resets the active value.
 LEGACY_REMOTE_REPLAY_MEMORY_MB = _CFG["timing"]["legacy_remote_replay_memory_mb"]
 _PROBLEM_MEMORY_MB = [None]
 
@@ -210,8 +210,8 @@ SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 MAX_SLUG_LENGTH = 96
 
 # Scored problems declare a complete grouped evaluation policy in config.json. The legacy
-# `perf` range and these global defaults remain only for evaluation-policy-v1 tasks such as the
-# experimental `conv` workspace. Every submission in one cohort receives the same schedule; the
+# `perf` range and these global defaults remain only for evaluation-policy-v1 compatibility.
+# Every submission in one cohort receives the same schedule; the
 # operator rotates its hidden seed between cohorts. An unseeded plan is deterministic local
 # development only. See rules/evaluation.md and rules/problem-scoring.md.
 _PERF_DEFAULTS = _CFG.get("perf_defaults", {"count": 10, "spacing": "geometric", "jitter": 0.15})
@@ -1755,7 +1755,7 @@ def _time_remote(export_file, reps, target=None, budget_s=None, deadline=None,
     raise TimingRetry(f"all timing executors unavailable (last: {last_err})")
 
 
-# Legacy conv development oracle only. Stage 1 uses independent reference answers.
+# Legacy-v1 compatibility oracle only. Stage 1 uses independent reference answers.
 # Candidate value v = impl n by ELABORATOR-side reduction (Meta `whnf`), NOT compiled `#eval`.
 # `#eval` runs codegen output, which can be exponential even when the kernel reduction is
 # cheap (the naive fib spec compiles to an exponential tree but reduces via `brecOn` in
@@ -2230,8 +2230,7 @@ def _performance_phase_deadline(performance_plan):
 
     Every grouped-v2 case has its own sealed preparation and replay limits.  An
     aggregate deadline would make later case outcomes depend on the work spent by
-    earlier cases, so it is intentionally retained only for legacy-v1 development
-    schedules (currently ``conv``).
+    earlier cases, so it is retained only for legacy-v1 compatibility.
     """
     if performance_plan is not None or not PERF_PHASE_BUDGET:
         return None
@@ -2785,7 +2784,7 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         if step_timeout <= 0:
             return {"n": n, "result": "budget-exhausted"}, None
         # Stage 1 never executes the submitted impl to obtain the expected output.
-        # The legacy conv development task retains its separate value oracle.
+        # Legacy-v1 compatibility retains its separate value oracle.
         vkind, v = (("ok", standard_values[n]) if standard_values is not None else
                     _eval_impl_value(work, verified_env, n, step_timeout, lean_bin))
         if not _artifacts_match(artifact_lib, verified_artifacts):
@@ -3249,7 +3248,7 @@ def leaderboard():
             lines.append("")
         problem_sections[problem] = lines[section_start:]
     if legacy_rows:
-        # Informal visibility for experimental problems (conv) and pre-redesign v1 verdicts:
+        # Informal visibility for pre-redesign v1 verdicts of non-retired problems:
         # they belong on no Stage 1 board, but silently vanishing from EVERY report would make
         # local development on them blind. Listed only — never ranked or mixed with cohorts.
         lines.append("## Experimental / legacy verdicts (informal, unranked)")

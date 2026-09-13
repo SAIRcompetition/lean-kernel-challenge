@@ -7,6 +7,7 @@ results/
 # Python
 __pycache__/
 *.pyc
+.pytest_cache/
 .DS_Store
 lake-manifest.json
 !problems/fib/lake-manifest.json
@@ -15,11 +16,26 @@ lake-manifest.json
 # Host-prebuilt verification tools (scripts/prebuild-tools.sh)
 prebuilt-tools/
 
-# Retired SAW assets stay local and are not part of the Stage 1 problem set.
+# Retired problem assets stay local and are not part of the Stage 1 problem set.
 /problems/saw/
 /evaluation/problems/saw/
 /examples/submissions/saw/
 /rules/problems/saw.md
+/problems/conv/
+/evaluation/problems/conv/
+/examples/submissions/conv/
+/rules/problems/conv.md
+/scripts/gen_conv_bank.py
 /scripts/quick_test.py
 /tests/test_quick_test.py
 /tests/retired_saw_quick_test.py
+
+# Local development experiments and historical review notes.
+# Keep the supported problem checks and reproduction tools in scripts/ and tests/.
+/examples/prototypes/
+/scripts/analyze_polydisc_candidates.py
+/scripts/benchmark_polydisc_bareiss_variants.py
+/scripts/benchmark_polydisc_representations.py
+/scripts/run_polydisc_bareiss_probe.py
+/docs/history/
+/docs/wording-review-2026-09-08.md

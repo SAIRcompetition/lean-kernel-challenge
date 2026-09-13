@@ -3,16 +3,11 @@
 Outstanding production checks for the Lean Kernel Challenge Stage 1. Every item is a launch
 blocker unless marked otherwise.
 
-## 0. Implement the September 9 rules review
+## 0. Verify the current competition rules
 
-The September 9 organizer decisions are recorded at the start of
-[`wording-review-2026-09-08.md`](wording-review-2026-09-08.md). They supersede the earlier
-partial-credit scoring and contestant-derived output preparation. This follow-up implements
-independent reference answers and `full-plan-v1` scoring in LKC, updates the eight current configurations,
-and synchronizes the published rules.
-
-The linked review is a historical record and may refer to retired tasks or earlier
-policies. Use the current eight-problem list and configurations for launch acceptance.
+Use the current [rules](../rules/overview.md), [evaluation contract](../rules/evaluation.md),
+and [eight-problem scoring plan](../rules/problem-scoring.md) for launch acceptance.
+The implementation uses independent reference answers and `full-plan-v1` scoring.
 Platform integration and production acceptance remain:
 
 - Prepare and validate official answer bundles on the pinned image using
@@ -85,11 +80,8 @@ mode; passing it does not establish full performance coverage or per-problem mem
 
 The eight scored problems have published input groups, generators, case counts, and limits in
 [`../rules/problem-scoring.md`](../rules/problem-scoring.md). Use the complete competition plans
-rather than local smoke ranges. `conv` is excluded from the eight leaderboards.
-
-Historical scales, memory assumptions, and development measurements are preserved in
-[`history/prelaunch-calibration-2026-09-07.md`](history/prelaunch-calibration-2026-09-07.md).
-Use the current problem configurations and published policies for every check below.
+rather than local smoke ranges. Use the current problem configurations and published
+policies for every check below.
 
 The full grouped plans must be measured by the judge's timer with `--count-instructions`
 on the official bare-metal Linux executor. The timer opens its own PMU counter with
@@ -186,14 +178,12 @@ than mixing cohorts.
 
 ## 5. Generator and workload review
 
-The old Rule 110 cycle-jumping analysis concerned retired high-step groups. Current C1/C2/C3
-use 2/4/8 steps. The old analysis is archived above and does not require a row-width change,
-seed filter, or repricing of nonexistent C4/C5 groups before launch.
+The current [Rule 110 groups](../rules/problem-scoring.md#ca-rule110), C1/C2/C3,
+use 2/4/8 steps. Review the published workloads rather than retired benchmarks.
 
 **To close:** review the generators and workloads against the current problem tables during the
 PMU sweep. Record any remaining shortcut or degeneracy that materially affects the current
-full-plan ranking; revise and publish the policy before sealing if a change is needed. Do not infer
-current behavior from the retired Rule 110 scales or the old dimension-4 permanent warm-up.
+full-plan ranking; revise and publish the policy before sealing if a change is needed.
 
 ## 6. Sealed-verdict authority — remaining hardening
 
@@ -214,7 +204,6 @@ Grouped v2 deliberately has no aggregate performance deadline. Derive an orchest
 limit from the sealed plan's case counts, per-phase ceilings, replay repetitions, correctness
 budgets, and an explicit overhead margin. An interruption leaves the run incomplete and requires
 re-evaluation of the same selected submission; do not turn omitted cases into scored failures.
-Retired case counts and the historical 21–27 hour estimate are not scheduling defaults.
 
 ## 8. Additional optimized examples — optional
 

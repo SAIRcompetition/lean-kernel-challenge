@@ -19,10 +19,10 @@ import perf_eval
 
 
 class RetiredProblemTests(unittest.TestCase):
-    def test_local_leaderboard_ignores_retired_results_but_keeps_conv(self):
+    def test_local_leaderboard_ignores_retired_results_but_keeps_active_tasks(self):
         with tempfile.TemporaryDirectory() as temp:
             results = Path(temp)
-            for problem in ("saw", "conv"):
+            for problem in ("saw", "conv", "fib"):
                 path = results / problem / "old.json"
                 path.parent.mkdir()
                 path.write_text(json.dumps({
@@ -32,12 +32,13 @@ class RetiredProblemTests(unittest.TestCase):
             with mock.patch.object(judge, "RESULTS", results):
                 judge.leaderboard()
             report = (results / "leaderboard.md").read_text()
-            self.assertNotIn("retained-saw", report)
-            self.assertIn("retained-conv", report)
-            self.assertTrue((results / "saw/old.json").is_file())
-            self.assertFalse((results / "saw/leaderboard-local.md").exists())
+            for problem in ("saw", "conv"):
+                self.assertNotIn(f"retained-{problem}", report)
+                self.assertTrue((results / problem / "old.json").is_file())
+                self.assertFalse((results / problem / "leaderboard-local.md").exists())
+            self.assertIn("retained-fib", report)
 
-    def test_retained_saw_workspace_is_not_resolved_or_assembled(self):
+    def test_retired_workspaces_are_not_resolved_or_assembled(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             for problem in ("saw", "conv"):
@@ -49,10 +50,11 @@ class RetiredProblemTests(unittest.TestCase):
                      mock.patch.object(judge, "ROOT", root), \
                      mock.patch.object(judge, "PROBLEMS", root / "problems" if custom
                                        else judge._DEFAULT_PROBLEMS):
-                    self.assertNotIn("saw", {path.name for path in judge._problem_dirs()})
-                    with self.assertRaisesRegex(judge.InfraError, "retired evaluator problem: saw"):
-                        judge.assemble(root / "job", "saw", root / "submission")
-                    self.assertEqual(judge._problem_dir("conv"), root / "problems/conv")
+                    for problem in ("saw", "conv"):
+                        self.assertNotIn(problem, {path.name for path in judge._problem_dirs()})
+                        with self.assertRaisesRegex(judge.InfraError,
+                                                    f"retired evaluator problem: {problem}"):
+                            judge.assemble(root / "job", problem, root / "submission")
 
 
 class PerfInputTests(unittest.TestCase):
@@ -329,11 +331,11 @@ class GroupedPerformancePlanTests(unittest.TestCase):
              mock.patch.dict(os.environ, {"PERF_COUNT": ""}):
             with self.assertRaisesRegex(judge.InfraError, "requires a grouped policy"):
                 judge._validated_performance_plan(
-                    {"perf": {"min": 1, "max": 10}}, "conv")
+                    {"perf": {"min": 1, "max": 10}}, "legacy-fixture")
 
         with mock.patch.object(judge, "OFFICIAL_EVAL", False):
             self.assertIsNone(judge._validated_performance_plan(
-                {"perf": {"min": 1, "max": 10}}, "conv"))
+                {"perf": {"min": 1, "max": 10}}, "legacy-fixture"))
 
     def test_grouped_official_plan_api_requires_seed(self):
         cfg = _grouped_cfg(_packed_group("L1", 0, 3))
@@ -588,9 +590,7 @@ class GroupedJudgeReportingTests(unittest.TestCase):
         from tests.test_scoring import grouped_verdict, verdict, _reseal_policy
 
         grouped = grouped_verdict("grouped", [100, 1001, 100, None], correctness=10)
-        legacy = verdict("legacy-conv", [100, 200, 300])
-        legacy["problem"] = "conv"
-        legacy["evaluation_cohort"]["policy"]["problem"] = "conv"
+        legacy = verdict("legacy-fib", [100, 200, 300])
         _reseal_policy(legacy)
         old_results = judge.RESULTS
         with tempfile.TemporaryDirectory() as td:
@@ -616,9 +616,8 @@ class GroupedJudgeReportingTests(unittest.TestCase):
         # never as a ranked problem section or a legacy coverage table.
         canonical, _, informal = report.partition(
             "## Experimental / legacy verdicts (informal, unranked)")
-        self.assertNotIn("legacy-conv", canonical)
-        self.assertIn("legacy-conv", informal)
-        self.assertNotIn("## conv", report)
+        self.assertNotIn("legacy-fib", canonical)
+        self.assertIn("legacy-fib", informal)
         self.assertNotIn("| rank | submission | coverage | total work | score |", report)
 
 

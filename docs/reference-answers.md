@@ -13,7 +13,7 @@ Use the same checked-out evaluator and problem definitions as the official image
 For all eight scored tasks, the fixed spec and configuration are in
 `evaluation/problems/<id>/`, not the participant folder `problems/<id>/`.
 Fib's dependency lock also lives there. The preparation command resolves this
-layout automatically. Experimental `conv` retains its original development workspace.
+layout automatically.
 Pass the secret seed through stdin; do not commit answers or include them in logs:
 
 ```bash
@@ -84,5 +84,4 @@ The kernel still checks the universal correctness proof and directly reduces
 A numerically wrong reference answer cannot make an incorrect equality pass the
 kernel; it causes an evaluation error requiring organizer investigation. Expected
 answers do not become axioms, and the universal proof is not used to bypass the
-measured target reduction. The legacy `conv` development task retains its separate
-Lean value oracle and is outside the eight scored problems.
+measured target reduction.

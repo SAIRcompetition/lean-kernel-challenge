@@ -13,7 +13,7 @@
     "count": 4,
     "spacing": "geometric",
     "jitter": 0.15,
-    "note": "Legacy evaluation-policy-v1 defaults, retained only for the experimental conv task. The judge-level perf_phase_budget_seconds is likewise legacy-only. The eight scored Stage 1 problems define independent grouped cases in their fixed config.json files, and their evaluation-policy-v2 cohorts seal perf_phase_budget_seconds=0 so one case cannot consume another case's configured time allowance. Official evaluation requires a hidden PERF_SEED and seals the resolved schedule into the cohort policy; an unseeded schedule is for deterministic local development only."
+    "note": "Compatibility defaults for legacy evaluation-policy-v1 records; not used by the eight Stage 1 problems. The judge-level perf_phase_budget_seconds is likewise legacy-only. Stage 1 problems define independent grouped cases in their fixed config.json files, and their evaluation-policy-v2 cohorts seal perf_phase_budget_seconds=0 so one case cannot consume another case's configured time allowance. Official evaluation requires a hidden PERF_SEED and seals the resolved schedule into the cohort policy; an unseeded schedule is for deterministic local development only."
   },
   "timing": {
     "metric": "wall_time",
@@ -23,12 +23,11 @@
     "performance_boundary": "target-declaration-replay-v1",
     "target_proof_encoding": "direct-rfl-v1-experimental",
     "legacy_remote_replay_memory_mb": 4096,
-    "note": "Local dev uses wall_time. Stage 1 official cohorts use in-container local-v2 perf_instructions on the pinned Linux PMU host. KTP/3 is non-official validation only. Metrics are ranked separately. Correctness and target declarations use three replays and record each median. Process startup, export parsing, and per-input dependency preload are excluded; exact output-literal checking remains included. KTP/3 binds each remote target replay to the per-problem evaluation.memory_mb bound (legacy_remote_replay_memory_mb for experimental conv) and reports memory exhaustion during that replay as a case resource-limit outcome; official jobs instead use the per-problem evaluation.memory_mb container limit. Memory exhaustion during timed correctness replay leaves an otherwise accepted submission unscored. Other protocol or boundary versions are legacy/unscored."
+    "note": "Local dev uses wall_time. Stage 1 official cohorts use in-container local-v2 perf_instructions on the pinned Linux PMU host. KTP/3 is non-official validation only. Metrics are ranked separately. Correctness and target declarations use three replays and record each median. Process startup, export parsing, and per-input dependency preload are excluded; exact output-literal checking remains included. KTP/3 binds each remote target replay to the per-problem evaluation.memory_mb bound and reports memory exhaustion during that replay as a case resource-limit outcome; official jobs instead use the per-problem evaluation.memory_mb container limit. Memory exhaustion during timed correctness replay leaves an otherwise accepted submission unscored. Other protocol or boundary versions are legacy/unscored."
   },
   "scoring": {
     "contract": "eight independent problem leaderboards; full-plan passes score 100 and rank by configured target work or combined work; any failed case gives 0 points and infinite cost, with all such failures tied",
-    "policy_source": "evaluation/problems/<id>/config.json for scored tasks; problems/conv/config.json for experimental conv. The evaluation block (grouped-evaluation-v1) is sealed into each evaluation-policy-v2 cohort.",
-    "legacy_conv_contract": "completed_slots_desc, coverage_desc, harder_slot_profile_desc, total_work_asc",
+    "policy_source": "evaluation/problems/<id>/config.json for all eight Stage 1 problems. The evaluation block (grouped-evaluation-v1) is sealed into each evaluation-policy-v2 cohort.",
     "total_work": "full_correctness_closure_replay_median + sum(successful_target_declaration_replay_medians)",
     "metric_groups": [
       "perf_instructions",
