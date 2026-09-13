@@ -24,8 +24,9 @@ Mathlib targets and the five repository-defined targets.
    locked interface, permitted axioms, and universal proof. Only a pass is
    **Accepted**.
 2. **Replay verification.** Replay the verified definitions and universal proof
-   three times. These checks must finish, but their instruction counts do not
-   affect ranking under the published policy.
+   three times. Record the median instruction count separately as **correctness
+   replay**, labeled **verification only**. These checks must finish, but their
+   instruction counts do not affect ranking under the published policy.
 3. **Prepare each case.** For the input `n` and exact official output `v`, generate,
    kernel-check, and export a direct theorem `impl n = v`. Reuse the frozen
    compiled submission (`.olean` files); contestant source is not re-elaborated
@@ -35,7 +36,9 @@ Mathlib targets and the five repository-defined targets.
    target declaration's kernel check. It forces computation of `impl n` and
    comparison with the exact output literal.
 5. **Report and rank.** List every case's outcome and median instruction count
-   over three repetitions. Rank complete passes by the sum, lowest first.
+   over three repetitions as **computation replay**. Keep the correctness-replay
+   result separate from these case measurements and their total. Rank complete
+   passes by the computation-replay total, lowest first.
    Equal totals tie; universal-proof checking is excluded for all eight problems.
 
 Audits and timed replays consume the same immutable export. The generated case

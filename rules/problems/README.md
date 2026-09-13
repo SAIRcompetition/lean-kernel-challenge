@@ -96,18 +96,21 @@ The judge first checks the interface, permitted axioms, and universal proof
 `∀ n, impl n = spec n`. Only a pass is **Accepted** and proceeds to performance
 evaluation. Passing sampled tests alone does not establish correctness.
 
-For each case, measure kernel computation of `impl n` against the exact official
-output three times. Take the median instruction count, then sum all case medians:
+Record two separate replay metrics. **Correctness replay** checks the verified
+definitions and universal proof; its metric C is the median instruction count
+over three repetitions. **Computation replay** checks `impl n` against the exact
+official output for each case; its metric T is the sum of the per-case medians:
 
 ```text
+C = median(correctness_instructions_1, correctness_instructions_2, correctness_instructions_3)
 I_i = median(instructions_i,1, instructions_i,2, instructions_i,3)
 T = I_1 + I_2 + ... + I_N
 ```
 
 - Rank by **T, lowest first**, only when all cases pass and required verification
   completes. Equal totals tie. There are no group weights or point conversions.
-- Checking `impl_correct` is verification only: its instruction count is excluded
-  from T and tie-breaking for **all eight problems**. The per-case kernel check
+- C is **verification only**: report it separately and never add it to T or use
+  it for tie-breaking, for **all eight problems**. The per-case kernel check
   reducing `impl n` to the exact output remains measured.
 - Performance failures, timeouts, or resource-limit failures leave an otherwise
   Accepted submission without a complete total or rank. Partial totals are not ranked.
@@ -115,7 +118,11 @@ T = I_1 + I_2 + ... + I_N
 
 Reports list **every planned case**: ID, group, outcome, and median computation
 instruction count. Failed or unattempted cases show `—`, never zero. Show T only
-for complete passes; label any proof-checking measurements **verification only**.
+for complete passes. Also report the correctness-replay outcome and C separately,
+labeled **verification only**; if any of its three repetitions fails or is
+unattempted, show C as `—`. Do not merge correctness and computation replay into
+a single cost. Replay-specific wall-time and memory measurements must also
+identify their phase and units.
 Case IDs must not reveal hidden input values. Publication follows the
 [results policy](../overview.md#evaluation-and-results).
 
