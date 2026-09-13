@@ -42,10 +42,13 @@ manifest with a `reason_contains` substring.
 
 ## Green gate
 
-After the [participant setup](README.md#quick-start), run `python3 scripts/quick_test.py`
-for a fast check of all shipped baselines on small,
-fixed public inputs. This compiled demo is participant-facing convenience only: it does
-not run the official judge, hidden plan, PMU measurement, axiom audit, or scoring path.
+For fib, follow the [participant setup](README.md#quick-start) and run `lake build`
+inside `problems/fib/`. This compiles the submitted definitions and proofs, not an
+independent check against the official interface or permitted axioms.
+
+`python3 scripts/quick_test.py` checks the other eight problems' example baselines
+on small, fixed public inputs. This compiled demo does not run the official judge,
+hidden plan, PMU measurement, axiom audit, or scoring path.
 
 For fib dependency changes, regenerate participant configuration with
 `python3 scripts/sync_fib_participant.py`; use `--check` to verify that its

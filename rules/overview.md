@@ -79,7 +79,7 @@ You may also use the locked workspace's library declarations. All other workspac
 
 The trusted files (`Spec.lean`, `Challenge.lean`, `Solution.lean`, and `config.json`) are fixed,
 and the judge supplies its own copies. For fib, they are in `evaluation/problems/fib/`;
-the separate `problems/fib/` folder contains a runnable participant starter and quick test.
+the separate `problems/fib/` folder contains a runnable participant starter and dependency setup.
 The other eight problems retain their existing layout. The simplest valid submission defines `impl` as the trusted
 specification and proves correctness with `rfl`. This adds no optimization and does not
 guarantee that every performance case passes within its limits.
@@ -102,15 +102,16 @@ submission. The final selection is not completely frozen until the original form
 recovered and verified against its original manifest and hash. Later Playground edits or
 post-deadline submissions cannot replace it.
 
-## Public quick test
+## Local development
 
 For fib, use the [participant workspace](../problems/fib/README.md): run
-`python3 setup.py`, `lake build`, and `lake exe quick_test` inside `problems/fib/`.
-No evaluation tools are needed. It checks the required all-input theorem and
-compiled outputs on `0`, `1`, `2`, `10`, and `20`.
+`python3 setup.py` and `lake build` inside `problems/fib/`. No evaluation tools are
+needed. Building compiles your definitions and proofs; it does not independently
+check the official interface or permitted axioms, benchmark, or score the submission.
 
-The existing `python3 scripts/quick_test.py` builds the checked-in baseline for all nine scored problems and
-compares compiled outputs with the trusted specifications on small, fixed, public inputs. Use
+The existing `python3 scripts/quick_test.py` supports only the other eight scored problems.
+It builds their checked-in baselines and compares compiled outputs with the trusted
+specifications on small, fixed, public inputs. Use
 `--problem <id>` to run one problem and `--submission <path>` to check your own
 `Submission.lean`.
 
@@ -155,7 +156,7 @@ Stage 1 begins with nine computational problems from algebra, number theory, com
 cryptography, discrete mathematics, and related fields. Their public definitions and scoring
 groups are listed in [`problem-scoring.md`](problem-scoring.md).
 See the [Problem Statements](problems/README.md) for each problem's description, input and
-output formats, examples, constraints, submission requirements, and quick tests.
+output formats, examples, constraints, submission requirements, and local development steps.
 
 ## Status
 

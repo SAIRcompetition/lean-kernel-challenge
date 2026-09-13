@@ -2,6 +2,8 @@
 
 You do not need this directory to develop or submit a solution. For the short
 participant workflow, use [problems/fib](../problems/fib/README.md).
+Its `lake build` command only compiles the submitted code and proofs; the checks
+against the locked interface and permitted axioms belong to the evaluator.
 
 This fib pilot separates the fixed judge workspace in `evaluation/problems/fib`
 from the editable `problems/fib/Submission.lean`. Shared judge code remains in

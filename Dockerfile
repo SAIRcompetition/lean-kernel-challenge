@@ -59,7 +59,7 @@ RUN if [ -d prebuilt-tools/tools ]; then \
 # Problem dependencies are required even when verification tools came from the
 # host-prebuilt branch. Prepare them while networking is available; evaluation
 # stages only the pinned Fibonacci import closure and never fetches packages.
-# Native quick demos run from a developer checkout, not the evaluator image;
+# Participant builds run from a developer checkout, not the evaluator image;
 # package source trees and their git history need not enter the runtime image.
 RUN python3 scripts/prepare_problem_dependencies.py --problem fib \
     && rm -rf /work/lean-kernel-challenge/evaluation/problems/fib/.lake/packages
@@ -148,6 +148,10 @@ RUN useradd -m -u 10001 judge \
     && mkdir -p /work/lean-kernel-challenge/results \
     && chown -R judge:judge /work/lean-kernel-challenge/results
 USER judge
+
+# Exercise the complete pinned bundle read/copy path with the runtime UID.
+# A root-only build gate cannot detect inaccessible dependency directories.
+RUN python3 -c 'import sys, tempfile; from pathlib import Path; sys.path.insert(0, "scripts"); from problem_dependencies import stage_problem_dependencies; work = tempfile.TemporaryDirectory(); result = stage_problem_dependencies(Path("evaluation/problems/fib"), Path(work.name)); print("non-root dependency staging:", result.artifact_count, "verified artifacts"); work.cleanup()'
 
 # The supported host entry point is scripts/run_isolated.sh.  CMD remains a shell
 # solely for image diagnostics; it is not an evaluation command.

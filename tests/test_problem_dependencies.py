@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -204,6 +205,74 @@ class ProblemDependencyTests(unittest.TestCase):
             (["lake", "exe", "cache", "get", "Mathlib/Data/Nat/Fib/Basic.lean"],
              packages / "mathlib"),
         )
+
+    def test_cold_spec_build_can_create_pinned_package_artifact_roots(self):
+        problem = self.fixture.problem
+        source_root = problem / ".lake/packages/demoDep/.lake/build/lib/lean"
+        self.assertFalse(source_root.exists())
+        lock_path = problem / deps.LOCK_NAME
+        original_lock = lock_path.read_bytes()
+
+        def build_closure(problem_dir):
+            self.assertEqual(problem_dir, problem.resolve())
+            self.assertFalse(source_root.exists())
+            for relative, payload in self.fixture.artifacts.items():
+                source = source_root / relative
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_bytes(payload)
+            spec = problem / ".lake/build/lib/lean/Spec.olean"
+            spec.parent.mkdir(parents=True)
+            spec.write_bytes(b"spec root")
+            core = Path(self.temp.name) / "lean-core"
+            core.mkdir()
+            return [("Spec", spec), ("Demo.Basic", source_root / "Demo/Basic.olean")], core
+
+        with mock.patch.object(prepare_deps, "_ensure_prepared_packages"), \
+             mock.patch.object(prepare_deps, "_closure", side_effect=build_closure) as closure:
+            lock = prepare_deps.prepare_problem(problem)
+
+        closure.assert_called_once_with(problem.resolve())
+        self.assertEqual(lock, self.fixture.lock)
+        self.assertEqual(lock_path.read_bytes(), original_lock)
+        bundle = problem / deps.BUNDLE_LIB
+        self.assertEqual(bundle.stat().st_mode & 0o777, 0o755)
+        for directory in (path for path in bundle.rglob("*") if path.is_dir()):
+            self.assertEqual(directory.stat().st_mode & 0o777, 0o755, directory)
+        for relative, payload in self.fixture.artifacts.items():
+            artifact = bundle / relative
+            self.assertEqual(artifact.read_bytes(), payload)
+            self.assertEqual(artifact.stat().st_mode & 0o777, 0o444, artifact)
+
+    def test_post_build_roots_still_reject_modules_outside_pinned_packages(self):
+        problem = self.fixture.problem
+        source_root = problem / ".lake/packages/demoDep/.lake/build/lib/lean"
+        source_root.mkdir(parents=True)
+        escaped = Path(self.temp.name) / "unapproved/External.olean"
+        escaped.parent.mkdir()
+        escaped.write_bytes(b"unapproved module")
+        core = Path(self.temp.name) / "lean-core"
+        core.mkdir()
+
+        with mock.patch.object(prepare_deps, "_ensure_prepared_packages"), \
+             mock.patch.object(prepare_deps, "_closure", return_value=([("External", escaped)], core)), \
+             self.assertRaisesRegex(deps.DependencyError, "escaped the approved package/core roots"):
+            prepare_deps.prepare_problem(problem)
+
+        for relative, payload in self.fixture.artifacts.items():
+            self.assertEqual((problem / deps.BUNDLE_LIB / relative).read_bytes(), payload)
+
+    def test_docker_checks_full_dependency_staging_as_nonroot_judge(self):
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        gates = [match for match in re.finditer(r"(?m)^RUN python3 -c '([^']+)'$", dockerfile)
+                 if "stage_problem_dependencies(" in match.group(1)]
+        self.assertEqual(len(gates), 1)
+        gate = gates[0]
+        users = re.findall(r"(?m)^USER\s+(\S+)\s*$", dockerfile[:gate.start()])
+        self.assertTrue(users)
+        self.assertEqual(users[-1], "judge")
+        self.assertIn('Path("evaluation/problems/fib")', gate.group(1))
+        self.assertIn("tempfile.TemporaryDirectory()", gate.group(1))
+        self.assertIn("result.artifact_count", gate.group(1))
 
 
 if __name__ == "__main__":

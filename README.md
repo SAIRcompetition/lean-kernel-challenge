@@ -240,25 +240,24 @@ From the repository root:
 cd problems/fib
 python3 setup.py
 lake build
-lake exe quick_test
 ```
 
 Edit only `Submission.lean`; its starting implementation and proof already work.
 Setup downloads the pinned Lean/Mathlib dependencies on first use, without the
-judge, Docker, comparator, exporter, or replay timer. After edits, repeat the last
-two commands. Submit only `Submission.lean`.
+judge, Docker, comparator, exporter, or replay timer. After edits, repeat
+`lake build`. Submit only `Submission.lean`.
 
-The quick test checks the required all-input theorem and compares compiled
-outputs on `0`, `1`, `2`, `10`, and `20`. It is not an official audit, kernel
-benchmark, submission, or score. Passing does not guarantee official acceptance
-or performance. See the [participant guide](problems/fib/README.md).
+This compiles your definitions and proofs; it does not independently check the
+official interface or permitted axioms, measure kernel performance, or award a
+score. A successful build does not guarantee official acceptance. See the
+[participant guide](problems/fib/README.md).
 
-The existing all-problem helper remains available from the repository root
-(after fib's setup above). By default it checks the example baselines:
+The existing quick-test helper is only for the other eight scored problems.
+From the repository root, it checks their example baselines by default:
 
 ```bash
 python3 scripts/quick_test.py
-python3 scripts/quick_test.py --problem fib --submission path/to/Submission.lean
+python3 scripts/quick_test.py --problem partition --submission path/to/Submission.lean
 ```
 
 ### Optional fib kernel evaluation
@@ -366,7 +365,7 @@ requires a rebuilt image, a new cohort, and rescoring that problem's comparison 
 ```
 lean-kernel-challenge/
 ├─ rules/           overview.md (rules) · evaluation.md (judge) · problem-scoring.md (leaderboards)
-├─ problems/fib/    participant-only starter, quick test, and pinned Lean/Mathlib setup
+├─ problems/fib/    participant-only starter and pinned Lean/Mathlib setup
 ├─ evaluation/      optional fib evaluation entrypoint and fixed problems/fib workspace
 ├─ problems/<other-id>/   unchanged locked workspaces: 8 scored problems + experimental conv
 ├─ examples/submissions/<problem>/<name>/   worked + adversarial example submissions

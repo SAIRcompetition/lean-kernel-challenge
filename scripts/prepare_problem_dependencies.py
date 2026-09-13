@@ -187,12 +187,14 @@ def prepare_problem(problem_dir: Path, *, refresh_lock: bool = False) -> dict:
     packages_dir = validate_prepared_packages(problem_dir, validate_lock=not refresh_lock)
     del packages_dir  # validated source only; it is never copied into the evaluation bundle
     packages = _package_pins(problem_dir)
+    # A cold Spec build may create artifact directories for pinned transitive packages.
+    # Enumerate their approved roots only after that build has completed.
+    closure, core_lib = _closure(problem_dir)
     roots = _artifact_roots(problem_dir, packages)
     if not roots:
         raise DependencyError("no prepared package artifact roots were found")
 
     selected: dict[str, Path] = {}
-    closure, core_lib = _closure(problem_dir)
     spec_olean = (problem_dir / ".lake/build/lib/lean/Spec.olean").resolve()
     for module, olean in closure:
         relative = _relative_to_one(olean, roots)
@@ -270,6 +272,10 @@ def prepare_problem(problem_dir: Path, *, refresh_lock: bool = False) -> dict:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
             target.chmod(0o444)
+        # TemporaryDirectory starts at 0700. The root-built image must let the
+        # non-root judge traverse the published bundle without making it writable.
+        for directory, _, _ in os.walk(staged):
+            Path(directory).chmod(0o755)
         if bundle.exists():
             shutil.rmtree(bundle)
         os.replace(staged, bundle)

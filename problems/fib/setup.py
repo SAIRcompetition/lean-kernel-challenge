@@ -51,7 +51,7 @@ def main():
                 raise ValueError(f"dependency revision mismatch: {name}")
         run(["lake", "exe", "cache", "get", "Mathlib/Data/Nat/Fib/Basic.lean"],
             cwd=HERE / ".lake/packages/mathlib")
-        print("Dependencies ready. Run: lake build && lake exe quick_test")
+        print("Dependencies ready. Run: lake build")
         return 0
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         print(f"Participant setup failed: {error}", file=sys.stderr)

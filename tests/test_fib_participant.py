@@ -28,10 +28,11 @@ class FibParticipantTests(unittest.TestCase):
     def test_participant_has_no_evaluator_files(self):
         for name in ("Spec.lean", "Challenge.lean", "Solution.lean", "config.json", "dependency-lock.json"):
             self.assertFalse((PARTICIPANT / name).exists(), name)
-        quick = (PARTICIPANT / "QuickTest.lean").read_text()
-        self.assertIn("import Submission", quick)
-        self.assertNotIn("import Solution", quick)
-        self.assertIn("∀ n : Nat, Submission.impl n = Nat.fib n := Submission.impl_correct", quick)
+        self.assertFalse((PARTICIPANT / "QuickTest.lean").exists())
+        lakefile = (PARTICIPANT / "lakefile.toml").read_text()
+        self.assertIn('defaultTargets = ["Submission"]', lakefile)
+        self.assertNotIn("[[lean_exe]]", lakefile)
+        self.assertNotIn("quick_test", lakefile)
         self.assertEqual(sync.synchronize(check=True), [])
 
     def test_sync_checks_pins_without_overwriting_user_code(self):
@@ -96,12 +97,12 @@ class FibParticipantTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("LKC_REAL_TOOLS") == "1", "requires prepared Lean/Mathlib")
 class FibParticipantLeanTests(unittest.TestCase):
-    def build(self, replacement=None, *, execute=False):
+    def build(self, replacement=None):
         # Copy only public package sources into a directory with no repository/evaluator.
         # Reuse its dependency cache to avoid downloads, never judge-owned files.
         with tempfile.TemporaryDirectory(prefix="lkc-fib-participant-") as raw:
             work = Path(raw)
-            for name in ("Submission.lean", "QuickTest.lean", "lakefile.toml", "lake-manifest.json", "lean-toolchain"):
+            for name in ("Submission.lean", "lakefile.toml", "lake-manifest.json", "lean-toolchain"):
                 shutil.copy2(PARTICIPANT / name, work / name)
             (work / ".lake").mkdir()
             (work / ".lake/packages").symlink_to(PARTICIPANT / ".lake/packages", target_is_directory=True)
@@ -112,28 +113,23 @@ class FibParticipantLeanTests(unittest.TestCase):
                 env.pop(name, None)
             result = subprocess.run(["lake", "--no-cache", "build"], cwd=work, env=env,
                                     capture_output=True, text=True, timeout=180)
-            if execute:
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                result = subprocess.run([str(work / ".lake/build/bin/quick_test")], cwd=work, env=env,
-                                        capture_output=True, text=True, timeout=30)
+            self.assertFalse((work / ".lake/build/bin/quick_test").exists())
             return result
 
-    def test_public_package_runs_without_evaluator(self):
-        result = self.build(execute=True)
+    def test_public_package_builds_without_evaluator(self):
+        result = self.build()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        for n in (0, 1, 2, 10, 20):
-            self.assertIn(f"PASS input={n}", result.stdout)
 
-    def test_weakened_correctness_statement_is_not_a_quick_pass(self):
+    def test_incorrect_proof_is_rejected_by_build(self):
         result = self.build(
             "import Mathlib.Data.Nat.Fib.Basic\nnamespace Submission\n"
             "def impl (_ : Nat) : Nat := 0\n"
-            "theorem impl_correct : ∀ n, impl n = 0 := fun _ => rfl\nend Submission\n"
+            "theorem impl_correct : ∀ n, impl n = Nat.fib n := by intro n; rfl\nend Submission\n"
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("QuickTest.lean", result.stdout + result.stderr)
+        self.assertIn("Submission.lean", result.stdout + result.stderr)
 
-    def test_unfinished_proof_is_not_a_quick_pass(self):
+    def test_unfinished_proof_is_rejected_by_build(self):
         result = self.build(
             "import Mathlib.Data.Nat.Fib.Basic\nnamespace Submission\n"
             "def impl : Nat → Nat := Nat.fastFib\n"

@@ -250,12 +250,14 @@ before launch.
 ## Local development
 
 Fib's [participant workspace](../problems/fib/README.md) is independent of the evaluator.
-Inside `problems/fib/`, run `python3 setup.py`, `lake build`, and `lake exe quick_test`.
-This checks the required theorem and small compiled examples; it does not require
-the comparator, exporter, replay timer, or Docker.
+Inside `problems/fib/`, run `python3 setup.py` and `lake build`. This compiles your
+definitions and proofs without the comparator, exporter, replay timer, or Docker.
+It does not independently check the official interface or permitted axioms,
+measure kernel performance, or produce a score.
 
-`scripts/quick_test.py` builds a submission and compares compiled executions of `impl` and the
-trusted specification on small, fixed, public inputs. It is a quick functional check only: it does
+For the other eight scored problems only, `scripts/quick_test.py` builds a submission
+and compares compiled executions of `impl` and the trusted specification on small,
+fixed, public inputs. It is a quick functional check only: it does
 not invoke the judge, hidden plan, PMU counter, production isolation, axiom audit, verdict, or
 scorer. Compiled execution is not an official metric, and passing this demo does not establish
 acceptance or performance.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Optional judge tools and fixed evaluation dependencies; not needed for quick tests.
+# Optional judge tools and fixed evaluation dependencies; not needed for participant builds.
 set -euo pipefail
 
 EVALUATION_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

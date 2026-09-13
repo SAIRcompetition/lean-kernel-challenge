@@ -41,8 +41,8 @@ The fixed evaluation files define the interface. For fib they live separately in
   policy.
 
 Fib's [participant workspace](../../problems/fib/README.md) contains a completed,
-runnable `Submission.lean` with implementation and proof TODOs, plus its own quick
-test and dependency setup. It has no judge files. The other eight problem workspaces
+runnable `Submission.lean` with implementation and proof TODOs, plus dependency
+setup. It has no judge files. The other eight problem workspaces
 still contain `Submission.lean` templates with placeholders.
 
 The completed starting implementations are under `examples/submissions/<id>/baseline/`.
@@ -105,7 +105,7 @@ shared by a whole group. Preparation and correctness checks have their own limit
 metric counts kernel instructions, not compiled runtime or total process wall time. Refer to
 [Evaluation](../evaluation.md) for the precise measurement boundary and resource rules.
 
-## Quick test before using the judge
+## Local build for fib
 
 Install Git, Python 3.9 or later, and `elan`. To start fib, run from the repository root:
 
@@ -113,32 +113,36 @@ Install Git, Python 3.9 or later, and `elan`. To start fib, run from the reposit
 cd problems/fib
 python3 setup.py
 lake build
-lake exe quick_test
 ```
 
 First-time setup downloads the pinned Lean/Mathlib dependencies, without building
-evaluation tools. Edit `Submission.lean` and repeat the last two commands. The quick
-test checks the required all-input theorem and compiled outputs on `0`, `1`, `2`,
-`10`, and `20`. See the [participant guide](../../problems/fib/README.md).
-
-The existing helper still checks all nine example baselines. Run from the
-repository root, after fib's participant setup:
-
-```bash
-python3 scripts/quick_test.py
-python3 scripts/quick_test.py --problem fib
-python3 scripts/quick_test.py --problem fib --submission path/to/Submission.lean
-```
-
-Replace `fib` with the problem ID from the table. The helper creates a temporary workspace,
-builds the submitted implementation and universal proof, and compares compiled outputs against
-the specification on fixed public inputs. It does not submit anything, invoke the official
-judge, audit permitted axioms, use hidden inputs or PMU counters, or produce a score.
-Passing the demo does not establish official acceptance or kernel performance.
+evaluation tools. Edit `Submission.lean` and repeat `lake build`. Building compiles
+your definitions and proofs; it does not independently check the official interface
+or permitted axioms, benchmark, or score the submission. See the
+[participant guide](../../problems/fib/README.md).
 
 For optional fib kernel measurements, follow the separate
 [evaluation setup](../../evaluation/README.md). It uses the canonical judge on the
 six-case unseeded public plan with one wall-time repetition, not official scores.
-For the other tasks, see [Local development](../evaluation.md#local-development)
+
+## Quick test before using the judge
+
+The existing helper checks only the other eight example baselines. Run from the
+repository root:
+
+```bash
+python3 scripts/quick_test.py
+python3 scripts/quick_test.py --problem partition
+python3 scripts/quick_test.py --problem partition --submission path/to/Submission.lean
+```
+
+Replace `partition` with another supported problem ID from the table, excluding fib.
+The helper creates a temporary workspace, builds the submitted implementation and
+universal proof, and compares compiled outputs against
+the specification on fixed public inputs. It does not submit anything, invoke the official
+judge, audit permitted axioms, use hidden inputs or PMU counters, or produce a score.
+Passing the demo does not establish official acceptance or kernel performance.
+
+For kernel measurements on these tasks, see [Local development](../evaluation.md#local-development)
 and the [judge setup](../../README.md#maintainer-regression-and-judge-checks).
 Keep compiled quick tests, local kernel measurements, and official PMU scores separate.

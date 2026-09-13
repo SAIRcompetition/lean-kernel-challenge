@@ -128,15 +128,13 @@ Install Git, Python 3.9+, and `elan`. From the repository root:
 cd problems/fib
 python3 setup.py
 lake build
-lake exe quick_test
 ```
 
 Setup prepares the pinned dependencies on first use; it does not require evaluation
-tools or Docker. After edits, repeat `lake build` and `lake exe quick_test`.
-The quick test checks the required theorem and compiled outputs on `0`, `1`, `2`,
-`10`, and `20`. It is not an official axiom audit, hidden-case evaluation, kernel
-benchmark, submission, or score. Passing does not guarantee official acceptance
-or performance. Submit only `Submission.lean`, not the workspace.
+tools or Docker. After edits, repeat `lake build`. Building compiles your definitions
+and proofs; it does not independently check the official interface or permitted
+axioms, measure kernel performance, or score the submission. A successful build
+does not guarantee official acceptance. Submit only `Submission.lean`, not the workspace.
 
 For optional kernel measurements on the same file, return to the repository root:
 

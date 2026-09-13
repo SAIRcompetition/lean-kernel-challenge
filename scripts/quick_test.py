@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Run public, non-scoring smoke tests for Stage 1 submissions.
 
-This helper deliberately does not invoke ``judge/judge.py``. For fib it uses
-the independent participant package; other tasks retain their legacy workspaces.
+This helper deliberately does not invoke ``judge/judge.py``. It supports the
+eight core-only tasks; fib has no quick demo.
 It copies the required local files and one submission into a temporary Lake workspace,
 builds the universal proof, and compares compiled executions of ``impl`` and
 the trusted spec on a few small, fixed, public inputs.  It never reads hidden
@@ -10,8 +10,8 @@ seeds, uses PMU counters, or writes an official verdict/result.
 
 Usage:
   python3 scripts/quick_test.py
-  python3 scripts/quick_test.py --problem fib
-  python3 scripts/quick_test.py --problem fib --submission path/to/Submission.lean
+  python3 scripts/quick_test.py --problem partition
+  python3 scripts/quick_test.py --problem partition --submission path/to/Submission.lean
 """
 
 from __future__ import annotations
@@ -35,7 +35,6 @@ EXAMPLES = ROOT / "examples" / "submissions"
 # evaluation plan.  Packed inputs have the scale in the high bits and a small
 # public seed in the low 32 bits.
 DEMO_CASES: dict[str, tuple[str, tuple[int, ...]]] = {
-    "fib": ("Nat.fib", (0, 1, 2, 10, 20)),
     "partition": ("partitionSpec", (0, 5, 10)),
     "mertens": ("mertensSpec", (1, 10, 25)),
     "primecount": ("primeCountSpec", (1, 10, 50)),
@@ -47,9 +46,11 @@ DEMO_CASES: dict[str, tuple[str, tuple[int, ...]]] = {
 }
 
 LOCKED_FILES = ("Spec.lean", "Solution.lean", "lakefile.toml", "lean-toolchain")
-FIB_PARTICIPANT_FILES = ("QuickTest.lean", "lakefile.toml", "lean-toolchain")
 DEMO_EXECUTABLE = "quick_test_demo"
-FIB_DEMO_EXECUTABLE = "quick_test"
+FIB_GUIDANCE = (
+    "fib no longer has a quick demo; run `lake build` in problems/fib, "
+    "or use `python3 evaluation/run.py` for optional local evaluation"
+)
 EXCLUDED_ENV_PREFIXES = (
     "EVAL_",
     "OFFICIAL_",
@@ -138,37 +139,11 @@ def _failure_output(proc: subprocess.CompletedProcess[str]) -> str:
     return output[-4000:] if output else f"command exited {proc.returncode} without output"
 
 
-def _stage_dependencies(problem: str, problem_dir: Path, work: Path) -> bool:
-    """Reuse prepared fib packages for this local compiled demo only.
-
-    The canonical judge uses its own verified dependency-artifact staging. This
-    symlink is a local convenience, not an official isolation mechanism, and
-    allows Lake to build any missing native objects in the prepared package tree.
-    """
-    if problem != "fib":
-        return False
-
-    # Keep the dependency helper out of the eight core-only demo paths.
-    from problem_dependencies import validate_prepared_packages
-
-    try:
-        packages = validate_prepared_packages(problem_dir)
-        shutil.copy2(problem_dir / "lake-manifest.json", work / "lake-manifest.json")
-        lake_dir = work / ".lake"
-        lake_dir.mkdir()
-        (lake_dir / "packages").symlink_to(packages.resolve(), target_is_directory=True)
-    except (ValueError, OSError) as error:
-        raise ValueError(
-            "fib dependency setup is missing or inconsistent: "
-            f"{error}. Run python3 problems/fib/setup.py"
-        ) from error
-    return True
-
-
 def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 120) -> QuickResult:
     """Build and execute one public demo in an automatically removed workspace."""
     if problem not in DEMO_CASES:
-        return QuickResult(problem, False, f"unknown scored problem: {problem}")
+        detail = FIB_GUIDANCE if problem == "fib" else f"unknown scored problem: {problem}"
+        return QuickResult(problem, False, detail)
 
     try:
         source = resolve_submission(problem, submission)
@@ -179,37 +154,25 @@ def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 
     try:
         with tempfile.TemporaryDirectory(prefix=f"lkc-quick-{problem}-") as raw_work:
             work = Path(raw_work)
-            files = FIB_PARTICIPANT_FILES if problem == "fib" else LOCKED_FILES
-            executable = FIB_DEMO_EXECUTABLE if problem == "fib" else DEMO_EXECUTABLE
-            for name in files:
+            for name in LOCKED_FILES:
                 locked = problem_dir / name
                 if not locked.is_file():
                     return QuickResult(problem, False, f"missing locked file: {locked}")
                 shutil.copy2(locked, work / name)
             shutil.copy2(source, work / "Submission.lean")
-            has_dependencies = _stage_dependencies(problem, problem_dir, work)
-
-            if problem != "fib":
-                spec_name, inputs = DEMO_CASES[problem]
-                (work / "QuickTest.lean").write_text(
-                    _demo_source(spec_name, inputs), encoding="utf-8"
+            spec_name, inputs = DEMO_CASES[problem]
+            (work / "QuickTest.lean").write_text(
+                _demo_source(spec_name, inputs), encoding="utf-8"
+            )
+            with (work / "lakefile.toml").open("a", encoding="utf-8") as lakefile:
+                lakefile.write(
+                    f'\n[[lean_exe]]\nname = "{DEMO_EXECUTABLE}"\nroot = "QuickTest"\n'
                 )
-                with (work / "lakefile.toml").open("a", encoding="utf-8") as lakefile:
-                    lakefile.write(
-                        f'\n[[lean_exe]]\nname = "{executable}"\nroot = "QuickTest"\n'
-                    )
 
             # Build a native executable rather than using ``lean --run``.  The latter
             # interprets recursive specs and can make even tiny demo inputs surprisingly
             # slow; native execution is exactly the lightweight feedback intended here.
-            # Fib's QuickTest checks the exact theorem directly; legacy tasks import Solution.
-            # Dependency setup is explicit. The locked prepared packages above
-            # avoid checkout downloads; --no-cache also disables build-cache
-            # downloads. Never run `lake update` or a fetch from the quick demo.
-            build_command = ["lake"]
-            if has_dependencies:
-                build_command.append("--no-cache")
-            build_command.extend(["build", executable])
+            build_command = ["lake", "build", DEMO_EXECUTABLE]
             build = _run(build_command, cwd=work, timeout=timeout)
             if build.returncode != 0:
                 return QuickResult(problem, False, "build failed:\n" + _failure_output(build))
@@ -222,7 +185,7 @@ def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 
                 )
 
             demo = _run(
-                [str(work / ".lake" / "build" / "bin" / executable)],
+                [str(work / ".lake" / "build" / "bin" / DEMO_EXECUTABLE)],
                 cwd=work,
                 timeout=timeout,
             )
@@ -238,17 +201,25 @@ def run_problem(problem: str, submission: Path | None = None, *, timeout: int = 
         return QuickResult(problem, False, f"could not run quick test: {error}")
 
 
+def _supported_problem(value: str) -> str:
+    if value == "fib":
+        raise argparse.ArgumentTypeError(FIB_GUIDANCE)
+    return value
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Compile and run public demo inputs only. This command does not reproduce "
             "the official judge and does not produce a score."
-        )
+        ),
+        epilog=FIB_GUIDANCE,
     )
     parser.add_argument(
         "--problem",
+        type=_supported_problem,
         choices=tuple(DEMO_CASES),
-        help="run one problem (default: run the shipped baseline demo for every problem)",
+        help="run one problem (default: run all eight supported baseline demos)",
     )
     parser.add_argument(
         "--submission",
