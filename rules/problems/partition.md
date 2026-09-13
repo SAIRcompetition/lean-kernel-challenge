@@ -83,17 +83,8 @@ jitter: the two endpoints are jittered inward to produce distinct, ordered
 integers. Unseeded local runs use the endpoints. All submissions in a cohort
 receive the same hidden plan.
 
-Memory is **4096 MiB (4 GiB), provisional**. Official-host acceptance remains
-required. Each target has three repetitions, all of which must finish within
-the table's watchdog. Separate build/export, audit, and correctness-replay
-budgets follow the [common evaluation rules](../evaluation.md#scoring).
-
-An otherwise scoreable submission earns **100 points only if all six cases pass**;
-a failed case gives **0 points and infinite ranking cost**. Infrastructure errors
-or incomplete evaluations remain unscored. Among full-plan passes, lower
-**target work** wins: the sum of the six target-replay instruction-count medians.
-Correctness replay is mandatory but is not added to ranking cost. Groups have
-no separate point awards. See the [scoring policy](../problem-scoring.md).
+Memory: **4096 MiB (4 GiB)**. The [shared scoring rules](README.md#scoring)
+and [resource limits](README.md#limits) apply.
 
 ## Submission Requirements
 
@@ -104,11 +95,10 @@ impl : Nat → Nat
 impl_correct : ∀ n, impl n = partitionSpec n
 ```
 
-The theorem must cover **every natural number**, including zero and inputs
-outside the scored ranges. Your algorithm need not follow the spec's recurrence,
-and the proof need not use `rfl`. It must remain total and kernel-reducible.
-Current rules require core Lean without Mathlib and permit only the standard
-axioms listed in [R1–R4](../overview.md#rules). The locked
+The theorem covers **every natural number**, including zero and inputs outside
+the test ranges. Any algorithm satisfying the
+[shared requirements](README.md#submission) is permitted;
+this problem uses core Lean without Mathlib. The locked
 [challenge](../../evaluation/problems/partition/Challenge.lean) and
 [solution bridge](../../evaluation/problems/partition/Solution.lean) fix the interface.
 
@@ -116,8 +106,7 @@ axioms listed in [R1–R4](../overview.md#rules). The locked
 
 Start from [problems/partition/Submission.lean](../../problems/partition/Submission.lean).
 It uses the existing `partitionSpec` baseline and proves correctness by reflexivity.
-The implementation and proof are complete; use the two TODOs to make your changes.
-A starting implementation is not guaranteed to pass every performance case.
+The two TODOs mark the implementation and proof to edit.
 
 Install `elan`, then run from the repository root:
 
@@ -126,20 +115,11 @@ cd problems/partition
 lake build
 ```
 
-No Mathlib or separate setup is needed. Keep the generated `Spec.lean` and environment
-files unchanged; edit and submit only `Submission.lean`. Building compiles your
-definitions and proofs. It does not independently check the official interface or
-permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/partition/README.md).
-
-For optional kernel evaluation, run from the repository root:
-
-```bash
-bash evaluation/setup.sh --problem partition
-python3 evaluation/run.py --problem partition --submission problems/partition/Submission.lean
-```
-
-This uses the full unseeded public plan with one wall-time repetition, not official
-PMU scores. See the [evaluation guide](../../evaluation/README.md).
+No separate setup is needed. Edit and submit only `Submission.lean`; keep
+`Spec.lean` and the environment files unchanged. `lake build` compiles the code
+and proof; it is not an acceptance check or performance measurement.
+See the [participant guide](../../problems/partition/README.md) and
+[optional kernel evaluation](../../evaluation/README.md).
 
 ## Notes
 

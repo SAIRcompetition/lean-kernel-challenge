@@ -13,7 +13,7 @@ Usage:
   python3 scripts/run_harness.py --jobs 4   # run up to 4 cases concurrently
 
 Concurrency safety: every case judges into its own per-run workspace
-(``judge/judge.py`` allocates a unique ``results/work/<problem>__<sub>__*``
+(``evaluation/judge/judge.py`` allocates a unique ``results/work/<problem>__<sub>__*``
 directory) and publishes a unique run-tag verdict under
 ``results/<problem>/`` before atomically replacing that problem's canonical
 verdict. Different cases never share a verdict path and no case runs twice in
@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from problem_layout import RETIRED_PROBLEMS, iter_evaluation_problem_dirs
 
-JUDGE = ROOT / "judge" / "judge.py"
+JUDGE = ROOT / "evaluation" / "judge" / "judge.py"
 MANIFEST = ROOT / "tests" / "harness_manifest.json"
 SUBS = ROOT / "examples" / "submissions"
 SCORE_SPEC = importlib.util.spec_from_file_location(
@@ -236,7 +236,7 @@ def main():
               "maximum cases in each group for grouped policies"))
     ap.add_argument("--timeout", type=int,
                     help="override the per-step timing budget in seconds (dev gate speed). Use this "
-                         "instead of editing pipeline/config.json, which risks committing a tiny "
+                         "instead of editing evaluation/config.json, which risks committing a tiny "
                          "debug budget into the official configuration.")
     args = ap.parse_args()
     if args.jobs < 1:
@@ -261,7 +261,7 @@ def main():
 
     reps = 1 if args.quick else None  # None → judge default from config
     if reps is None:
-        reps = json.loads((ROOT / "pipeline" / "config.json").read_text())["judge"]["timing_reps"]
+        reps = json.loads((ROOT / "evaluation" / "config.json").read_text())["judge"]["timing_reps"]
 
     jobs = min(args.jobs, len(cases))
     print(f"running {len(cases)} harness cases with {jobs} worker(s)", flush=True)

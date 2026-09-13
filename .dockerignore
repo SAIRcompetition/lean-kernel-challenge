@@ -26,8 +26,26 @@ scripts/analyze_polydisc_candidates.py
 scripts/benchmark_polydisc_bareiss_variants.py
 scripts/benchmark_polydisc_representations.py
 scripts/run_polydisc_bareiss_probe.py
-docs/history/
-docs/wording-review-2026-09-08.md
+
+# Match Git's local-only development files, retaining the image-check manifest.
+tests/*
+!tests/harness_manifest.json
+.github/workflows/
+CONTRIBUTING.md
+contributing.md
+scripts/sync_fib_participant.py
+
+# Exclude local copies at retired paths; active files are under evaluation/.
+/judge/
+/pipeline/
+/patches/
+/rules/problem-scoring.md
+
+# Keep local root docs/assets out of images; retain the published rule logos.
+/docs/
+/assets/
+!rules/assets/
+!rules/assets/**
 
 # Host-prebuilt verification tools (staged by scripts/prebuild-tools.sh) are
 # the one exception to the .lake exclusion: they must reach the image build.

@@ -40,7 +40,7 @@ RESULTS = os.path.join(ROOT, "results")
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 from memory_policy import memory_mb_from_envelope, valid_memory_mb
 from problem_layout import RETIRED_PROBLEMS
-with open(os.path.join(ROOT, "pipeline", "config.json")) as _config_file:
+with open(os.path.join(ROOT, "evaluation", "config.json")) as _config_file:
     _PIPELINE_POLICY = json.load(_config_file)
 _TIMING_POLICY = _PIPELINE_POLICY["timing"]
 STAGE1_OFFICIAL_REPS = _PIPELINE_POLICY["judge"]["timing_reps"]

@@ -1,76 +1,91 @@
-# Maintainer regression and image builds
+# Evaluator maintenance and deployment
 
-These checks are separate from the [participant workflow](../README.md#quick-start).
-For prerequisites and local single-file evaluation, see the [evaluation guide](README.md).
-Run the commands below from the repository root.
+Run commands from the repository root. For prerequisites and single-file evaluation,
+see [Local evaluation](README.md). The [ranking rule](../rules/problems/README.md#scoring)
+has changed, but the scorer still uses legacy policies; follow the
+[implementation status](../rules/problems/README.md#implementation-status) before release.
+A passing harness or image build does not establish that the revised ranking is implemented.
 
-## Source and regression checks
+## Tools and regression checks
 
 ```bash
 python3 scripts/sync_participants.py --check
-python3 -m unittest discover -s tests
 bash evaluation/setup.sh
 python3 scripts/run_harness.py
 ```
 
-The synchronization check compares participant specifications and dependency pins
-with the fixed evaluator workspaces without changing submissions. The unit suite
-reports any tests skipped because their optional tools are unavailable.
+The sync check compares fixed specifications and dependency pins without changing
+submissions. The harness checks `tests/harness_manifest.json`, including expected
+rejections and minimum performance coverage; a pass does not mean every case completed.
+The internal unit suite is not distributed. For a shorter development check, use
+`python3 scripts/run_harness.py --quick --jobs 2`. The default is one worker;
+each can use several GiB, so measure memory before increasing concurrency.
 
-The harness checks the examples registered in `tests/harness_manifest.json`. For a
-shorter development run:
+Judge sources and the timer are in `evaluation/judge/`, shared pins and limits in
+`evaluation/config.json`, and the comparator patch in `evaluation/patches/`.
+Setup builds the pinned comparator with that patch, lean4export, and the replay timer.
+It resets managed tool checkouts. To use a dedicated directory, set `TOOLS_DIR` when
+running setup, then apply its printed `COMPARATOR_BIN`, `LEAN4EXPORT_BIN`, and
+`TIMER_BIN` exports; `TOOLS_DIR` alone does not configure the judge.
 
-```bash
-python3 scripts/run_harness.py --quick --jobs 2
-```
-
-Each worker can use several GiB; the default is one worker. Raise concurrency only
-after measuring available memory. A harness pass means its expected verdicts,
-measurement records, and declared minimum performance coverage match. It does not
-mean every input passed: a slow but correct baseline can meet the manifest's
-requirements despite performance timeouts. Local wall-time results are not official
-instruction-count scores.
-
-## Evaluation image
+## Build the image
 
 ```bash
 docker build -t lean-kernel-judge .
 ```
 
-The image-build gate uses two workers and `--quick --count 2 --timeout 120`.
-For a smaller builder, reduce concurrency without reducing coverage:
+The Ubuntu 24.04 image pins Lean 4.33.1 and uses a wall-time build gate:
+`--quick --count 2 --timeout 120`, with two workers. Use
+`--build-arg HARNESS_JOBS=1` for lower concurrency without reducing coverage.
+If supplying `prebuilt-tools/`, its binaries must match the image's Linux platform
+and pinned sources; otherwise use the source-build path.
+
+`HARNESS_ONLY=<problem>` and `HARNESS_SKIP=1` are development-only build arguments.
+Label those images partially gated or ungated; never promote them to production.
+Production builds must run the full gate. Even that gate does not validate official
+PMU access, full-plan performance, or the per-problem container memory envelope.
+Verify those through the official wrapper on the production host.
+
+Rebuild after changes to evaluator sources, paths, pins, patches, or fixed problem
+files. These identities enter the cohort: do not relabel or mix old and new results.
+Direct integrations now invoke `evaluation/judge/judge.py`.
+
+## Official deployment
+
+Use a Linux host with usable hardware instruction counters, cgroup v2, and Landlock
+support for the pinned `landrun` sandbox. The timer
+opens its own `perf_event_open` counter around replay; `perf stat` is only a diagnostic,
+not the scoring mechanism. Docker availability alone does not establish PMU support.
+The repository does not yet specify the production CPU model or host configuration. See the
+[environment contract](../rules/evaluation.md#environment); validate it before release.
+
+Prepare a private output directory and a one-line UTF-8 seed file, then run:
 
 ```bash
-docker build --build-arg HARNESS_JOBS=1 -t lean-kernel-judge .
+python3 scripts/prepare_reference.py --problem fib --official \
+  --output /private/evaluation/fib-answers.json < /private/evaluation/seed.txt
+
+PERF_SEED="$(cat /private/evaluation/seed.txt)" bash scripts/run_isolated.sh \
+  --problem fib --submission /absolute/path/to/submission \
+  --results /absolute/path/to/results --cohort stage1-round1 \
+  --reference-answers /private/evaluation/fib-answers.json --perfmon
 ```
 
-Development-only options are:
+Replace the problem and paths. Use the same repository revision and fixed files as
+the image. The submission directory must contain only `Submission.lean`; the results
+directory must be writable by UID 10001. Reference preparation refuses to overwrite
+an existing file. Keep seeds and answers out of version control and logs, unset
+`PERF_COUNT`, and use the same seed and answer bundle throughout a cohort. The wrapper
+sends both through stdin, not through mounts into the submission workspace.
 
-- `--build-arg HARNESS_ONLY=mertens`: check only matching manifest problems.
-- `--build-arg HARNESS_SKIP=1`: skip the gate entirely.
+Bundles bind the complete plan, specification, and dependency lock. Regenerate them
+when these change. Reference answers are independent of submissions and do not replace
+the universal proof or the per-input kernel check of `impl n = v`.
 
-Neither option is valid for a production release build. Label those images as
-partially gated or not gated, respectively, and do not promote them to production.
-CI and release builds must run the full gate.
-
-The build gate does not establish full-plan performance or official per-problem
-memory enforcement. Validate both using the built image through the official wrapper
-on the production host. Passing a container test on another machine is not production
-PMU acceptance.
-
-## Official evaluation
-
-Use [reference-answer preparation and the isolated wrapper](../docs/reference-answers.md).
-The local evaluator uses an unsandboxed development path; never use it for untrusted
-submissions. The production wrapper runs one submission per non-root container with
-networking disabled, read-only submission files, and bounded CPU, memory, and processes.
-
-Each fixed `evaluation/problems/<id>/config.json` supplies its own memory limit.
-The wrapper applies that limit to memory and memory-plus-swap, allowing no additional
-swap, and checks agreement with the image policy and cgroup. Command-line memory
-options can assert the published limit but cannot override it.
-
-Matrix permanent uses 8192 MiB; the other seven problems retain provisional 4096 MiB
-limits pending confirmation. Changing a limit requires a rebuilt image, a new cohort,
-and a complete rescore of that problem's comparison set. Track official PMU, resource,
-and full-cohort acceptance in the [launch checklist](../docs/pre-launch-checklist.md).
+The wrapper enforces non-root execution, no network, read-only submissions, 2 CPUs,
+512 processes, and each problem's fixed memory limit with zero extra swap. Permanent
+uses 8192 MiB; the other seven currently specify provisional 4096 MiB limits.
+`--memory` can assert, not override, that limit. `--perfmon` adds only the PMU capability;
+it does not guarantee the host can supply the required counter. Changed limits require
+a rebuilt image, a new cohort, and a complete rescore of the comparison set. Official
+PMU, resource, and full-plan acceptance remain production-host checks.

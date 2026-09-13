@@ -25,8 +25,6 @@ For a neighborhood `(left, center, right)`, Rule 110 is:
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Next cell | 0 | 1 | 1 | 0 | 1 | 1 | 1 | 0 |
 
-Only `111`, `100`, and `000` produce `false`; every other triple produces `true`.
-
 The boundary is cyclic. For cell `i`, the three inputs are:
 
 ```text
@@ -99,9 +97,7 @@ then encodes cell `i` as bit `i` of the displayed natural number.
 
 ## Constraints and Scoring
 
-The current problem memory limit is **4096 MiB**, with zero additional swap.
-This value is provisional pending official-host validation; a revision requires a new cohort
-and a complete rescore under the rules.
+The plan has three groups and six hidden cases:
 
 | Group | Evolution steps | Hidden cases | Target watchdog per repetition |
 | --- | ---: | ---: | ---: |
@@ -109,29 +105,12 @@ and a complete rescore under the rules.
 | C2 | 4 | 2 | 60 s |
 | C3 | 8 | 2 | 120 s |
 
-Each target declaration is replayed three times, and the median kernel instruction count
-is recorded. All three repetitions must finish within the listed watchdog.
-The correctness closure is separately replayed three times under the common limits.
-
-This problem uses **combined work (`T + C`)**:
-
-- `T` is the sum of the six target-declaration replay medians.
-- `C` is the correctness-closure replay median, included once.
-
-An otherwise scoreable submission earns **100 points** only when all six cases pass.
-One failed case gives **0 points** and infinite ranking cost; no group earns partial credit.
-Among complete passes, lower `T + C` ranks better, and equal costs remain tied.
-Infrastructure errors and incomplete evaluations are unscored, not zero-point failures.
-
-The final official cohort's exact inputs remain hidden during evaluation and are released
-after it closes.
-See [`problem-scoring.md`](../problem-scoring.md) for the binding table and
-[`evaluation.md`](../evaluation.md) for the common measurement and failure rules.
+Memory: **4096 MiB (4 GiB)**. The [shared scoring rules](README.md#scoring)
+and [resource limits](README.md#limits) apply.
 
 ## Submission Requirements
 
-Submit exactly one `Submission.lean` file, at most 1 MiB.
-Place every submitted declaration inside `namespace Submission`:
+Submit one `Submission.lean` with these declarations inside `namespace Submission`:
 
 ```text
 impl : Nat → Nat
@@ -140,12 +119,10 @@ impl_correct : ∀ n, impl n = caSpecN n
 
 The theorem must cover every `n`, including arbitrary seeds, zero steps, and step counts
 outside the measured groups.
-The hidden closed theorems `impl n = v` then measure reduction at selected inputs; passing
-those instances alone cannot replace the universal proof.
 
 Use total, kernel-reducible core Lean code without Mathlib. The
-[shared submission requirements](README.md#what-a-submission-must-establish)
-apply, including the permitted axioms and proof restrictions.
+[shared submission requirements](README.md#submission)
+apply.
 
 ## Starter Code and Local Testing
 
@@ -153,8 +130,7 @@ Start from [problems/ca-rule110/Submission.lean](../../problems/ca-rule110/Submi
 It uses `caSpecN` directly with a reflexivity proof. The
 [bit-packed example](../../examples/submissions/ca-rule110/bitpacked/Submission.lean)
 shows an alternative row representation with its own correctness proof.
-The implementation and proof are complete; use the two TODOs to make your changes.
-A starting implementation is not guaranteed to pass every performance case.
+The two TODOs mark the implementation and proof to edit.
 
 Install `elan`, then run from the repository root:
 
@@ -163,25 +139,15 @@ cd problems/ca-rule110
 lake build
 ```
 
-No Mathlib or separate setup is needed. Keep the generated `Spec.lean` and environment
-files unchanged; edit and submit only `Submission.lean`. Building compiles your
-definitions and proofs. It does not independently check the official interface or
-permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/ca-rule110/README.md).
-
-For optional kernel evaluation, run from the repository root:
-
-```bash
-bash evaluation/setup.sh --problem ca-rule110
-python3 evaluation/run.py --problem ca-rule110 --submission problems/ca-rule110/Submission.lean
-```
-
-This uses the full unseeded public plan with one wall-time repetition, not official
-PMU scores. See the [evaluation guide](../../evaluation/README.md).
+No separate setup is needed. Edit and submit only `Submission.lean`; keep
+`Spec.lean` and the environment files unchanged. `lake build` compiles the code
+and proof; it is not an acceptance check or performance measurement.
+See the [participant guide](../../problems/ca-rule110/README.md) and
+[optional kernel evaluation](../../evaluation/README.md).
 
 ## Notes
 
 A packed representation may avoid repeated list indexing and update many cells with a few
 large-`Nat` bitwise operations. Other representations are allowed when proved equivalent.
 Preserve the 256-bit mask, cyclic rather than zero-padded boundaries, neighborhood order,
-and least-significant-bit encoding. Because correctness replay contributes to `T + C`, both
-the evaluator and its universal proof can affect ranking work.
+and least-significant-bit encoding.

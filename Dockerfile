@@ -48,9 +48,9 @@ WORKDIR /work/lean-kernel-challenge
 # pinned tool binaries; the runtime image content is identical either way.
 ENV TOOLS_DIR=/work/tools
 RUN if [ -d prebuilt-tools/tools ]; then \
-      mkdir -p /work/tools judge/timer-kernel/.lake/build \
+      mkdir -p /work/tools evaluation/judge/timer-kernel/.lake/build \
       && cp -a prebuilt-tools/tools/. /work/tools/ \
-      && cp -a prebuilt-tools/timer-kernel/.lake/build/bin judge/timer-kernel/.lake/build/ \
+      && cp -a prebuilt-tools/timer-kernel/.lake/build/bin evaluation/judge/timer-kernel/.lake/build/ \
       && echo "using host-prebuilt verification tools"; \
     else \
       bash scripts/setup.sh; \
@@ -69,7 +69,7 @@ RUN python3 scripts/prepare_problem_dependencies.py \
 # Drop build-time-only content: every cloned git repository (tool repos and lake
 # package checkouts) keeps only its working tree.  Nothing at runtime reads .git;
 # judge containers run with --network none and never fetch.
-RUN find /work/tools /work/lean-kernel-challenge/judge/timer-kernel/.lake \
+RUN find /work/tools /work/lean-kernel-challenge/evaluation/judge/timer-kernel/.lake \
       -type d -name .git -exec rm -rf {} +
 
 # --- runtime stage: only what the judge executes ---
@@ -89,7 +89,7 @@ ENV PATH=/opt/elan/bin:$PATH
 ENV TOOLS_DIR=/work/tools
 ENV COMPARATOR_BIN=/work/tools/comparator/.lake/build/bin/comparator \
     LEAN4EXPORT_BIN=/work/tools/lean4export/.lake/build/bin \
-    TIMER_BIN=/work/lean-kernel-challenge/judge/timer-kernel/.lake/build/bin/kernel \
+    TIMER_BIN=/work/lean-kernel-challenge/evaluation/judge/timer-kernel/.lake/build/bin/kernel \
     TIMING_METRIC=perf_instructions \
     SANDBOX_MODE=container
 
@@ -112,7 +112,7 @@ WORKDIR /work/lean-kernel-challenge
 # A worker can consume several GiB (the heaviest cases peak at 2.3-4.9 GiB
 # each), so the gate runs two workers everywhere: the one setting measured to
 # fit a 16 GiB builder such as the hosted CI runner, with the worst pair near
-# 8 GiB. CI and deployment builds use this default rather than their own
+# 8 GiB. Deployment builds use this default rather than their own
 # counts; a smaller builder can pass `--build-arg HARNESS_JOBS=1`.
 # HARNESS_ONLY is the one explicit narrowing: when set, the gate judges only
 # the manifest cases whose problem contains the substring (run_harness.py
@@ -125,7 +125,7 @@ WORKDIR /work/lean-kernel-challenge
 # HARNESS_SKIP is the full opt-out: when set to "1", the gate does not run at
 # all (HARNESS_ONLY is not consulted). It exists for non-production deployment
 # builds (test and beta environments) whose iteration time the serial gate
-# dominates; the pinned commit is still green-gated by this repository's CI.
+# dominates. This option supplies no substitute validation of the pinned commit.
 # An image built with it has NOT been green-gated at build time: a deployment
 # pipeline that consumes it must label the image as not gated and must never
 # promote it to a production environment, whose builds always run the full

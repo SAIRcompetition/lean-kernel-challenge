@@ -333,7 +333,7 @@ if ! "$DOCKER_BIN" "${DOCKER_ARGS[@]}" --entrypoint /usr/bin/test "$IMAGE_ID" \
 fi
 
 JUDGE_ARGS=(
-  python3 judge/judge.py run
+  python3 evaluation/judge/judge.py run
   --problem "$PROBLEM"
   --submission /submission
   # `/submission` has a constant basename, so always pin the validated host

@@ -18,9 +18,9 @@ mkdir -p "$OUT"
 TOOLS_DIR="$OUT/tools" bash "$HERE/scripts/setup.sh"
 
 # The image resolves TIMER_BIN at
-# /work/lean-kernel-challenge/judge/timer-kernel/.lake/build/bin/kernel; ship
+# /work/lean-kernel-challenge/evaluation/judge/timer-kernel/.lake/build/bin/kernel; ship
 # only the built binaries — the kernel source already travels with the repo.
 mkdir -p "$OUT/timer-kernel/.lake/build"
-cp -a "$HERE/judge/timer-kernel/.lake/build/bin" "$OUT/timer-kernel/.lake/build/"
+cp -a "$HERE/evaluation/judge/timer-kernel/.lake/build/bin" "$OUT/timer-kernel/.lake/build/"
 
 echo "prebuilt verification tools staged at $OUT"

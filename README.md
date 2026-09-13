@@ -15,17 +15,11 @@ Stage 1 is co-organized by (in alphabetical order by surname):
 The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 [SAIR Foundation](https://sair.foundation/).
 
-## Background
-
-The Lean Kernel Challenge brings the community together to improve the performance
-of verified computation in the Lean kernel. Stage 1 is experimental and starts with
-fundamental computational problems; later stages will cover more mathematical and
-scientific fields and more complex problems.
-
-The algorithms, representations, and open-source results and benchmark data produced
-through the competition will contribute to Lean's development and benefit Lean users
-worldwide. See the [competition introduction](rules/prelaunch.md) for registration,
-dates, participation policies, and the release of code and data.
+The Lean Kernel Challenge brings the community together to improve verified
+computation in the Lean kernel. Stage 1 is experimental and begins with eight
+fundamental computational problems. See the [competition overview](rules/overview.md)
+for dates and rules, and the [competition introduction](rules/prelaunch.md) for
+registration, team, cost, and publication policies.
 
 ## Quick start
 
@@ -67,7 +61,7 @@ wall-time measurement per case, not official instruction-count scoring.
 See the [local evaluation guide](evaluation/README.md) for prerequisites, timeout
 behavior, and how to read the result.
 
-## Problems (Stage 1)
+## Problems
 
 The eight problems have independent leaderboards. Each has three evaluation groups;
 the linked statements define its input, output, examples, limits, and ranking cost.
@@ -83,7 +77,7 @@ the linked statements define its input, output, examples, limits, and ranking co
 | [SHA-256 chain (`sha256`)](rules/problems/sha256.md) | Repeated hashing of a 32-byte digest | [Submission](problems/sha256/Submission.lean) |
 | [Polynomial discriminant (`polydisc`)](rules/problems/polydisc.md) | The exact discriminant of a generated monic degree-24 polynomial | [Submission](problems/polydisc/Submission.lean) |
 
-## The task
+## Submission
 
 Provide a fast, total, kernel-reducible implementation and prove that it equals the
 fixed specification for every natural-number input:
@@ -93,100 +87,41 @@ impl : Nat → Output
 impl_correct : ∀ n, impl n = spec n
 ```
 
-The output type, specification, and input encoding are problem-specific. Fib
-targets Mathlib v4.33.1's `Nat.fib`, prime counting targets
-`Nat.primeCounting`, and Mertens sums Mathlib's `ArithmeticFunction.moebius`.
-The other five tasks use repository-defined core-Lean specifications. The
-[problem guide](rules/problems/README.md#mathlib-status) distinguishes current
-formal targets from possible future Mathlib bridges.
-
-The proof need not use `rfl`, and the implementation need not use the specification's
-algorithm. The starter may be submitted unchanged, but a correct starter is not a
-promise that every performance case finishes within its limits.
-
-## What you submit
-
-Submit exactly one **`Submission.lean`**, at most 1 MiB. Keep the namespace,
-declaration names, types, and theorem statement unchanged; put all helpers inside
-`namespace Submission`.
-
-Participant packages live in `problems/<id>/`. The judge supplies its own fixed
-`Spec.lean`, `Challenge.lean`, `Solution.lean`, and configuration from
-`evaluation/problems/<id>/`. Every participant package includes a generated
-`Spec.lean` copy for compilation; fib, mertens, and primecount additionally
-prepare their pinned Mathlib dependencies with the package's `setup.py`.
-
-## Rules in brief
-
-Use only the problem's supplied dependencies. The implementation must be total and
-kernel-reducible; its proof may use only `propext`, `Quot.sound`, and
-`Classical.choice` as axioms. `sorry` and `native_decide` are not accepted.
-See the [binding rules](rules/overview.md#rules) and
-[shared submission requirements](rules/problems/README.md#what-a-submission-must-establish).
-
-## How judging works
-
-The judge checks the universal correctness proof, then checks a direct equation
-`impl n = v` for each selected input using an independently prepared exact output
-`v`. Checking that equation forces kernel reduction of the submitted implementation.
-
-Official evaluation measures kernel instructions, not compiled execution. The timer
-counts inside the kernel-replay boundaries; process startup, export parsing, and
-per-input dependency preload are excluded. See the
-[evaluation rules](rules/evaluation.md) for the precise boundaries and verdicts.
+Submit exactly one **`Submission.lean`**, at most 1 MiB. The proof must cover
+every natural-number input, but need not use `rfl`; the implementation may use a
+different algorithm from the specification. See the
+[shared submission requirements](rules/problems/README.md#submission) for the
+exact names, types, dependencies, namespace, and axiom policy, and the
+[binding rules](rules/overview.md#rules) for acceptance requirements.
 
 ## Scoring
 
-There is no cross-problem total. On each problem, an otherwise scoreable submission
-earns **100 points only if every hidden case passes**. Any failed case gives
-**0 points and infinite ranking cost**; there is no partial credit. Infrastructure
-errors and incomplete evaluations remain unscored.
+Each problem has an independent leaderboard. Every case reports the median of
+three kernel-replay instruction counts; complete results rank by their sum,
+lowest first. Correctness-proof work is excluded, and a performance failure
+leaves an Accepted submission without a complete total or rank. There is no
+cross-problem total. The unified
+[problem and scoring guide](rules/problems/README.md#scoring) gives all cases,
+limits, and the current [implementation status](rules/problems/README.md#implementation-status).
+The checked-in evaluator still uses the previous ranking policy.
 
-Full-plan passes rank by lower instruction cost:
+## Evaluator reproduction
 
-- **Target work (`T`):** the sum of the per-input replay medians, used by six problems.
-- **Combined work (`T + C`):** target work plus the correctness-closure replay median
-  once, used by `ca-rule110` and `sha256`.
-
-Each median comes from three replays. Equal costs remain tied, without an additional
-proof-cost comparison. Local wall-time measurements are not official scores.
-See [Problem Leaderboards](rules/problem-scoring.md) for all groups, cases, and
-limits, and [Evaluation](rules/evaluation.md) for daily and final evaluation rules.
-
-## Maintainer regression and judge checks
-
-Participants do not need this workflow. Maintainers should use the separate
-[regression and image-build guide](evaluation/maintainers.md), including dependency
-synchronization and the distinction between a regression pass and production acceptance.
-
-### Isolated evaluation of untrusted submissions
-
-Use the official wrapper on a supported Linux PMU host. Follow the
-[reference-answer and isolated-evaluation instructions](docs/reference-answers.md)
-and [production acceptance checklist](docs/pre-launch-checklist.md).
-Do not run untrusted submissions through the unsandboxed local evaluation path.
+Evaluator checks are optional for participants. The
+[image-build and replay guide](evaluation/maintainers.md) covers reproducible setup
+and isolated evaluation. Never run untrusted submissions through the unsandboxed
+local evaluation path.
 
 ## Repository layout
 
 - `problems/<id>/`: eight participant packages; edit only `Submission.lean`.
-- `evaluation/`: optional local evaluator, maintainer guide, and fixed problem workspaces.
-- `rules/`: competition policies, problem statements, and scoring rules.
+- `evaluation/`: evaluator, fixed problem workspaces, and reproduction guide.
+- `rules/`: competition policies and problem statements.
 - `examples/submissions/`: worked implementations and rejection examples.
-- `judge/`, `scripts/`, `pipeline/`: evaluation implementation and pinned configuration.
-- `tests/`: regression tests and the example-submission manifest.
+- `scripts/`: setup, dependency preparation, evaluation wrappers, and result reporting.
+- `tests/harness_manifest.json`: expected example results for the image-build check.
 - `results/`: local generated artifacts, not tracked by Git.
 
-## Toolchain
-
-Lean **v4.33.1**, comparator `3927ad3` plus the
-[emit-export patch](patches/comparator-emit-export.patch), and lean4export `15f6055`
-are pinned in [pipeline/config.json](pipeline/config.json). Setup builds the tools
-from these pins; third-party checkouts are not committed.
-
-## Status
-
-The eight problem schedules and scoring policies are published. Local build and
-correctness checks do not establish official PMU, full-plan performance, or container
-acceptance. Production validation and unresolved platform policies remain tracked in
-the [pre-launch checklist](docs/pre-launch-checklist.md); local results must not be
-presented as completion of those checks.
+Internal unit tests, CI workflows, development notes, and release checklists are
+local-only and ignored by Git. They are not required to build submissions or
+reproduce evaluation.

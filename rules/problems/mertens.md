@@ -28,17 +28,12 @@ The sum includes index zero, whose Möbius value is zero.
 One argument `n : Nat`, the **inclusive** summation bound. The judge calls
 `impl n` directly; there is no standard-input parser or input file to implement.
 
-The function must be defined for every natural number, including zero. The
-performance-test ranges below do not restrict the correctness theorem's domain.
-
 ## Output
 
 Return `M(n)` as an `Int`. Do not print the answer. The result may be negative;
 do not take its absolute value, clip it to zero, or reduce it modulo a number.
 
 ## Examples
-
-Each row is a separate function call.
 
 | Input `n` | Output `impl n` |
 | ---: | ---: |
@@ -67,20 +62,10 @@ groups and six hidden cases in total.
 Each group uses `geometric_range`: two distinct, increasing values with
 deterministic 15% seed-derived jitter inward from the endpoints. Unseeded local
 plans use the endpoints. Official exact values remain hidden during evaluation.
-The current memory limit is **4,096 MiB (4 GiB)**, provisional pending
-official-host validation and fixed within a cohort.
 
-An otherwise scoreable submission earns **100 points only if all six cases
-pass**. Any failed case gives 0 points and infinite ranking cost; there is no
-partial credit. Full-plan passes rank by **target work `T`**: the sum of the
-median kernel instruction count for each case's three target replays. Lower is
-better; equal costs remain tied. Correctness replay must complete but its cost
-is not added to this problem's ranking metric. Infrastructure errors are unscored.
-
-All three target replays must finish within the case's per-repetition limit.
-Preparation and correctness checks have separate limits, not a shared group
-budget. See the [scoring plan](../problem-scoring.md#mertens),
-[configuration](../../evaluation/problems/mertens/config.json), and [evaluation rules](../evaluation.md).
+Memory: **4096 MiB (4 GiB)**. The [shared scoring rules](README.md#scoring)
+and [resource limits](README.md#limits) apply.
+The [fixed configuration](../../evaluation/problems/mertens/config.json) records this plan.
 
 ## Submission Requirements
 
@@ -92,20 +77,16 @@ impl : Nat → Int
 impl_correct : ∀ n, impl n = mertensSpec n
 ```
 
-The [locked bridge](../../evaluation/problems/mertens/Solution.lean) exposes them to the
-judge. Prove equality for **all `n`**, not just the examples or hidden cases.
-The proof need not use `rfl`, and the algorithm need not evaluate the Möbius
-sum in the same way as Mathlib. Separately, the kernel must reduce `impl n` to
-the exact integer answer. Use only this problem's supplied pinned Mathlib
-closure, total kernel-reducible code, and permitted axioms; see the
-[shared requirements](README.md#what-a-submission-must-establish).
+The [locked bridge](../../evaluation/problems/mertens/Solution.lean) fixes the interface.
+Prove equality for **all `n`**; you may compute the sum differently from Mathlib.
+Use only this problem's supplied pinned Mathlib closure and follow the
+[shared requirements](README.md#submission).
 
 ## Starter Code and Local Testing
 
 Start from [problems/mertens/Submission.lean](../../problems/mertens/Submission.lean).
 It directly sums Mathlib's Möbius function, with a reflexivity proof against `mertensSpec`.
-The implementation and proof are complete; use the two TODOs to make your changes.
-A starting implementation is not guaranteed to pass every performance case.
+The two TODOs mark the implementation and proof to edit.
 
 Install `elan`, Git, and Python 3.9+, then run from the repository root:
 
@@ -115,21 +96,11 @@ python3 setup.py
 lake build
 ```
 
-The setup command prepares the dependency versions pinned by this package. Keep
-`Spec.lean` and the environment files unchanged; edit and submit only
-`Submission.lean`. Building compiles your
-definitions and proofs. It does not independently check the official interface or
-permitted axioms, benchmark, or score the submission. See the [participant guide](../../problems/mertens/README.md).
-
-For optional kernel evaluation, run from the repository root:
-
-```bash
-bash evaluation/setup.sh --problem mertens
-python3 evaluation/run.py --problem mertens --submission problems/mertens/Submission.lean
-```
-
-This uses the full unseeded public plan with one wall-time repetition, not official
-PMU scores. See the [evaluation guide](../../evaluation/README.md).
+Setup prepares pinned dependencies. Edit and submit only `Submission.lean`;
+keep `Spec.lean` and the environment files unchanged. `lake build` compiles the
+code and proof; it is not an acceptance check or performance measurement.
+See the [participant guide](../../problems/mertens/README.md) and
+[optional kernel evaluation](../../evaluation/README.md).
 
 ## Notes
 
