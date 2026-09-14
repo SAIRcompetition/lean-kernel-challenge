@@ -56,3 +56,5 @@ prebuilt-tools/
 /pipeline/
 /patches/
 /rules/problem-scoring.md
+/rules/prelaunch.md
+/rules/stage1-rules.md

@@ -58,7 +58,7 @@ You may change the algorithm or representation; the proof need not use `rfl`.
 The implementation must be total and kernel-reducible to its output literal.
 Use only locked dependencies. Permitted proof axioms are `propext`, `Quot.sound`,
 and `Classical.choice`; `sorry` and `native_decide` are not accepted.
-See [Rules R1–R5](../stage1-rules.md#rules).
+See [Rules R1–R5](../overview.md#rules).
 
 For fib, mertens, and primecount, local setup checks out pinned Mathlib packages.
 Official evaluation supplies only the modules and compiled artifacts from those
@@ -124,7 +124,7 @@ unattempted, show C as `—`. Do not merge correctness and computation replay in
 a single cost. Replay-specific wall-time and memory measurements must also
 identify their phase and units.
 Case IDs must not reveal hidden input values. Publication follows the
-[results policy](../stage1-rules.md#evaluation-and-results).
+[results policy](../evaluation.md#standings-and-publication).
 
 Infrastructure failures require review or re-evaluation and are not contestant
 performance failures. See [evaluation](../evaluation.md) for measurement boundaries.

@@ -40,6 +40,8 @@ scripts/sync_fib_participant.py
 /pipeline/
 /patches/
 /rules/problem-scoring.md
+/rules/prelaunch.md
+/rules/stage1-rules.md
 
 # Keep local root docs/assets out of images; retain the published rule logos.
 /docs/

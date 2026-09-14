@@ -18,8 +18,7 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 The Lean Kernel Challenge brings the community together to improve verified
 computation in the Lean kernel. Stage 1 is experimental and begins with eight
 fundamental computational problems. See the [competition overview](rules/overview.md)
-for dates and rules, and the [competition introduction](rules/prelaunch.md) for
-registration, team, cost, and publication policies.
+for dates, registration, team rules, costs, and publication policies.
 
 ## Quick start
 
@@ -92,7 +91,7 @@ every natural-number input, but need not use `rfl`; the implementation may use a
 different algorithm from the specification. See the
 [shared submission requirements](rules/problems/README.md#submission) for the
 exact names, types, dependencies, namespace, and axiom policy, and the
-[binding rules](rules/stage1-rules.md#rules) for acceptance requirements.
+[binding rules](rules/overview.md#rules) for acceptance requirements.
 
 ## Scoring
 

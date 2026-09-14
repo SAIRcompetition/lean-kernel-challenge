@@ -9,7 +9,7 @@ The fixed `spec` defines the required mathematical result. The submitted
 `impl_correct : ∀ n, impl n = spec n` proves equality for every natural-number
 input; the judge checks this proof, rather than establishing correctness by
 sampling inputs. Independently, `impl` must be total and kernel-reducible to an
-output literal, as required by [R2 and R3](stage1-rules.md#rules).
+output literal, as required by [R2 and R3](overview.md#rules).
 
 A Mathlib specification fixes the correctness target, not the algorithm you
 must execute. For example, the [Fibonacci starter](../problems/fib/Submission.lean)
@@ -87,7 +87,7 @@ organizer review. Infrastructure failures are not contestant performance failure
 A cohort fixes inputs and seed commitment, answers, Spec and dependencies, ranking
 policy, repetitions, budgets, resource limits, toolchain, executor, and measurement
 boundaries. Changing these requires a new cohort and complete rescore; different
-cohorts or metrics are never mixed. See [competition rules](stage1-rules.md#evaluation-and-results)
+cohorts or metrics are never mixed. See [standings and publication](#standings-and-publication)
 for daily standings, final evaluation, and data release.
 
 Official evaluation requires a secret `PERF_SEED`, rotated between cohorts. The
@@ -140,3 +140,61 @@ See the [local evaluator guide](../evaluation/README.md) for custom submissions,
 timeouts, and results, or [maintainer deployment](../evaluation/maintainers.md)
 for Docker and official-host setup. The evaluator is optional for the
 [participant workflow](problems/README.md#quick-start).
+
+## Standings and publication
+
+### Submission records
+
+Use the latest formal entry selected under the [submission rules](overview.md#submission).
+Each submission is an immutable record; evaluation status and retries cannot change
+its identity. If source is missing, unreadable, or fails integrity checks, preserve
+that identity and record a platform error. Never omit it or restore an older entry.
+Final selection is fully frozen only after the original source is recovered and
+verified against its original manifest and hash.
+
+### Daily provisional standings
+
+During the submission window, the platform may publish one provisional edition per
+day, using separate hidden reference inputs under the published problem policy.
+Organizers may change these inputs between editions and need not publish them later.
+The board is not updated in real time.
+
+A submission day runs from 00:00 UTC inclusive to the next 00:00 UTC exclusive,
+including the whole final second, 23:59:59. Each edition freezes its selected
+submission identities, identifies the cutoff or coverage date, and displays its
+generation timestamp and time zone. Publication lag and missed-edition handling
+will be announced before launch. Neither the cutoff nor publication time promises
+completed evaluation or shortens a resource limit.
+
+An edition is complete only when every selected submission has a trusted terminal
+evaluation outcome: accepted, rejected, or an explicitly classified judge or
+infrastructure error. Evidence must identify the selected submission. Queued,
+running, retrying, missing, and unknown outcomes remain unfinished; a failed
+attempt with a pending retry is not terminal. Elapsed time, absent metrics, or
+publication deadlines cannot justify dropping an entry or declaring it terminal.
+
+Terminal errors count as processed but receive no total, public row, or rank.
+They remain subject to organizer review and recovery; the affected team must be
+able to query a sanitized private error status and reason. Once all entries have
+terminal outcomes, later daily editions may proceed without waiting for successful
+reruns. Only rankable results appear publicly; rejected or accepted-but-unscored
+entries neither create failure rows nor restore older successes.
+
+Never publish an incomplete edition. Retain the previous complete board with a
+delay notice; before the first edition, show that it is being prepared. The last
+provisional board may remain after the deadline with a final-evaluation notice.
+Published boards must not reveal raw verdicts, hidden inputs, or secrets.
+
+### Final evaluation and release
+
+Final results use a separate cohort run as a batch after the submission deadline,
+with the same latest-entry selection rule. No fixed evaluation duration is promised.
+Raw verdicts, exact inputs, and contestant code remain private during evaluation.
+An incomplete final run must be re-evaluated; fatal evaluator errors require review
+first. A deliberate re-evaluation uses a new hidden seed and cohort and rescores
+the comparison set, rather than mixing results from different cohorts.
+
+After the final cohort closes, release its seed, exact input plan, results, and
+benchmark data under the [open-source policy](overview.md#open-source). Contestant
+code is published afterward under the submission-version, licensing, and
+authorization terms announced before launch.
