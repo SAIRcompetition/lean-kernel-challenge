@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Build canonical, per-problem scoring tables from sealed judge verdicts.
 
-``evaluation-policy-v2`` cohorts use the embedded ranking contract. ``full-plan-v1``
+``evaluation-policy-v2`` cohorts use the embedded ranking contract. Current
+``computation-total-v1`` cohorts rank complete, verified plans by computation T
+alone; correctness C is reported separately, and incomplete plans have no rank.
+Previously sealed ``full-plan-v1``
 awards 100 points only for complete passes and compares their configured instruction
 cost; every scoreable failed plan ties at zero points and infinite cost. Previously
 sealed ``group-points-v1`` cohorts retain their milestone and profile semantics.
@@ -33,6 +36,8 @@ import json
 from datetime import datetime, timezone
 import math
 import os
+import re
+import statistics
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -40,6 +45,11 @@ RESULTS = os.path.join(ROOT, "results")
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 from memory_policy import memory_mb_from_envelope, valid_memory_mb
 from problem_layout import RETIRED_PROBLEMS
+COMPUTATION_TOTAL_CONTRACT = "computation-total-v1"
+COMPUTATION_TOTAL_POLICY = {
+    "contract": COMPUTATION_TOTAL_CONTRACT, "work": "curve", "proof": "gate",
+}
+FULL_PLAN_CONTRACTS = {"full-plan-v1", COMPUTATION_TOTAL_CONTRACT}
 with open(os.path.join(ROOT, "evaluation", "config.json")) as _config_file:
     _PIPELINE_POLICY = json.load(_config_file)
 _TIMING_POLICY = _PIPELINE_POLICY["timing"]
@@ -410,18 +420,22 @@ def _grouped_evaluation_shape_error(evaluation, performance_plan, *, official):
         return "grouped evaluation has an invalid difficulty axis"
 
     ranking = evaluation["ranking"]
-    full_plan = isinstance(ranking, dict) and ranking.get("contract") == "full-plan-v1"
-    ranking_fields = ({"contract", "work", "proof", "max_points"} if full_plan
+    computation_total = isinstance(ranking, dict) and ranking.get("contract") == COMPUTATION_TOTAL_CONTRACT
+    full_plan = isinstance(ranking, dict) and ranking.get("contract") in FULL_PLAN_CONTRACTS
+    ranking_fields = ({"contract", "work", "proof"} if computation_total else
+                      {"contract", "work", "proof", "max_points"} if full_plan
                       else {"contract", "work", "proof", "profile"})
     if not (isinstance(ranking, dict)
             and set(ranking) == ranking_fields
-            and ranking.get("contract") in ("group-points-v1", "full-plan-v1")
+            and ranking.get("contract") in ({"group-points-v1"} | FULL_PLAN_CONTRACTS)
             and ranking.get("work") in ("total", "curve", "worst_normalized")
             and ranking.get("proof") in ("include", "gate", "last_tiebreak")
             and (full_plan or ranking.get("profile") in (
                 "hardest_group_then_slot", "hardest_group_then_count"))):
         return "grouped evaluation has an invalid ranking contract"
-    if full_plan and (type(ranking["max_points"]) is not int
+    if computation_total and ranking != COMPUTATION_TOTAL_POLICY:
+        return "computation-total ranking requires computation only and verification-only correctness"
+    if full_plan and not computation_total and (type(ranking["max_points"]) is not int
                       or ranking["max_points"] != 100
                       or ranking["proof"] == "last_tiebreak"):
         return "full-plan ranking requires 100 points and no separate proof tie-break"
@@ -603,7 +617,7 @@ def _policy_v2_shape_error(policy):
     }
     evaluation = policy.get("evaluation")
     ranking = evaluation.get("ranking") if isinstance(evaluation, dict) else None
-    full_plan = isinstance(ranking, dict) and ranking.get("contract") == "full-plan-v1"
+    full_plan = isinstance(ranking, dict) and ranking.get("contract") in FULL_PLAN_CONTRACTS
     if full_plan:
         required.add("reference_answers")
     if set(policy) != required:
@@ -830,6 +844,7 @@ def _base_row(verdict, metric, reason):
         "timing_protocol": verdict.get("timing_protocol"),
         "measurement_contract": None,
         "scoreable": False,
+        "eligible": False,
         "reason": reason,
         "planned_slots": 0,
         "completed_slots": 0,
@@ -853,6 +868,130 @@ def _base_row(verdict, metric, reason):
         "work_tiebreak_active": False,
         "ranking_policy": None,
     }
+
+
+def _repetitions_error(record, metric, reps):
+    """Check the retained evidence, not just the declared repetition count."""
+    if not _is_cost(record.get(METRICS[metric]["field"]), integral=metric == "perf_instructions"):
+        return "successful replay requires a positive metric-specific median"
+    samples = record.get("samples")
+    if not isinstance(samples, list) or len(samples) != reps:
+        return f"successful replay must retain exactly {reps} samples"
+    key = "instructions" if metric == "perf_instructions" else "wall_ns"
+    if any(not isinstance(sample, dict) or type(sample.get(key)) is not int
+           or sample[key] <= 0 for sample in samples):
+        return f"each replay sample requires positive integer {key}"
+    values = sorted(sample[key] for sample in samples)
+    if metric == "perf_instructions":
+        # Odd official series have an exact middle element. Retain the judge's
+        # half-up integer convention for even development series without a float.
+        median = (values[(reps - 1) // 2] + values[reps // 2] + 1) // 2
+    else:
+        median = statistics.median(values) / 1_000_000_000
+    if record.get(METRICS[metric]["field"]) != median:
+        return "median does not match retained replay samples"
+    return None
+
+
+def _replay_measurements(record, metric, reps):
+    """Phase-specific measurements; absent/failed series never become zero."""
+    field = METRICS[metric]["field"]
+    output = {field: None, "median_wall_ns": None, "peak_rss_kb": None}
+    if record.get("result") != "ok" or _repetitions_error(record, metric, reps):
+        return output
+    output[field] = record[field]
+    samples = record["samples"]
+    walls = [sample.get("wall_ns") for sample in samples]
+    peaks = [sample.get("peak_rss_kb") for sample in samples]
+    if all(type(value) is int and value > 0 for value in walls):
+        output["median_wall_ns"] = statistics.median(walls)
+    if all(type(value) is int and value > 0 for value in peaks):
+        output["peak_rss_kb"] = max(peaks)
+    return output
+
+
+def _replay_report(verdict, *, evaluation=None, plan=None, reps=None):
+    """Private per-run report, including failures and never-attempted cases.
+
+    The optional checked-in plan is supplied by the judge for early failures,
+    before an executor/cohort can be sealed. It cannot make a result rankable.
+    Slot-based IDs are scoped to the cohort/run and reveal no input value.
+    """
+    cohort = verdict.get("evaluation_cohort")
+    cohort = cohort if isinstance(cohort, dict) else {}
+    policy = cohort.get("policy")
+    policy = policy if isinstance(policy, dict) else {}
+    evaluation = evaluation or policy.get("evaluation") or {}
+    if (not isinstance(evaluation, dict) or not isinstance(evaluation.get("ranking"), dict)
+            or evaluation["ranking"].get("contract") != COMPUTATION_TOTAL_CONTRACT):
+        return None
+    plan = plan if plan is not None else policy.get("performance_plan")
+    reps = reps if reps is not None else policy.get("reps")
+    metric = verdict.get("metric")
+    if (not isinstance(plan, list) or not plan or type(reps) is not int or reps < 1
+            or not isinstance(metric, str) or metric not in METRICS):
+        return None
+    if _grouped_evaluation_shape_error(
+            evaluation, plan, official=verdict.get("evaluation_mode") == "official"):
+        return None
+    view = _score_row(verdict, metric)
+    eligible = view["scoreable"] and view["eligible"]
+    correctness = verdict.get("correctness_timing")
+    correctness = correctness if isinstance(correctness, dict) else {}
+    correctness_result = correctness.get("result", "not-run")
+    correctness_identity = (
+        correctness.get("metric") == metric
+        and correctness.get("reps") == reps
+        and correctness.get("measurement_contract") == MEASUREMENT_CONTRACT
+        and correctness.get("measurement_boundary") == CORRECTNESS_BOUNDARY
+        and correctness.get("measurement_target") is None)
+    if correctness_result == "ok" and (not correctness_identity
+            or _repetitions_error(correctness, metric, reps)):
+        correctness_result = "invalid"
+    report = {
+        "schema": "replay-report-v1", "ranking_contract": COMPUTATION_TOTAL_CONTRACT,
+        "metric": metric, "reps": reps, "eligible": eligible,
+        "computation_total": view["ranking_work"] if eligible else None,
+        "wall_time_unit": "ns", "memory_unit": "KiB",
+        "memory_scope": "process RSS high-water sampled during replay, including preloaded dependencies",
+        "correctness": {
+            "result": correctness_result, "verification_only": True,
+            "measurement_boundary": CORRECTNESS_BOUNDARY,
+            **_replay_measurements(
+                {**correctness, "result": correctness_result}, metric, reps),
+        },
+        "cases": [],
+    }
+    timing = verdict.get("timing")
+    scaling = timing.get("scaling") if isinstance(timing, dict) else None
+    scaling = scaling if isinstance(scaling, list) else []
+    for slot, case in enumerate(plan):
+        matches = [sample for sample in scaling
+                   if isinstance(sample, dict) and sample.get("slot") == slot]
+        sample = matches[0] if len(matches) == 1 else {}
+        outcome = sample.get("result", "not-run")
+        bound = (len(matches) == 1 and type(sample.get("slot")) is int
+                 and type(sample.get("n")) is int and sample["n"] == case["n"]
+                 and type(sample.get("case")) is int and sample["case"] == case["case"]
+                 and sample.get("group") == case["group"])
+        if matches and (not bound or outcome not in PERFORMANCE_RESULTS):
+            outcome = "invalid"
+        if outcome == "ok":
+            if (sample.get("measurement_contract") != MEASUREMENT_CONTRACT
+                    or sample.get("measurement_boundary") != PERFORMANCE_BOUNDARY
+                    or not _nonempty_string(sample.get("measurement_target"))
+                    or _repetitions_error(sample, metric, reps)):
+                outcome = "invalid"
+            elif (metric == "perf_instructions"
+                  and "kernel_instructions" in case["limits"]
+                  and sample["median_instructions"] > case["limits"]["kernel_instructions"]):
+                outcome = "instruction-limit"
+        report["cases"].append({
+            "case_id": f"case-{slot + 1:04d}", "group": case["group"], "result": outcome,
+            "measurement_boundary": PERFORMANCE_BOUNDARY,
+            **_replay_measurements({**sample, "result": outcome}, metric, reps),
+        })
+    return report
 
 
 def _milestone_points(table, passed):
@@ -883,6 +1022,20 @@ def _apply_grouped_scoring(row, policy, slot_values):
             work_by_group[group_id] += slot_values[slot]
 
     ranking = evaluation["ranking"]
+    if ranking["contract"] == COMPUTATION_TOTAL_CONTRACT:
+        complete = row["completed_slots"] == row["planned_slots"]
+        row["ranking_policy"] = dict(ranking)
+        row["eligible"] = complete
+        row["work_tiebreak_active"] = complete
+        row["ranking_work"] = row["curve_work"] if complete else None
+        # Neither points nor a C+T aggregate exists under this policy.
+        row["total_work"] = None
+        row["group_case_detail"] = tuple(
+            (group["id"], passed_by_group[group["id"]], len(slots_by_group[group["id"]]))
+            for group in reversed(groups))
+        if not complete:
+            row["reason"] = "accepted but incomplete computation plan; no total or rank"
+        return
     if ranking["contract"] == "full-plan-v1":
         complete = row["completed_slots"] == row["planned_slots"]
         row["points"] = ranking["max_points"] if complete else 0
@@ -1012,7 +1165,10 @@ def _score_row(verdict, metric):
         return row
     policy = cohort["policy"]
     grouped = policy["schema"] == "evaluation-policy-v2"
-    full_plan = grouped and policy["evaluation"]["ranking"]["contract"] == "full-plan-v1"
+    full_plan = grouped and policy["evaluation"]["ranking"]["contract"] in FULL_PLAN_CONTRACTS
+    computation_total = grouped and policy["evaluation"]["ranking"]["contract"] == COMPUTATION_TOTAL_CONTRACT
+    if computation_total:
+        row["ranking_policy"] = dict(policy["evaluation"]["ranking"])
     row["scoring_schema"] = (
         "grouped-evaluation-v1" if grouped else "legacy-slot-ranking-v1")
     row["measurement_contract"] = MEASUREMENT_CONTRACT
@@ -1035,6 +1191,11 @@ def _score_row(verdict, metric):
     if not _is_cost(correctness_work, integral=(metric == "perf_instructions")):
         row["reason"] = f"correctness_timing lacks a positive {cost_field}"
         return row
+    if computation_total:
+        error = _repetitions_error(correctness, metric, policy["reps"])
+        if error:
+            row["reason"] = "correctness replay: " + error
+            return row
 
     planned = verdict.get("stages", {}).get("perf_inputs")
     if not (isinstance(planned, list) and planned
@@ -1136,6 +1297,11 @@ def _score_row(verdict, metric):
             if not _is_cost(value, integral=(metric == "perf_instructions")):
                 row["reason"] = f"successful slot {slot} lacks a positive {cost_field}"
                 return row
+            if computation_total:
+                error = _repetitions_error(sample, metric, policy["reps"])
+                if error:
+                    row["reason"] = f"slot {slot}: {error}"
+                    return row
             within_limit = True
             if grouped and metric == "perf_instructions":
                 instruction_cap = performance_plan[slot]["limits"].get(
@@ -1170,6 +1336,10 @@ def _score_row(verdict, metric):
         return row
     if grouped:
         _apply_grouped_scoring(row, policy, slot_values)
+        if computation_total:
+            # A validated failed plan is an ordinary Accepted result, but never ranked.
+            row["scoreable"] = True
+            return row
         if not _is_cost(row["ranking_work"], integral=(metric == "perf_instructions")):
             # A zero curve is legitimate only when no case passed; the success profile is
             # compared first, so treating it as an exact zero tie-break cannot reward failure.
@@ -1188,6 +1358,8 @@ def _placement_key(row):
     """Competitive ranking values only; submission names never affect placement."""
     if not row["scoreable"]:
         return None
+    if (row.get("ranking_policy") or {}).get("contract") == COMPUTATION_TOTAL_CONTRACT:
+        return (row["ranking_work"],) if row["eligible"] else None
     if _is_grouped_row(row):
         if row.get("ranking_policy", {}).get("contract") == "full-plan-v1":
             return (-row["points"], row["ranking_work"])
@@ -1317,6 +1489,43 @@ def _format_work(value, metric):
         return "—"
 
 
+def _md_cell(value):
+    value = str(value if value is not None else "—")
+    value = value.replace("\\", "\\\\").replace("|", "\\|")
+    value = value.replace("\r", " ").replace("\n", " ")
+    return re.sub(r"[`<>\[\]]", "", value)[:160]
+
+
+def _replay_report_lines(verdict):
+    """Render a per-run view; callers enforce whether that run may be published."""
+    report = _replay_report(verdict)
+    if report is None:
+        return []
+    metric = report["metric"]
+    field = METRICS[metric]["field"]
+    label = METRICS[metric]["label"]
+    correctness = report["correctness"]
+    lines = [f"### {_md_cell(verdict.get('submission'))} — replay details", "",
+             f"T: {_format_work(report['computation_total'], metric)} {label}.", "",
+             f"| phase | outcome | median {label} | median replay wall time (ns) | peak replay RSS (KiB) |",
+             "|---|---|---|---|---|",
+             f"| Correctness C (verification only) | {_md_cell(correctness['result'])} | "
+             f"{_format_work(correctness[field], metric)} | "
+             f"{_md_cell(correctness['median_wall_ns'])} | {_md_cell(correctness['peak_rss_kb'])} |",
+             "",
+             f"| case ID | group | outcome | median computation {label} | median replay wall time (ns) | peak replay RSS (KiB) |",
+             "|---|---|---|---|---|---|"]
+    for case in report["cases"]:
+        lines.append(
+            f"| {case['case_id']} | {_md_cell(case['group'])} | {_md_cell(case['result'])} | "
+            f"{_format_work(case[field], metric)} | "
+            f"{_md_cell(case['median_wall_ns'])} | {_md_cell(case['peak_rss_kb'])} |")
+    lines.extend(["", "Case IDs identify slots within this cohort; they do not encode inputs. "
+                  "RSS is process high-water sampled during replay, including preloaded dependencies; "
+                  "it is not memory allocated solely by the measured declaration.", ""])
+    return lines
+
+
 def _format_group_points(row):
     """Render labeled hardest-first group points from a canonical score row."""
     return ", ".join(
@@ -1391,9 +1600,10 @@ def main():
         "# Lean Kernel Challenge — canonical scoring",
         "",
         "Each problem is ranked independently under the scoring contract sealed into its "
-        "evaluation cohort. Full-plan cohorts award 100 points only when every case passes; "
-        "other scoreable plans tie at 0 points and infinite cost. Full passes compare the "
-        "declared instruction cost. Previously sealed milestone cohorts retain their own rules. "
+        "evaluation cohort. Computation-total cohorts rank only complete verified passes by T, "
+        "the sum of computation-replay medians; equal T ties. C is reported separately as "
+        "verification only. Failed or incomplete plans have no T or rank and do not create public "
+        "failure rows. Previously sealed full-plan and milestone cohorts retain their own rules. "
         "This public Stage 1 report includes grouped v2 cohorts only; legacy v1 scoring remains "
         "available for local compatibility but is not published as a Stage 1 leaderboard. "
         f"Only official {LOCAL_PROTOCOL} verdicts under {MEASUREMENT_CONTRACT} enter these "
@@ -1410,20 +1620,33 @@ def main():
         label = METRICS[metric]["label"]
         first = groups[(problem, metric, cohort_id)][0]
         cohort = first.get("evaluation_cohort")
+        computation_total = (isinstance(cohort, dict)
+                             and isinstance(cohort.get("policy"), dict)
+                             and isinstance(cohort["policy"].get("evaluation"), dict)
+                             and cohort["policy"]["evaluation"].get("ranking", {}).get("contract")
+                                 == COMPUTATION_TOTAL_CONTRACT)
+        members = groups[(problem, metric, cohort_id)]
+        rows = _rows_for(problem, members, metric)
+        if computation_total:
+            rows = [row for row in rows if _placement_key(row) is not None]
+            if not rows:
+                continue
         round_id = cohort.get("round") if isinstance(cohort, dict) else "missing"
         md.append(f"## {problem} — {label} — cohort `{cohort_id}`")
         md.append("")
         md.append(f"Round: `{round_id}`")
         md.append(f"Generated: {generated_at}")
         md.append("")
-        rows = _rows_for(problem, groups[(problem, metric, cohort_id)], metric)
         # Keep the shared hidden schedule out of the publishable table. Raw verdicts are
         # operator-private until the cohort closes (rules/evaluation.md).
         grouped = (isinstance(cohort, dict)
                    and isinstance(cohort.get("policy"), dict)
                    and cohort["policy"].get("schema") == "evaluation-policy-v2")
         full_plan = grouped and cohort["policy"]["evaluation"]["ranking"]["contract"] == "full-plan-v1"
-        if full_plan:
+        if computation_total:
+            md.append("| rank | submission | cases | computation T (instructions) | correctness C (instructions, verification only) |")
+            md.append("|---|---|---|---|---|")
+        elif full_plan:
             md.append("| rank | submission | points | cases | ranking cost | status |")
             md.append("|---|---|---|---|---|---|")
         elif grouped:
@@ -1444,7 +1667,12 @@ def main():
             alpha = f"{row['alpha']:.3f}" if row["alpha"] is not None else "—"
             beta = f"{row['beta']:.2f}" if row["beta"] is not None else "—"
             coverage = f"{row['completed_slots']}/{row['planned_slots']}"
-            if full_plan:
+            if computation_total:
+                md.append(
+                    f"| {rank} | {_md_cell(row['sub'])} | {coverage} | "
+                    f"{_format_work(row['ranking_work'], metric)} | "
+                    f"{_format_work(row['correctness_work'], metric)} |")
+            elif full_plan:
                 md.append(
                     f"| {rank} | {row['sub']} | "
                     f"{row['points'] if row['points'] is not None else '—'} | {coverage} | "
@@ -1472,6 +1700,12 @@ def main():
                     f"{_format_work(row['total_work'], metric)} | {alpha} | {beta} | {status} |"
                 )
         md.append("")
+        if computation_total:
+            # Only rankable accepted results may contribute public per-case details.
+            for verdict in members:
+                view = _score_row(verdict, metric)
+                if _placement_key(view) is not None:
+                    md.extend(_replay_report_lines(verdict))
         problem_sections[problem].extend(md[section_start:])
 
     os.makedirs(RESULTS, exist_ok=True)

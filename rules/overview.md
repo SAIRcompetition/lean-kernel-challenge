@@ -116,8 +116,8 @@ complete editions; final results use a separate evaluation after the deadline.
 
 See [Evaluation](evaluation.md) for measurement boundaries, Lean and hardware
 specifications, resource limits, local deployment, and publication procedures.
-The revised ranking still needs the [documented implementation work](problems/README.md#implementation-status)
-and production-host validation before official use. Local wall-time checks are not
+Official use requires the [deployment checks](problems/README.md#implementation-status)
+and production-host validation. Local wall-time checks are not
 official instruction-count rankings.
 
 ## Open Source

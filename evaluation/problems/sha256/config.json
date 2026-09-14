@@ -34,6 +34,6 @@
         "limits": {"timeout_seconds": 120}
       }
     ],
-    "ranking": {"contract": "full-plan-v1", "work": "total", "proof": "include", "max_points": 100}
+    "ranking": {"contract": "computation-total-v1", "work": "curve", "proof": "gate"}
   }
 }

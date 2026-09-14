@@ -78,6 +78,15 @@ def main(argv=None):
 
     status = verdict.get("status", "error")
     print(f"{args.problem}/{source.name}: {status}")
+    report = verdict.get("replay_report")
+    if report is not None:
+        correctness = report["correctness"]
+        c_value = correctness.get("median_s")
+        t_value = report["computation_total"]
+        print(f"  Correctness replay C (verification only): {c_value if c_value is not None else '—'} s; "
+              f"{correctness['result']}")
+        print(f"  Computation replay T: {t_value if t_value is not None else '—'} s; "
+              + ("complete" if report["eligible"] else "unranked"))
     for row in verdict.get("timing", {}).get("scaling", []):
         seconds = row.get("median_s")
         elapsed = "-" if seconds is None else f"{seconds:.9g}s"

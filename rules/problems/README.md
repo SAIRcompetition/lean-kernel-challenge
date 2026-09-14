@@ -69,8 +69,7 @@ The fixed files in `evaluation/problems/<id>/` define the contract:
 
 - `Spec.lean`: formal target, decoder, and generator; participant copies are identical.
 - `Challenge.lean` and `Solution.lean`: required interface and submission bridge.
-- `config.json`: test groups, sampling, and limits. Its ranking fields still describe
-  the [legacy implementation](#implementation-status).
+- `config.json`: test groups, sampling, limits, and the versioned ranking contract.
 
 ## Mathlib status
 
@@ -170,11 +169,16 @@ Sampling terms:
 
 ## Implementation status
 
-The scoring rule above is a **documentation-only update**. The checked-in evaluator,
-scorer, and result display still use legacy `full-plan-v1` 100/0-point scoring;
-Rule 110 and SHA-256 also still include correctness-replay work in ranking.
-Their current aggregate scores do **not** implement the rule above.
+The checked-in evaluator, scorer, and reports implement `computation-total-v1`
+for all eight problem configurations. Complete verified plans rank only by T;
+C is reported separately as verification only. Failed or incomplete plans have
+no total or rank. Reports retain every planned case using IDs that do not encode
+inputs. Official successful series must retain all three instruction measurements
+and their exact median.
 
-Before official use, code and per-case reporting must be aligned and verified
-under a new sealed ranking-policy version and cohort. Old cohorts retain their
-original rules and must not be relabeled or mixed with the new policy.
+Previously sealed `full-plan-v1` and `group-points-v1` cohorts retain their original
+scoring, including any proof-work charge. They must not be relabeled or mixed with
+the new policy. Deployment requires a rebuilt evaluator and aligned platform
+consumers, a new sealed cohort, and a complete re-evaluation of the comparison set.
+This source implementation does not establish that a hosted deployment has upgraded
+or passed official-host acceptance.

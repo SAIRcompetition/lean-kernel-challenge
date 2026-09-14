@@ -1,7 +1,8 @@
 # Stage 1 — Evaluation
 
 Test plans and ranking are in [Problems and Scoring](problems/README.md#scoring).
-The revised ranking is not yet implemented; see [implementation status](problems/README.md#implementation-status).
+See [implementation status](problems/README.md#implementation-status) for the current
+policy version and deployment boundary.
 
 ## Specification and implementation
 

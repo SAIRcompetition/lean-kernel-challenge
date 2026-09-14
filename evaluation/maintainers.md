@@ -2,9 +2,35 @@
 
 Run commands from the repository root. For prerequisites and single-file evaluation,
 see [Local evaluation](README.md). The [ranking rule](../rules/problems/README.md#scoring)
-has changed, but the scorer still uses legacy policies; follow the
-[implementation status](../rules/problems/README.md#implementation-status) before release.
-A passing harness or image build does not establish that the revised ranking is implemented.
+uses `computation-total-v1` in current configurations. Follow the
+[implementation status](../rules/problems/README.md#implementation-status) before release:
+a passing harness or image build does not establish that the hosted platform has upgraded.
+
+## Scoring and result versions
+
+The sealed `evaluation-policy-v2` contains the existing `grouped-evaluation-v1`
+plan with ranking `{"contract":"computation-total-v1","work":"curve","proof":"gate"}`.
+There is no points field, partial ranking, or correctness-cost tie-break.
+Old `full-plan-v1` and `group-points-v1` policies remain readable under their original
+semantics. Upgrade the evaluator image and platform consumers together, using a new
+cohort and a complete re-evaluation; do not rewrite historical policies or caches.
+
+Raw `correctness_timing` and `timing.scaling` retain their measurement evidence.
+The derived `replay_report` (`replay-report-v1`) contains `metric`, `reps`, `eligible`,
+`computation_total`, a `correctness` record labeled `verification_only`, and every
+planned entry in `cases`. Case IDs such as `case-0001` are slot identifiers scoped
+to one run/cohort, not input encodings. Each record names its measurement boundary,
+outcome, metric-specific median, `median_wall_ns`, and `peak_rss_kb`. A failed or
+invalid series has null measurements; missing cases are `not-run`. Optional wall
+and memory measurements remain null when unavailable. RSS is the process high-water
+sampled during replay, including preloaded dependencies, not target-only allocation.
+`canonical_work` exposes separate `correctness_median` and `computation_total`,
+with `correctness_role: "verification-only"`; it no longer has the old C+T `total`.
+
+`scripts/score.py` produces public reports with only rankable new-policy results.
+Raw verdicts and `replay_report` are private until the applicable publication rule
+allows release. `judge.py leaderboard` produces local development reports, including
+unranked and failed runs; do not publish those files as the public board.
 
 ## Tools and regression checks
 
