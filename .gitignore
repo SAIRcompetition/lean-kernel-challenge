@@ -33,6 +33,8 @@ prebuilt-tools/
 # Local development experiments and historical review notes.
 # Keep problem-specific tools and the evaluator's reproducible image checks.
 /examples/prototypes/
+# Only one public example per problem remains under examples/<id>/.
+/examples/submissions/
 /scripts/analyze_polydisc_candidates.py
 /scripts/benchmark_polydisc_bareiss_variants.py
 /scripts/benchmark_polydisc_representations.py

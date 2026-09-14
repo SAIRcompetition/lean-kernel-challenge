@@ -84,7 +84,8 @@ Use only this problem's supplied pinned Mathlib closure and follow the
 
 ## Starter Code and Local Testing
 
-Start from [problems/mertens/Submission.lean](../../problems/mertens/Submission.lean).
+Start from the editable participant starter at
+[problems/mertens/Submission.lean](../../problems/mertens/Submission.lean).
 It directly sums Mathlib's Möbius function, with a reflexivity proof against `mertensSpec`.
 The two TODOs mark the implementation and proof to edit.
 
@@ -104,9 +105,9 @@ See the [participant guide](../../problems/mertens/README.md) and
 
 ## Notes
 
-The baseline directly sums `ArithmeticFunction.moebius`. A separate
-[factor-list example](../../examples/submissions/mertens/factor-list/Submission.lean)
-uses Mathlib's prime-factor lists and proves equality with the same sum.
+The participant starter directly sums `ArithmeticFunction.moebius`. The separate
+[worked example](../../examples/mertens/Submission.lean) uses Mathlib's
+prime-factor lists and proves equality with the same sum.
 This is an alternative implementation, not a claim of better performance.
 A sieve or shared factor information could reduce repeated work, but any
 replacement needs a proof against `mertensSpec`. Intermediate representations

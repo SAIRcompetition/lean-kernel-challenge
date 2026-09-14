@@ -104,9 +104,13 @@ this problem uses core Lean without Mathlib. The locked
 
 ## Starter Code and Local Testing
 
-Start from [problems/partition/Submission.lean](../../problems/partition/Submission.lean).
+Start from the editable participant starter at
+[problems/partition/Submission.lean](../../problems/partition/Submission.lean).
 It uses the existing `partitionSpec` baseline and proves correctness by reflexivity.
 The two TODOs mark the implementation and proof to edit.
+
+The separate [worked example](../../examples/partition/Submission.lean) is a
+complete legal submission using the same specification baseline.
 
 Install `elan`, then run from the repository root:
 

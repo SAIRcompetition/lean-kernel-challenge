@@ -76,11 +76,12 @@ Mathlib closure and follow the
 
 ## Starter Code and Local Testing
 
-Start from [problems/primecount/Submission.lean](../../problems/primecount/Submission.lean).
+Start from the editable participant starter at
+[problems/primecount/Submission.lean](../../problems/primecount/Submission.lean).
 It includes a complete baseline using Mathlib's `Nat.minFac`, with a proof against
-`Nat.primeCounting`. The
-[square-root trial-division example](../../examples/submissions/primecount/sqrt/Submission.lean)
-shows another proved implementation.
+`Nat.primeCounting`. The separate
+[worked example](../../examples/primecount/Submission.lean) uses proved
+square-root trial division.
 The two TODOs mark the implementation and proof to edit.
 
 Install `elan`, Git, and Python 3.9+, then run from the repository root:
@@ -100,9 +101,7 @@ See the [participant guide](../../problems/primecount/README.md) and
 ## Notes
 
 The baseline tests each integer using Mathlib's least-prime-factor function
-`Nat.minFac`. The [direct Mathlib example](../../examples/submissions/primecount/mathlib-direct/Submission.lean)
-uses `Nat.primeCounting` itself; it is correct but can time out on larger cases.
-The square-root example stops when `d × d > p` and proves its alternative predicate
+`Nat.minFac`. The public worked example stops when `d × d > p` and proves its alternative predicate
 correct. Reusing prime information or changing the counting representation are possible alternatives,
 but native performance does not predict kernel-reduction performance. Any
 replacement must preserve the inclusive endpoint and the cases 0 and 1.

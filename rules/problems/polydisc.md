@@ -147,10 +147,14 @@ apply.
 
 ## Starter Code and Local Testing
 
-Start from [problems/polydisc/Submission.lean](../../problems/polydisc/Submission.lean).
+Start from the editable participant starter at
+[problems/polydisc/Submission.lean](../../problems/polydisc/Submission.lean).
 It uses the existing `discSpec` baseline and proves correctness by reflexivity.
 The underlying computation retains the normal subresultant algorithm and Bareiss fallback.
 The two TODOs mark the implementation and proof to edit.
+
+The separate [worked example](../../examples/polydisc/Submission.lean) is a
+complete legal submission using that same trusted computation.
 
 Install `elan`, then run from the repository root:
 

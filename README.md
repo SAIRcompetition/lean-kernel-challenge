@@ -76,6 +76,10 @@ the linked statements define its input, output, examples, limits, and ranking co
 | [SHA-256 chain (`sha256`)](rules/problems/sha256.md) | Repeated hashing of a 32-byte digest | [Submission](problems/sha256/Submission.lean) |
 | [Polynomial discriminant (`polydisc`)](rules/problems/polydisc.md) | The exact discriminant of a generated monic degree-24 polynomial | [Submission](problems/polydisc/Submission.lean) |
 
+The Starter column points to each editable participant package. Separately,
+the [worked examples](examples/) contain one complete, legal submission for
+each problem at `examples/<id>/Submission.lean`.
+
 ## Submission
 
 Provide a fast, total, kernel-reducible implementation and prove that it equals the
@@ -116,7 +120,7 @@ local evaluation path.
 - `problems/<id>/`: eight participant packages; edit only `Submission.lean`.
 - `evaluation/`: evaluator, fixed problem workspaces, and reproduction guide.
 - `rules/`: competition policies and problem statements.
-- `examples/submissions/`: worked implementations and rejection examples.
+- `examples/<id>/Submission.lean`: one complete, legal worked submission per problem.
 - `scripts/`: setup, dependency preparation, evaluation wrappers, and result reporting.
 - `tests/harness_manifest.json`: expected example results for the image-build check.
 - `results/`: local generated artifacts, not tracked by Git.

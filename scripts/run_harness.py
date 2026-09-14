@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Green-gate harness for the kernel-computation track.
 
-Runs every example submission in tests/harness_manifest.json through the judge and
-asserts the outcome (accepted/rejected) and, for rejections, a substring of the
-reason. Exit 0 iff every case matches. This is the canonical regression gate:
+Runs the one public example at examples/<problem>/Submission.lean for each problem
+through the judge and checks acceptance, replay records, and required score coverage.
+The manifest's submission field is the fixed result label "example", not a directory.
+Exit 0 iff every case matches. This is the canonical regression gate:
 run it after any change to the judge, timer-kernel, problems, or rules.
 
 Usage:
@@ -37,11 +38,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-from problem_layout import RETIRED_PROBLEMS, iter_evaluation_problem_dirs
+from problem_layout import EVALUATION_PROBLEMS, RETIRED_PROBLEMS, iter_evaluation_problem_dirs
 
 JUDGE = ROOT / "evaluation" / "judge" / "judge.py"
 MANIFEST = ROOT / "tests" / "harness_manifest.json"
-SUBS = ROOT / "examples" / "submissions"
+SUBS = ROOT / "examples"
+EXAMPLE_LABEL = "example"
 SCORE_SPEC = importlib.util.spec_from_file_location(
     "challenge_score", ROOT / "scripts" / "score.py")
 SCORER = importlib.util.module_from_spec(SCORE_SPEC)
@@ -49,7 +51,7 @@ SCORE_SPEC.loader.exec_module(SCORER)
 
 
 def validate_manifest(cases):
-    """Fail if an example is unregistered, duplicated, or points to a missing submission."""
+    """Require one accepted canonical example for every active evaluator problem."""
     if not isinstance(cases, list):
         raise ValueError("manifest cases must be a list")
     keys = []
@@ -59,25 +61,29 @@ def validate_manifest(cases):
         problem, submission = case.get("problem"), case.get("submission")
         if not (isinstance(problem, str) and isinstance(submission, str)):
             raise ValueError(f"manifest case {index} lacks problem/submission strings")
-        if case.get("expect") not in ("accepted", "rejected", "error"):
+        if submission != EXAMPLE_LABEL:
+            raise ValueError(f"manifest case {problem} must use submission label '{EXAMPLE_LABEL}'")
+        if case.get("expect") != "accepted":
             raise ValueError(f"manifest case {problem}/{submission} has invalid expectation")
         keys.append((problem, submission))
     if len(keys) != len(set(keys)):
         raise ValueError("manifest contains duplicate problem/submission cases")
 
     discovered = {
-        (path.parent.parent.name, path.parent.name)
-        for path in SUBS.glob("*/*/Submission.lean")
-        if path.parent.parent.name not in RETIRED_PROBLEMS
+        (path.parent.name, EXAMPLE_LABEL)
+        for path in SUBS.glob("*/Submission.lean")
+        if path.parent.name not in RETIRED_PROBLEMS
     }
     registered = set(keys)
     missing = sorted(registered - discovered)
     unregistered = sorted(discovered - registered)
-    problem_ids = {path.name for path in iter_evaluation_problem_dirs(ROOT)}
+    problem_ids = EVALUATION_PROBLEMS
+    configured_problems = {path.name for path in iter_evaluation_problem_dirs(ROOT)}
+    missing_configs = sorted(problem_ids - configured_problems)
     covered_problem_ids = {problem for problem, _ in registered}
     uncovered_problems = sorted(problem_ids - covered_problem_ids)
     unknown_problems = sorted(covered_problem_ids - problem_ids)
-    if missing or unregistered or uncovered_problems or unknown_problems:
+    if missing or unregistered or uncovered_problems or unknown_problems or missing_configs:
         details = []
         if missing:
             details.append("missing examples: " + ", ".join(f"{p}/{s}" for p, s in missing))
@@ -88,6 +94,8 @@ def validate_manifest(cases):
             details.append("problems without a harness case: " + ", ".join(uncovered_problems))
         if unknown_problems:
             details.append("manifest references unknown problems: " + ", ".join(unknown_problems))
+        if missing_configs:
+            details.append("problems without evaluator config: " + ", ".join(missing_configs))
         raise ValueError("; ".join(details))
 
 
@@ -110,7 +118,9 @@ def configure_local_overrides(args):
 
 def run_case(case, reps):
     problem, name = case["problem"], case["submission"]
-    sub_dir = SUBS / problem / name
+    if name != EXAMPLE_LABEL or problem not in EVALUATION_PROBLEMS:
+        return False, "not a canonical public example"
+    sub_dir = SUBS / problem
     canonical_tag = f"harness-{problem}-{name}"
     # Judge into a unique file and publish it over the canonical harness verdict only after
     # every assertion passes. An interrupted/crashed run therefore cannot destroy the last

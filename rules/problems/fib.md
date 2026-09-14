@@ -93,14 +93,13 @@ Mathlib's `Nat.fib`; `fibSpec` is only a compatibility abbreviation for the same
 
 ## Starter Code and Local Testing
 
-Start from [problems/fib/Submission.lean](../../problems/fib/Submission.lean).
+Start from the editable participant starter at
+[problems/fib/Submission.lean](../../problems/fib/Submission.lean).
 It imports `Spec`, uses `Nat.fastFib`, and supplies a complete proof
 via `Nat.fastFib_eq`. The two TODOs mark the implementation and proof to edit.
 
-For comparison, the [baseline](../../examples/submissions/fib/baseline/Submission.lean)
-uses `Nat.fib` directly, while the
-[fast-doubling example](../../examples/submissions/fib/doubling/Submission.lean)
-implements and proves its own algorithm.
+The separate [worked example](../../examples/fib/Submission.lean) implements
+fast doubling and proves its own algorithm against the same fixed specification.
 
 Install Git, Python 3.9+, and `elan`. From the repository root:
 
@@ -123,7 +122,7 @@ Mathlib also provides [Nat.fastFib](https://leanprover-community.github.io/mathl
 and [Nat.fastFib_eq](https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Nat/Fib/Basic.html#Nat.fastFib_eq),
 which proves it equals `Nat.fib`. You may use this faster implementation;
 the correctness target remains `Nat.fib`.
-The supplied fast-doubling example keeps its own algorithm and now proves
+The public fast-doubling example keeps its own algorithm and proves
 correctness using Mathlib's doubling identities. Its logarithmic number of
 stages is not logarithmic bit-time:
 the intermediate integers grow, and the output itself has size proportional

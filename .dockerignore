@@ -22,6 +22,8 @@ tests/retired_saw_quick_test.py
 
 # Local development experiments and historical review notes.
 examples/prototypes/
+# Exclude retired variants and negative fixtures kept only on the local checkout.
+examples/submissions/
 scripts/analyze_polydisc_candidates.py
 scripts/benchmark_polydisc_bareiss_variants.py
 scripts/benchmark_polydisc_representations.py

@@ -126,10 +126,11 @@ apply.
 
 ## Starter Code and Local Testing
 
-Start from [problems/ca-rule110/Submission.lean](../../problems/ca-rule110/Submission.lean).
-It uses `caSpecN` directly with a reflexivity proof. The
-[bit-packed example](../../examples/submissions/ca-rule110/bitpacked/Submission.lean)
-shows an alternative row representation with its own correctness proof.
+Start from the editable participant starter at
+[problems/ca-rule110/Submission.lean](../../problems/ca-rule110/Submission.lean).
+It uses `caSpecN` directly with a reflexivity proof. The separate
+[worked example](../../examples/ca-rule110/Submission.lean) uses a bit-packed
+row representation with its own correctness proof.
 The two TODOs mark the implementation and proof to edit.
 
 Install `elan`, then run from the repository root:

@@ -1,98 +1,49 @@
 {
-  "description": "Green-gate manifest (function paradigm).",
+  "description": "One accepted example per Stage 1 problem at examples/<problem>/Submission.lean; submission is the fixed result label 'example'.",
   "cases": [
     {
       "problem": "fib",
-      "submission": "baseline",
-      "expect": "accepted"
-    },
-    {
-      "problem": "fib",
-      "submission": "starter",
+      "submission": "example",
       "expect": "accepted",
       "scored": true
     },
     {
       "problem": "partition",
-      "submission": "baseline",
+      "submission": "example",
       "expect": "accepted"
     },
     {
       "problem": "mertens",
-      "submission": "baseline",
-      "expect": "accepted"
-    },
-    {
-      "problem": "mertens",
-      "submission": "factor-list",
+      "submission": "example",
       "expect": "accepted",
       "scored": true
     },
     {
       "problem": "primecount",
-      "submission": "baseline",
-      "expect": "accepted"
-    },
-    {
-      "problem": "primecount",
-      "submission": "mathlib-direct",
-      "expect": "accepted"
+      "submission": "example",
+      "expect": "accepted",
+      "scored": true
     },
     {
       "problem": "permanent",
-      "submission": "baseline",
+      "submission": "example",
       "expect": "accepted"
     },
     {
       "problem": "ca-rule110",
-      "submission": "baseline",
-      "expect": "accepted"
+      "submission": "example",
+      "expect": "accepted",
+      "scored": true
     },
     {
       "problem": "sha256",
-      "submission": "baseline",
+      "submission": "example",
       "expect": "accepted"
     },
     {
       "problem": "polydisc",
-      "submission": "baseline",
+      "submission": "example",
       "expect": "accepted"
-    },
-    {
-      "problem": "fib",
-      "submission": "doubling",
-      "expect": "accepted",
-      "scored": true
-    },
-    {
-      "problem": "ca-rule110",
-      "submission": "bitpacked",
-      "expect": "accepted",
-      "scored": true
-    },
-    {
-      "problem": "primecount",
-      "submission": "sqrt",
-      "expect": "accepted",
-      "scored": true
-    },
-    {
-      "problem": "primecount",
-      "submission": "cheat-mathlib",
-      "expect": "rejected",
-      "reason_contains": "comparator"
-    },
-    {
-      "problem": "fib",
-      "submission": "cheat-sorry",
-      "expect": "rejected",
-      "reason_contains": "axiom"
-    },
-    {
-      "problem": "fib",
-      "submission": "cheat-axiom",
-      "expect": "rejected",
-      "reason_contains": "axiom"
     }
   ]
 }

@@ -15,8 +15,10 @@ python3 scripts/run_harness.py
 ```
 
 The sync check compares fixed specifications and dependency pins without changing
-submissions. The harness checks `tests/harness_manifest.json`, including expected
-rejections and minimum performance coverage; a pass does not mean every case completed.
+submissions. The public harness checks `tests/harness_manifest.json`: exactly one
+legal worked submission for each of the eight problems, with expected acceptance
+and minimum performance coverage. Negative and rejection fixtures remain local-only
+and are not distributed. A harness pass does not mean every case completed.
 The internal unit suite is not distributed. For a shorter development check, use
 `python3 scripts/run_harness.py --quick --jobs 2`. The default is one worker;
 each can use several GiB, so measure memory before increasing concurrency.

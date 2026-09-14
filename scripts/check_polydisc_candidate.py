@@ -24,9 +24,7 @@ from problem_layout import evaluation_problem_dir
 ROOT = Path(__file__).resolve().parents[1]
 PROBLEM_DIR = evaluation_problem_dir(ROOT, "polydisc")
 CANDIDATE_SPEC = PROBLEM_DIR / "Spec.lean"
-CANDIDATE_SUBMISSION = (
-    ROOT / "examples" / "submissions" / "polydisc" / "baseline" / "Submission.lean"
-)
+CANDIDATE_SUBMISSION = ROOT / "examples" / "polydisc" / "Submission.lean"
 DEFAULT_INPUTS = [1 << 23, 1 << 33, 1 << 43, 1 << 53, 1 << 63]
 
 LCG_A = 6364136223846793005
