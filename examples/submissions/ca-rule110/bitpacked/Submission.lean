@@ -1,5 +1,7 @@
 import Spec
 
+namespace Submission
+
 theorem testBit_encodeRow (row : List Bool) (i : Nat) :
     (encodeRow row).testBit i = row.getD i false := by
   induction row generalizing i with
@@ -48,11 +50,11 @@ theorem testBit_rotL {m : Nat} (hm : m < 2 ^ 256) {i : Nat} (hi : i < 256) :
   rw [Nat.testBit_and, Nat.testBit_or, Nat.testBit_shiftLeft, Nat.testBit_shiftRight, testBit_M]
   simp only [hi, decide_true, Bool.and_true]
   rcases Nat.eq_zero_or_pos i with hi0 | hipos
-  · subst hi0; simp [testBit_high hm]
+  · subst hi0; simp
   · have h1 : (1 ≤ i) := hipos
     have hmod : (i + 255) % 256 = i - 1 := by omega
     have hhi : m.testBit (255 + i) = false := testBit_high hm (by omega)
-    simp [h1, hmod, hhi, Nat.testBit_shiftLeft]
+    simp [h1, hmod, hhi]
 
 theorem testBit_rotR {m : Nat} (hm : m < 2 ^ 256) {i : Nat} (hi : i < 256) :
     (((m >>> 1) ||| ((m &&& 1) <<< 255)) &&& M).testBit i = m.testBit ((i + 1) % 256) := by
@@ -62,12 +64,10 @@ theorem testBit_rotR {m : Nat} (hm : m < 2 ^ 256) {i : Nat} (hi : i < 256) :
   · subst h255
     have hmod : (255 + 1) % 256 = 0 := by decide
     have hhi : m.testBit (1 + 255) = false := testBit_high hm (by omega)
-    rw [hmod]; simp [hhi, Nat.testBit_and]
+    rw [hmod]; simp [hhi]
   · have hmod : (i + 1) % 256 = i + 1 := by omega
     have hnot : ¬ (255 ≤ i) := by omega
     simp [hmod, hnot, Nat.add_comm 1 i]
-
-namespace Submission
 
 def bstep (m : Nat) : Nat :=
   (M ^^^ (((M ^^^ m) &&& (M ^^^ (((m >>> 1) ||| ((m &&& 1) <<< 255)) &&& M)))

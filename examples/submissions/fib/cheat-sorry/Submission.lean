@@ -1,6 +1,6 @@
 import Spec
 
-/-! Adversarial: impl_correct left as sorry → sorryAx, must be rejected by the axiom audit (R3). -/
+/-! Adversarial: impl_correct left as sorry → sorryAx, must be rejected by the axiom audit (R4). -/
 
 namespace Submission
 
