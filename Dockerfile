@@ -84,6 +84,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       git curl ca-certificates build-essential python3 linux-tools-generic \
     && rm -rf /var/lib/apt/lists/*
 
+# Ubuntu's /usr/bin/perf launcher selects a tools directory using uname -r,
+# which is the host kernel inside a container. Use the image's packaged binary
+# directly so a host/image kernel-package patch mismatch cannot hide it. Require
+# exactly one candidate; PMU permissions and full instructions counting are
+# still checked by the judge on the actual execution host.
+RUN set -eu; set -- /usr/lib/linux-tools-*/perf; \
+    if [ "$#" -ne 1 ] || [ ! -f "$1" ] || [ ! -x "$1" ]; then \
+      echo "expected one executable packaged perf binary under /usr/lib/linux-tools-*/perf" >&2; \
+      exit 1; \
+    fi; \
+    ln -s "$1" /usr/local/bin/perf
+
 ENV ELAN_HOME=/opt/elan
 ENV PATH=/opt/elan/bin:$PATH
 ENV TOOLS_DIR=/work/tools
@@ -150,6 +162,10 @@ RUN useradd -m -u 10001 judge \
     && mkdir -p /work/lean-kernel-challenge/results \
     && chown -R judge:judge /work/lean-kernel-challenge/results
 USER judge
+
+# Verify the runtime user's PATH reaches the packaged binary, not the Ubuntu
+# host-kernel dispatcher. This is a launch check, not PMU host acceptance.
+RUN test "$(command -v perf)" = /usr/local/bin/perf && perf --version
 
 # Exercise the complete pinned bundle read/copy path with the runtime UID.
 # A root-only build gate cannot detect inaccessible dependency directories.
