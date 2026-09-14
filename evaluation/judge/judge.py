@@ -10,7 +10,7 @@ Pipeline per submission (each contestant job runs in a unique temp workspace):
      the ∀n proof). Sandboxed via landrun on Linux; on macOS the pass-through shim strips
      sandboxing. The SHA-256 of the verified Submission bytes is pinned for step 4.
   3. Axiom re-audit of the comparator-emitted solution export (whitelisted axioms only).
-  4. Scored replay: time the comparator-verified correctness export, then for each
+  4. Replay: verify and measure the correctness export separately, then for each
      judge-chosen input n look up the independent official output v, confirm the
      Submission is byte-unchanged from step 2, build+export a uniquely named
      `impl n = v` theorem whose direct proof forces kernel reduction, re-audit THAT export,
@@ -2112,10 +2112,11 @@ def _summarize_samples(samples, metric=None):
     if peaks and all(type(p) is int and p > 0 for p in peaks):
         summary["peak_rss_kb"] = max(peaks)
     if metric == "perf_instructions":
-        insns = [s["instructions"] for s in samples]
-        median = statistics.median(insns)
+        insns = sorted(s["instructions"] for s in samples)
         # Instruction counts are integral. Round .5 upward instead of Python's banker's round.
-        summary["median_instructions"] = int(math.floor(median + 0.5))
+        # Avoid float conversion: counts above 2**53 must remain exact.
+        summary["median_instructions"] = (
+            insns[(len(insns) - 1) // 2] + insns[len(insns) // 2] + 1) // 2
         return summary
     # Preserve the timer's nanosecond resolution. Target-only checks can complete well below
     # one millisecond, so the old three-decimal rounding could turn valid samples into score 0.
@@ -2388,7 +2389,7 @@ def _evaluation_cohort(problem, cfg, inputs, reps, result, performance_plan=None
             "performance_plan_sha256": hashlib.sha256(plan_encoded).hexdigest(),
             "seed_commitment": _seed_commitment(),
         }
-        if evaluation["ranking"]["contract"] == "full-plan-v1":
+        if evaluation["ranking"]["contract"] in _canonical_scorer().FULL_PLAN_CONTRACTS:
             if reference_bundle is None:
                 raise InfraError("full-plan evaluation requires sealed reference answers")
             policy["reference_answers"] = reference_answers.seal(reference_bundle)
@@ -2418,6 +2419,20 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
               "measurement_contract": _measurement_contract_record()}
 
     def finish():
+        report = _canonical_scorer()._replay_report(
+            result, evaluation=cfg.get("evaluation"), plan=resolved_plan, reps=reps)
+        if report is not None:
+            result["replay_report"] = report
+            # Keep legacy raw timing records intact, but do not publish the old
+            # C+T aggregate under a computation-only policy.
+            result["canonical_work"] = {
+                "metric": report["metric"],
+                "correctness_median": report["correctness"].get(
+                    "median_instructions" if TIMING_METRIC == "perf_instructions" else "median_s"),
+                "correctness_role": "verification-only",
+                "computation_total": report["computation_total"],
+                "eligible": report["eligible"],
+            }
         _store_verdict(
             problem,
             sub_name,
@@ -2679,8 +2694,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         # (the CI attestation sanity test relies on that).
         _preflight_perf_counter(env)
 
-    # Score the proof work too. This prevents a specialization table from appearing free merely
-    # because its expensive closed-value proofs live in the already-verified correctness export.
+    # Correctness replay remains mandatory verification. Under computation-total-v1
+    # its measured cost C is reported separately and never enters the ranking total T.
     correctness_status, correctness_payload = _measure_or_defer(
         lambda: time_export(export_file, target=None))
     if not _export_matches(export_file, correctness_export_bytes):
@@ -2946,7 +2961,8 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
         return finish()
 
     # Correctness already passed, so the submission is ACCEPTED regardless of speed; performance
-    # only determines its score. Grouped-v2 awards a valid zero-point score when no case passes.
+    # only determines rank eligibility. New plans rank only complete passes; old sealed
+    # full-plan-v1 policies retain their zero-point incomplete outcomes.
     # Legacy v1 remains accepted-but-unscored when no input completes. Slowness is not a
     # rejection (only incorrect or illegal-axiom submissions are rejected, above; a kernel
     # rejection of a judge-built export contradicts the comparator's own verification and is
@@ -3043,7 +3059,8 @@ def _validated_grouped_score_view(result):
 
 def _score_key(r):
     view = _score_view(r)
-    return _canonical_scorer()._rank_key(view) if view is not None else None
+    scorer = _canonical_scorer()
+    return scorer._rank_key(view) if view is not None and scorer._placement_key(view) is not None else None
 
 
 def _grouped_max_points(result):
@@ -3059,6 +3076,14 @@ def _grouped_max_points(result):
 
 def _grouped_score_summary(result, view):
     """Short verdict text derived from an already validated canonical grouped view."""
+    scorer = _canonical_scorer()
+    if (view.get("ranking_policy") or {}).get("contract") == scorer.COMPUTATION_TOTAL_CONTRACT:
+        work = scorer._format_work(view.get("ranking_work"), view.get("metric"))
+        correctness = scorer._format_work(view.get("correctness_work"), view.get("metric"))
+        unit = _METRIC_LABEL.get(view.get("metric"), view.get("metric"))
+        return (f"{view['completed_slots']}/{view['planned_slots']} passed cases; "
+                f"T={work} {unit}; C={correctness} {unit} (verification only)"
+                + ("" if view["eligible"] else "; unranked"))
     maximum = _grouped_max_points(result)
     base = (
         f"{view['points']}/{maximum} points; "
@@ -3188,7 +3213,23 @@ def leaderboard():
                         == "evaluation-policy-v2"
                     for r in grp
                 )
-                if grouped:
+                computation_total = any(
+                    (r.get("evaluation_cohort") or {}).get("policy", {}).get(
+                        "evaluation", {}).get("ranking", {}).get("contract")
+                    == scorer.COMPUTATION_TOTAL_CONTRACT for r in grp)
+                if computation_total:
+                    lines.append(
+                        f"**canonical {label} ranking — cohort `{md_cell(cohort_id)}`:** "
+                        "complete passes by computation T; equal totals tie; C is verification only")
+                    lines.extend(["", "| rank | submission | passed cases | computation T | correctness C (verification only) |",
+                                  "|---|---|---|---|---|"])
+                    for (r, view), placement in zip(ranked, placements):
+                        work = scorer._format_work(view["ranking_work"], metric)
+                        correctness = scorer._format_work(view["correctness_work"], metric)
+                        lines.append(
+                            f"| {placement if placement is not None else '—'} | {md_cell(r['submission'])} | "
+                            f"{view['completed_slots']}/{view['planned_slots']} | {work} | {correctness} |")
+                elif grouped:
                     full_plan = any(view.get("ranking_policy", {}).get("contract") == "full-plan-v1"
                                     for _, view in ranked)
                     lines.append(
@@ -3237,6 +3278,9 @@ def leaderboard():
                             f"- {md_cell(r['submission'])} — "
                             f"{md_cell(reason or r.get('reason') or 'unscored')}")
                     lines.append("")
+                if computation_total:
+                    for r in grp:
+                        lines.extend(scorer._replay_report_lines(r))
         other = [r for r in prows if r["status"] != "accepted"]
         if other:
             icons = {"rejected": "❌ rejected", "error": "💥 error", "retry": "⏳ retry"}

@@ -47,8 +47,11 @@ return nonzero exit codes.
 The judge checks the interface, universal proof, and permitted axioms, then uses the
 complete unseeded public plan with **one wall-time repetition** per case. Accepted
 does not mean every performance case passed. Wall time is not an official instruction
-count. JSON score fields still use legacy policies, not the revised
-[ranking rule](../rules/problems/README.md#scoring); see
+count. Current JSON reports apply `computation-total-v1` to that development metric:
+correctness C is verification only, and T exists only for a complete pass.
+`replay_report` lists every case, including failures and unattempted cases, with
+separate phase measurements. Failed or unavailable measurements are `null` (shown
+as `—`), never zero. See the [ranking rule](../rules/problems/README.md#scoring) and
 [implementation status](../rules/problems/README.md#implementation-status).
 
 `--timeout` defaults to 120 seconds and is **not a total runtime limit**. It limits

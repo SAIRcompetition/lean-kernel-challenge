@@ -116,7 +116,8 @@ def evaluate(problem, submission_dir, timeout=120):
                 "error",
                 "canonical judge score failed current measurement-contract validation",
             )
-        verdict["scored"] = score_view is not None
+        verdict["scored"] = (score_view is not None
+                             and _judge._canonical_scorer()._placement_key(score_view) is not None)
         return verdict
     finally:
         if temp_path.exists():

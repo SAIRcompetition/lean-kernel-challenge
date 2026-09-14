@@ -39,10 +39,9 @@
       }
     ],
     "ranking": {
-      "contract": "full-plan-v1",
+      "contract": "computation-total-v1",
       "work": "curve",
-      "proof": "gate",
-      "max_points": 100
+      "proof": "gate"
     }
   }
 }
