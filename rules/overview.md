@@ -80,10 +80,10 @@ older submission performed better. A rejected, unscored, or failed latest entry
 does not restore an older result. Later Playground edits and post-deadline
 submissions cannot replace the selected entry.
 
-Daily mode limits are **2 Standard runs** and **5 Light runs**, resetting at
-00:00 UTC. Before launch, organizers will clarify whether these limits apply per
-team or per team/problem, whether formal submissions share the Standard allowance,
-and how failures or cancellations affect usage.
+Standard mode allows **2 runs per day**, resetting at 00:00 UTC. Before launch,
+organizers will clarify whether this limit applies per team or per team/problem,
+whether formal submissions share the Standard allowance, and how failures or
+cancellations affect usage.
 
 ## Rules
 
