@@ -1,6 +1,6 @@
 import Spec
 
-/-! Adversarial: prove impl_correct from a bogus custom axiom → non-whitelisted axiom, rejected (R3). -/
+/-! Adversarial: prove impl_correct from a bogus custom axiom → non-whitelisted axiom, rejected (R4). -/
 
 namespace Submission
 

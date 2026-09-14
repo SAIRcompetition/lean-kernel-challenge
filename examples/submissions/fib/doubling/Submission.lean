@@ -1,11 +1,11 @@
-import Mathlib.Data.Nat.Fib.Basic
+import Spec
 
 /-!
 Fast-doubling submission with correctness proved against Mathlib's `Nat.fib`.
 The number of halving stages is logarithmic; arithmetic uses growing natural
 numbers, so this is not a logarithmic bit-time claim.
 
-Identities (addition-only except one guarded truncated subtraction):
+Doubling identities, with one guarded truncated subtraction:
   F(2m)   = F(m) * (2*F(m+1) - F(m))
   F(2m+1) = F(m+1)^2 + F(m)^2
 
