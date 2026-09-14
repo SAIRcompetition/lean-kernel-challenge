@@ -78,6 +78,111 @@ Rebuild after changes to evaluator sources, paths, pins, patches, or fixed probl
 files. These identities enter the cohort: do not relabel or mix old and new results.
 Direct integrations now invoke `evaluation/judge/judge.py`.
 
+## Export a complete formal-plan candidate
+
+`scripts/export_formal_plan.py` generates the complete policy map needed by a
+platform's formal preparation step. It calls the judge's canonical plan and cohort
+builders, the independent Python reference-answer implementations, and the scorer's
+official-policy validator. It does not run submissions, Lean, or kernel replay.
+No dependency cache or prebuilt `.olean` is required for this data-only step.
+All eight active problems are mandatory; each uses every case in its committed
+configuration, including its own memory limit. Environment overrides such as
+`PERF_COUNT`, shortened timeouts, and remote executors do not change the export.
+
+Use a dedicated clean host checkout at the **same full commit SHA as the image**.
+The command verifies that SHA against Git, refuses tracked modifications and extra
+files in the hashed problem workspaces, and checks again before publishing. Run it
+on the host checkout, not inside the runtime image, which has no Git metadata.
+The image build remains self-contained: it retains all eight evaluator workspaces
+and worked examples, prepares the three locked Mathlib dependency bundles, and runs
+the build gate. It does not retain a reusable `Submission.olean` for each problem;
+Standard evaluation builds each submitted file separately. This procedure does not
+prepare or enable Light submissions.
+
+After building the exact checkout with the full gate, obtain the immutable image ID:
+
+```bash
+REVISION="$(git rev-parse HEAD)"
+docker build --build-arg HARNESS_JOBS=1 \
+  --label org.opencontainers.image.revision="$REVISION" \
+  -t "lean-kernel-judge:$REVISION" .
+IMAGE_ID="$(docker image inspect --format '{{.Id}}' "lean-kernel-judge:$REVISION")"
+```
+
+Archive the build log, image ID, platform, and host-acceptance evidence privately.
+An image label is an operator assertion, not proof that its bytes came from a
+particular checkout. The exporter validates the supplied image ID's format but does
+not inspect Docker, execute that image, or certify PMU/resource availability.
+Verify that association and the executor's identity/version before preparing the
+candidate. Supply the same explicit `EVALUATION_EXECUTOR_ID` and
+`EVALUATION_EXECUTOR_VERSION` to subsequent `run_isolated.sh` jobs; do not let the
+wrapper independently derive a different identity. Fleet integrations must use
+their configured executor pair and the same image ID.
+
+Create a fresh directory outside the repository with mode `0700` and a nonempty, newline-terminated UTF-8
+seed file with mode `0600`, at most 1024 bytes before the newline. Keep secrets out
+of command arguments, shell tracing, and logs. Set the public round label and the
+verified executor pair, then run from the clean checkout:
+
+```bash
+# PRIVATE_DIR names the new mode-0700 directory; seed.txt is already mode 0600.
+# ROUND, EXECUTOR_ID, and EXECUTOR_VERSION are the operator's verified values.
+python3 -B scripts/export_formal_plan.py \
+  --revision "$REVISION" --cohort "$ROUND" --image-id "$IMAGE_ID" \
+  --executor-id "$EXECUTOR_ID" --executor-version "$EXECUTOR_VERSION" \
+  --output "$PRIVATE_DIR/formal-plan.json" < "$PRIVATE_DIR/seed.txt"
+```
+
+Output inside the repository is refused, including through a symlinked parent, so
+private data cannot enter the image context or change a sealed problem digest.
+The output is one atomically published mode-`0600` JSON file; an existing path,
+including a symlink, is never overwritten. Failed generation does not expose a
+partial export. Keep the entire file private: it contains the seed, inputs, and
+answers. Standard output contains only a count and preparation status.
+`formal-plan-export-v1` contains:
+
+- `prepare`: the request body `{cohortId, seed, policies}`, with each complete
+  `evaluation-policy-v2` exactly as the judge will seal it.
+- `reference_answers`: one `reference-answers-v1` bundle for each problem. Its
+  canonical hash is sealed in the corresponding policy.
+- `provenance`: the committed source revision, supplied image and executor identity,
+  fixed toolchain/checker/protocol, evaluator hash, canonical preparation-request
+  hash, and each problem's cohort, policy, plan, and answer identities.
+
+The file is a **prepared, sealed candidate**, not a frozen or active server cohort.
+It performs no network requests and changes no service state. The platform must
+separately satisfy its selection-freeze, runtime-compatibility, acceptance, and
+authorization requirements before consuming `prepare`. Do not send the whole
+export file to the API, and do not replace `policies` with problem `config.json`
+files or reference-answer bundles. Subsequent accepted results must reproduce
+the exact prepared policy, including the seed commitment and answer seal.
+
+If separate files are needed, this extraction creates a new mode-`0700` directory
+and exclusive mode-`0600` files without printing their contents:
+
+```bash
+python3 - "$PRIVATE_DIR/formal-plan.json" "$PRIVATE_DIR/extracted" <<'PY'
+import json, os, pathlib, sys
+source, dest = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+data = json.loads(source.read_text())
+assert data["schema"] == "formal-plan-export-v1"
+os.mkdir(dest, 0o700)  # Existing destinations are errors, never reused.
+items = {"prepare.json": data["prepare"], "provenance.json": data["provenance"]}
+items.update({f"{problem}-answers.json": bundle
+              for problem, bundle in data["reference_answers"].items()})
+for name, value in items.items():
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    fd = os.open(dest / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as out:
+        out.write(payload)
+PY
+```
+
+Archive the original export as the authoritative artifact. If extraction is
+interrupted, use a new destination directory; do not publish partial extracted
+files. A source, input plan, answer, resource, toolchain, image, or executor change
+requires a newly prepared candidate and the corresponding platform transition.
+
 ## Official deployment
 
 Use a Linux host with usable hardware instruction counters, cgroup v2, and Landlock

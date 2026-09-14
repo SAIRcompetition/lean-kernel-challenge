@@ -2295,6 +2295,7 @@ def _evaluator_bundle_digest():
         ROOT / "evaluation" / "judge" / "judge.py",
         ROOT / "evaluation" / "judge" / "reference_answers.py",
         ROOT / "scripts" / "prepare_reference.py",
+        ROOT / "scripts" / "export_formal_plan.py",
         ROOT / "scripts" / "problem_dependencies.py",
         ROOT / "scripts" / "prepare_problem_dependencies.py",
         ROOT / "scripts" / "problem_layout.py",
