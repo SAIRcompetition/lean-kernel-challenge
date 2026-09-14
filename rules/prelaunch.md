@@ -1,12 +1,14 @@
-# Lean Kernel Challenge — Stage 1
+# Lean Kernel Challenge
 
-*Stage 1 of a multi-stage competition on improving the performance of verified
-computation in the Lean 4 kernel.*
+*A multi-stage competition on improving the performance of verified computation
+in the Lean 4 kernel.*
+
+Stage 1 is the first, experimental stage of the series. This page covers its
+registration, schedule, and participation policies.
 
 ## Co-organizers
 
-Stage 1 of the Lean Kernel Challenge is co-organized by (in alphabetical order
-by surname):
+Stage 1 is co-organized by (in alphabetical order by surname):
 
 - Joachim Breitner
 - Leonardo de Moura
@@ -24,62 +26,56 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 
 ## Background
 
-The Lean Kernel Challenge is a competition series that brings the community
-together to improve the performance of verified computation in the Lean
-kernel.
+The Lean Kernel Challenge brings the community together to develop faster algorithms
+and better representations for verified computation. Through these collective
+contributions, the competition aims to support Lean's development and benefit
+Lean users worldwide.
 
-Stage 1 is the first, experimental stage of the series. It begins with a set of
-fundamental computational problems. Later stages will cover a broader range of
-mathematical and scientific fields and more complex problems.
+Verified computation uses the Lean kernel to check computational results as part
+of a proof. Stage 1 begins with fundamental computational problems. Later stages
+will cover a broader range of mathematical and scientific fields and more complex
+problems.
 
-The Lean 4 kernel is the trusted component that checks every proof accepted by
-Lean. It checks definitional equality by reducing expressions; when a proof
-depends on a computed result, that computation becomes part of proof
-verification.
+After Stage 1's final official evaluation, results and benchmark data will be
+released under an open-source license. Together with the algorithms and
+representations developed through the challenge, they will support reproducible
+work and further contributions by the community.
 
-After the final official evaluation phase, its results and benchmark data will be
-released publicly under an open-source license. Together with the algorithms and
-representations developed through the challenge, they will form a collective
-contribution to Lean's development that the global Lean community can
-reproduce, reuse, and build on. Contestant code will remain private during the
-competition and will be published afterward. The submission versions covered,
-code license, and applicable authorization terms will be specified before launch;
-the repository license alone does not establish the license of platform submissions.
+Participant code remains private during Stage 1 and will be published afterward.
+The covered submission versions, code license, and authorization terms will be
+announced before launch; the repository license does not determine the license
+of platform submissions.
 
-## Task
+## Stage 1 Task
 
 For each problem, the organizers provide a trusted Lean specification.
-Participants submit:
+Participants submit an optimized implementation and a machine-checked proof that
+it matches the specification on every input.
 
-1. an implementation optimized for kernel verification; and
-2. a machine-checked proof that the implementation agrees with the
-   specification on every input.
+A submission is Accepted after correctness verification. Each problem has its own
+leaderboard, reporting each test case's computation instruction count. Complete
+results rank by the sum of these counts, lowest first. Correctness-proof checking
+does not contribute to ranking.
 
-The judge first verifies correctness for all inputs; only submissions that pass
-are Accepted. Each problem has its own leaderboard, listing the computation
-instruction count for every test case and ranking complete results by their sum,
-lowest first. Correctness-proof checking does not contribute to ranking.
-
-The problem set spans areas of computational mathematics including algebra,
-number theory, combinatorics, cryptography, and discrete mathematics. The eight
-Stage 1 problems and their scoring groups are published in this repository
-(see the [problem and scoring guide](problems/README.md#scoring)); submissions open at the
-official launch.
+The eight Stage 1 problems cover algebra, number theory, combinatorics,
+cryptography, and discrete mathematics. See [Problems and Scoring](problems/README.md)
+for the specifications, test groups, and ranking rules.
 
 ## Key Dates
 
-- Registration and team formation open: **August 26, 2026**
-- Official launch: **September 15, 2026, 22:00 PT (America/Los_Angeles)**, equivalent to September 16, 2026, 05:00 UTC; tentative and subject to change
-- Submission deadline: **November 20, 2026, 23:59 AoE (UTC−12)**
-- Final evaluation: after the submission deadline; evaluation window to be announced
-- Final results publication: after final evaluation completes; publication date and time to be announced
+- Stage 1 registration and team formation open: **August 26, 2026**
+- Stage 1 official launch: **September 15, 2026, 22:00 PT (America/Los_Angeles)**, equivalent to September 16, 2026, 05:00 UTC; tentative and subject to change
+- Stage 1 submission deadline: **November 20, 2026, 23:59 AoE (UTC−12)**
+- Stage 1 final evaluation: after the submission deadline; evaluation window to be announced
+- Stage 1 final results publication: after final evaluation completes; publication date and time to be announced
 - Stage 2 begins: **December 2026**; the exact date will be announced
 
-The [overview schedule](overview.md#schedule) records these dates and pending announcements.
+The launch time is tentative; any change will be announced before opening.
+See the [Stage 1 rules](stage1-rules.md) for submission and result-publication policies.
 
 ## Registration & Teams
 
-Registration and team management take place on
+Stage 1 registration and team management take place on
 [SAIR](https://competition.sair.foundation/). Participants must have a SAIR
 account, complete the required profile information, and agree to the SAIR
 competition terms before registering. They may compete individually or form a
@@ -88,7 +84,7 @@ team on SAIR.
 ## Official Repository & Playground
 
 The official repository, SAIR Playground, and submission system will be available
-on [SAIR](https://competition.sair.foundation/) from the official launch.
+on [SAIR](https://competition.sair.foundation/) from the Stage 1 official launch.
 
 ## Team Participation and Anti-Cheating Policy
 

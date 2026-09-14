@@ -92,7 +92,7 @@ every natural-number input, but need not use `rfl`; the implementation may use a
 different algorithm from the specification. See the
 [shared submission requirements](rules/problems/README.md#submission) for the
 exact names, types, dependencies, namespace, and axiom policy, and the
-[binding rules](rules/overview.md#rules) for acceptance requirements.
+[binding rules](rules/stage1-rules.md#rules) for acceptance requirements.
 
 ## Scoring
 

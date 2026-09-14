@@ -9,7 +9,7 @@ The fixed `spec` defines the required mathematical result. The submitted
 `impl_correct : ∀ n, impl n = spec n` proves equality for every natural-number
 input; the judge checks this proof, rather than establishing correctness by
 sampling inputs. Independently, `impl` must be total and kernel-reducible to an
-output literal, as required by [R2 and R3](overview.md#rules).
+output literal, as required by [R2 and R3](stage1-rules.md#rules).
 
 A Mathlib specification fixes the correctness target, not the algorithm you
 must execute. For example, the [Fibonacci starter](../problems/fib/Submission.lean)
@@ -87,7 +87,7 @@ organizer review. Infrastructure failures are not contestant performance failure
 A cohort fixes inputs and seed commitment, answers, Spec and dependencies, ranking
 policy, repetitions, budgets, resource limits, toolchain, executor, and measurement
 boundaries. Changing these requires a new cohort and complete rescore; different
-cohorts or metrics are never mixed. See [competition rules](overview.md#evaluation-and-results)
+cohorts or metrics are never mixed. See [competition rules](stage1-rules.md#evaluation-and-results)
 for daily standings, final evaluation, and data release.
 
 Official evaluation requires a secret `PERF_SEED`, rotated between cohorts. The
