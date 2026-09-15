@@ -2,9 +2,8 @@
 
 Run commands from the repository root. For prerequisites and single-file evaluation,
 see [Local evaluation](README.md). The [ranking rule](../rules/problems/README.md#scoring)
-uses `computation-total-v1` in current configurations. Follow the
-[implementation status](../rules/problems/README.md#implementation-status) before release:
-a passing harness or image build does not establish that the hosted platform has upgraded.
+uses `computation-total-v1` in current configurations. A passing harness or image
+build does not establish that the hosted platform has upgraded.
 
 ## Scoring and result versions
 

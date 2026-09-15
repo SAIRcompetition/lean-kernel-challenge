@@ -98,9 +98,7 @@ impl_correct : ∀ n, impl n = partitionSpec n
 The theorem covers **every natural number**, including zero and inputs outside
 the test ranges. Any algorithm satisfying the
 [shared requirements](README.md#submission) is permitted;
-this problem uses core Lean without Mathlib. The locked
-[challenge](../../evaluation/problems/partition/Challenge.lean) and
-[solution bridge](../../evaluation/problems/partition/Solution.lean) fix the interface.
+this problem uses core Lean without Mathlib.
 
 ## Starter Code and Local Testing
 

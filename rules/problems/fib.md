@@ -78,7 +78,6 @@ impl : Nat → Nat
 impl_correct : ∀ n, impl n = Nat.fib n
 ```
 
-The [locked bridge](../../evaluation/problems/fib/Solution.lean) fixes the interface.
 Prove equality for **all `n`**, not just the test cases; any permitted algorithm
 and proof may be used.
 This problem permits the pinned `Mathlib.Data.Nat.Fib.Basic` module and its

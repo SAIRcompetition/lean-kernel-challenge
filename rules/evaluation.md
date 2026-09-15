@@ -1,7 +1,7 @@
 # Stage 1 — Evaluation
 
 See [Problems and Scoring](problems/README.md#scoring) for test plans and ranking,
-and [implementation status](problems/README.md#implementation-status) for deployment.
+and the [maintainer guide](../evaluation/maintainers.md) for deployment.
 
 ## Specification and implementation
 

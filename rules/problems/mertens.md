@@ -77,7 +77,6 @@ impl : Nat → Int
 impl_correct : ∀ n, impl n = mertensSpec n
 ```
 
-The [locked bridge](../../evaluation/problems/mertens/Solution.lean) fixes the interface.
 Prove equality for **all `n`**; you may compute the sum differently from Mathlib.
 Use only this problem's supplied pinned Mathlib closure and follow the
 [shared requirements](README.md#submission).

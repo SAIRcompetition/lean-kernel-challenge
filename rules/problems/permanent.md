@@ -105,9 +105,7 @@ The proof covers **every `Nat`**, not just the scored dimensions or sampled seed
 It must handle dimensions below 3 and arbitrarily large decoded dimensions.
 Any algorithm satisfying the
 [shared requirements](README.md#submission) is permitted;
-this problem uses core Lean without Mathlib. The locked
-[challenge](../../evaluation/problems/permanent/Challenge.lean) and
-[solution bridge](../../evaluation/problems/permanent/Solution.lean) fix the interface.
+this problem uses core Lean without Mathlib.
 
 ## Starter Code and Local Testing
 

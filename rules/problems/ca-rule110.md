@@ -35,9 +35,7 @@ Cell 0 therefore reads cell 255 on its left, and cell 255 reads cell 0 on its ri
 All cells update simultaneously from the previous row.
 At zero steps, the seeded initial row is returned unchanged.
 
-The binding files are [`Challenge.lean`](../../evaluation/problems/ca-rule110/Challenge.lean),
-[`Solution.lean`](../../evaluation/problems/ca-rule110/Solution.lean), and
-[`config.json`](../../evaluation/problems/ca-rule110/config.json).
+See the [test configuration](../../evaluation/problems/ca-rule110/config.json).
 
 ## Input
 

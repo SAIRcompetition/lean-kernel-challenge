@@ -92,7 +92,7 @@ total or rank.
 Daily standings publish only complete provisional editions; final evaluation runs
 separately after the deadline. See [Evaluation](evaluation.md) for measurement,
 environment, limits, and local setup. Official use requires
-[deployment and host validation](problems/README.md#implementation-status);
+[deployment and host validation](../evaluation/maintainers.md);
 local wall-time results are not official rankings.
 
 ## Key Dates

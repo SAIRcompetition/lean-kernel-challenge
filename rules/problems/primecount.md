@@ -68,7 +68,6 @@ impl : Nat → Nat
 impl_correct : ∀ n, impl n = primeCountSpec n
 ```
 
-The [locked bridge](../../evaluation/problems/primecount/Solution.lean) fixes the interface.
 Prove equality for **all `n`**, including zero and inputs outside the test ranges.
 Your algorithm may differ from Mathlib's. Use only this problem's supplied pinned
 Mathlib closure and follow the

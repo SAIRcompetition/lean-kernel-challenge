@@ -51,8 +51,7 @@ count. Current JSON reports apply `computation-total-v1` to that development met
 correctness C is verification only, and T exists only for a complete pass.
 `replay_report` lists every case, including failures and unattempted cases, with
 separate phase measurements. Failed or unavailable measurements are `null` (shown
-as `—`), never zero. See the [ranking rule](../rules/problems/README.md#scoring) and
-[implementation status](../rules/problems/README.md#implementation-status).
+as `—`), never zero. See the [ranking rule](../rules/problems/README.md#scoring).
 
 `--timeout` defaults to 120 seconds and is **not a total runtime limit**. It
 replaces the development budgets for correctness replay and each case's shared

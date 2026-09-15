@@ -40,9 +40,7 @@ the repository's subresultant/Bareiss computation to `Polynomial.discr`.
 `discSpec` remains the binding core-Lean specification; Mathlib imports are not
 supplied for this problem.
 
-The binding files are [`Challenge.lean`](../../evaluation/problems/polydisc/Challenge.lean),
-[`Solution.lean`](../../evaluation/problems/polydisc/Solution.lean), and
-[`config.json`](../../evaluation/problems/polydisc/config.json).
+See the [test configuration](../../evaluation/problems/polydisc/config.json).
 
 ## Input
 

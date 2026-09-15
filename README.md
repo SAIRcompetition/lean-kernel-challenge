@@ -105,7 +105,7 @@ lowest first. Correctness-proof work is excluded, and a performance failure
 leaves an Accepted submission without a complete total or rank. There is no
 cross-problem total. The unified
 [problem and scoring guide](rules/problems/README.md#scoring) gives all cases,
-limits, and the current [implementation status](rules/problems/README.md#implementation-status).
+scoring rules, and [resource limits](rules/problems/README.md#limits).
 Current configurations use `computation-total-v1`; previously sealed cohorts retain
 their original ranking policy.
 
