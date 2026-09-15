@@ -1,7 +1,5 @@
 # Polynomial Discriminant (`polydisc`)
 
-[Back to the Stage 1 problem guide](README.md)
-
 ## Problem Statement
 
 Compute the exact signed discriminant of a generated monic degree-24 integer
