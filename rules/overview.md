@@ -23,11 +23,17 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 
 ## Background
 
-The Lean Kernel Challenge brings the community together to improve verified
-computation in the Lean 4 kernel through faster algorithms and better representations,
-supporting Lean's development and users worldwide. Stage 1 is experimental and
-starts with fundamental problems; later stages will cover more complex problems
-across mathematics and science. We acknowledge the
+The Lean Kernel Challenge brings the community together to develop faster algorithms
+and better representations for verified computation. Through these collective
+contributions, the competition aims to support Lean's development and benefit
+Lean users worldwide.
+
+Verified computation uses the Lean kernel to check computational results as part
+of a proof. Stage 1 is the first, experimental stage of the series, beginning with
+fundamental problems. Later stages will cover a broader range of mathematical and
+scientific fields and more complex problems.
+
+We acknowledge the
 [Lean Kernel Arena](https://github.com/leanprover/lean-kernel-arena), which informed
 the challenge's design. Arena benchmarks alternative Lean proof checkers; Stage 1
 instead optimizes algorithms for fixed computational tasks, with correctness
@@ -98,8 +104,8 @@ selected entry.
   allowed only when the result remains kernel-reducible to an output literal.
 - **R3 — Correctness.** Provide a complete, kernel-checked proof of
   `∀ n, impl n = spec n`. Passing test cases is not a substitute for this proof.
-- **R4 — Axioms.** Only `propext`, `Quot.sound`, and `Classical.choice` are permitted;
-  submissions using `sorry`, `admit`, `native_decide`, or additional axioms are rejected.
+- **R4 — Proof restrictions.** Submissions using `sorry`, `admit`, `native_decide`,
+  or unapproved axioms are rejected.
 - **R5 — Ranking.** Rank by computation instructions only. Correctness-proof checking
   never contributes to the total or breaks ties.
 
