@@ -124,8 +124,7 @@ labeled **verification only**; if any of its three repetitions fails or is
 unattempted, show C as `—`. Do not merge correctness and computation replay into
 a single cost. Replay-specific wall-time and memory measurements must also
 identify their phase and units.
-Case IDs must not reveal hidden input values. Publication follows the
-[results policy](../evaluation.md#standings-and-publication).
+Case IDs must not reveal hidden input values.
 
 Infrastructure failures require review or re-evaluation and are not contestant
 performance failures. See [evaluation](../evaluation.md) for measurement boundaries.
