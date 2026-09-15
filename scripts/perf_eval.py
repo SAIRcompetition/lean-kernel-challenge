@@ -42,9 +42,11 @@ def _failure(problem, submission, status, reason):
 def evaluate(problem, submission_dir, timeout=120):
     """Evaluate through the canonical judge with one timing repetition.
 
-    ``timeout`` replaces the configured timer-process budget for this development run
-    and is included in the resulting cohort hash.  All artifacts first go to a private
-    temporary results directory; the CLI publishes only the final JSON requested below.
+    ``timeout`` replaces this development run's correctness replay, case build/export,
+    and generic timing/legacy value-evaluation budgets. Comparator and audit budgets
+    stay fixed. The effective budgets are included in the cohort hash. All artifacts
+    first go to a private temporary results directory; the CLI publishes only the
+    final JSON requested below.
     """
     submission_path = Path(submission_dir)
     submission = submission_path.name
@@ -70,6 +72,8 @@ def evaluate(problem, submission_dir, timeout=120):
 
     old_results = _judge.RESULTS
     old_timeout = _judge.TIMING_TIMEOUT
+    old_correctness_timeout = _judge.CORRECTNESS_REPLAY_TIMEOUT
+    old_case_build_timeout = _judge.CASE_BUILD_EXPORT_TIMEOUT
     old_executor = _judge._PINNED_EXECUTOR[0]
     old_executor_identity = _judge._PINNED_EXECUTOR_IDENTITY[0]
     temp_path = Path(tempfile.mkdtemp(prefix="lean-kernel-perf-eval-"))
@@ -80,6 +84,8 @@ def evaluate(problem, submission_dir, timeout=120):
         job_dir.mkdir()
         _judge.RESULTS = private_results
         _judge.TIMING_TIMEOUT = timeout
+        _judge.CORRECTNESS_REPLAY_TIMEOUT = timeout
+        _judge.CASE_BUILD_EXPORT_TIMEOUT = timeout
         try:
             # The canonical judge prints its own one-line status. Suppress that internal
             # line so this wrapper has one stable human-readable output format.
@@ -125,6 +131,8 @@ def evaluate(problem, submission_dir, timeout=120):
             shutil.rmtree(temp_path, ignore_errors=True)
         _judge.RESULTS = old_results
         _judge.TIMING_TIMEOUT = old_timeout
+        _judge.CORRECTNESS_REPLAY_TIMEOUT = old_correctness_timeout
+        _judge.CASE_BUILD_EXPORT_TIMEOUT = old_case_build_timeout
         _judge._PINNED_EXECUTOR[0] = old_executor
         _judge._PINNED_EXECUTOR_IDENTITY[0] = old_executor_identity
 

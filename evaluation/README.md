@@ -54,10 +54,20 @@ separate phase measurements. Failed or unavailable measurements are `null` (show
 as `—`), never zero. See the [ranking rule](../rules/problems/README.md#scoring) and
 [implementation status](../rules/problems/README.md#implementation-status).
 
-`--timeout` defaults to 120 seconds and is **not a total runtime limit**. It limits
-correctness replay and each case's shared build/export work. Target replay uses the
-smaller of this value and the group's limit. Comparator and audit limits remain
-3,600 and 300 seconds. Cases have independent budgets, so a run can take longer.
+`--timeout` defaults to 120 seconds and is **not a total runtime limit**. It
+replaces the development budgets for correctness replay and each case's shared
+build/export work; it also sets the legacy value-evaluation budget. A positive
+override can increase or decrease those budgets. Target replay uses the smaller
+of this value and the group's limit. The comparator remains fixed at 600 seconds,
+the correctness axiom audit at 60 seconds, and each case's shared binding-plus-axiom
+audit at 300 seconds. With the default, correctness replay and shared build/export
+each have 120 seconds, while target replay retains its group's 30-, 60-, or
+120-second limit. Cases have independent budgets, so a run can take longer.
+
+This development override is `TIMING_TIMEOUT_SECONDS`; official evaluation
+forbids it and uses the [sealed stage budgets](../rules/problems/README.md#limits).
+Local quick checks do not demonstrate that a proof finishes under the complete
+official plan or that a hosted platform has adopted the revised budgets.
 
 Unset `PERF_COUNT`, official seed/cohort, remote-executor, and non-wall-time settings.
 There is no official, private-seed, or reduced-plan mode. See

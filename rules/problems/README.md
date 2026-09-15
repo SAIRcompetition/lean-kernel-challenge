@@ -137,12 +137,12 @@ this does not apply to provisional reference inputs or seeds.
 
 | Check | Time limit |
 | --- | --- |
-| Universal correctness comparator | 3,600 s |
-| Correctness axiom audit | 300 s |
-| Correctness replay | 1,800 s per repetition; all three must finish |
-| Per-case theorem build and export | 1,800 s combined per case |
-| Per-case performance-export binding and axiom audits | 300 s combined per case |
-| Target replay | Per-repetition watchdog in the problem's test table |
+| Universal correctness comparator | 600 s |
+| Correctness axiom audit | 60 s |
+| Correctness replay | 300 s per repetition; all three must finish |
+| Per-case theorem build and export | 600 s shared by build and export together |
+| Per-case performance-export binding and axiom audits | 300 s shared by both checks together |
+| Target replay | 30, 60, or 120 s per repetition, as specified by the problem's test group |
 
 All three target replays must finish within their watchdog; any published
 instruction limit applies to the median. Watchdogs include whole-process overhead,
@@ -151,6 +151,12 @@ and target-replay timeouts do not consume later cases' limits or stop them being
 attempted. A failed or unfinished performance-export binding check stops
 the run for review, as described in [evaluation](../evaluation.md#evaluation-process).
 Reference-answer preparation is independent of submissions and outside these budgets.
+
+These revised budgets are the proposed deployment contract, not a guarantee that
+every valid proof or implementation completes. They require a rebuilt evaluator,
+aligned platform consumers, and a new sealed cohort before use. Previously sealed
+budgets remain unchanged; a comparison set must be re-evaluated together when its
+budgets change. See [budget migration and task deadlines](../../evaluation/maintainers.md#stage-budgets-and-task-deadlines).
 
 Memory is **8192 MiB (8 GiB) for permanent** and provisionally **4096 MiB (4 GiB)
 for each other problem**, with no extra swap. Limits cover the entire evaluation

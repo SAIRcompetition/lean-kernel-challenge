@@ -32,6 +32,66 @@ Raw verdicts and `replay_report` are private until the applicable publication ru
 allows release. `judge.py leaderboard` produces local development reports, including
 unranked and failed runs; do not publish those files as the public board.
 
+## Stage budgets and task deadlines
+
+The proposed stage-budget revision keeps `evaluation-policy-v2` and
+`computation-total-v1`. It expands the sealed `budgets` record from four fields
+to seven so correctness replay, case preparation, and case audits have separate limits:
+
+| Budget field | Revised official value | Scope |
+| --- | --- | --- |
+| `comparator_timeout_seconds` | 600 | Correctness comparator |
+| `audit_timeout_seconds` | 60 | Correctness axiom audit |
+| `correctness_replay_timeout_seconds` | 300 | Each of the three correctness replay processes |
+| `case_build_export_timeout_seconds` | 600 | One shared deadline across the case theorem's build and export |
+| `case_audit_timeout_seconds` | 300 | One shared deadline across the case's binding check and axiom audit |
+| `timing_timeout_seconds` | 1800 | Retained generic/legacy timing ceiling; not the new correctness or case-preparation budget |
+| `perf_phase_budget_seconds` | 0 | No shared aggregate deadline across grouped cases |
+
+The per-group target watchdogs remain 30, 60, and 120 seconds **per repetition**.
+They include the timing process's startup, parsing, and dependency replay even
+though those steps are outside its instruction counter. Case binding must succeed;
+an unfinished binding check remains fatal. The axiom check receives the remainder
+of that case's shared 300-second audit deadline. A case build/export timeout or a
+nonfatal case failure does not consume later cases' budgets.
+
+All three new fields must appear together. Official historical v2 records with only
+the original four fields retain exactly their frozen 3600/300/1800/0 budget tuple;
+v1 retains its four-field schema. Do not add fields to, relabel, or recompute the
+identity of historical policies. Consumers must recognize the new seven-field
+record and reject incomplete or mixed profiles before importing new results.
+Rebuild the evaluator image, update platform validators and runtime compatibility,
+prepare a new sealed candidate/cohort, and re-evaluate the comparison set together.
+The proposed values are reviewable configuration limits, not evidence of hosted
+activation or a guarantee that all valid proofs meet them.
+
+For scheduling, the main watchdog allowances for one full official run sum to:
+
+```text
+600 comparator + 60 correctness audit + 3 × 300 correctness replay
++ sum_over_cases(600 shared build/export + 300 shared case audits + 3 × group_target_limit)
+```
+
+With the current three groups, this is **8,220 seconds (2 h 17 min)** for six
+cases, two per group. For permanent's fifteen cases, five per group, it is
+**18,210 seconds (5 h 3 min 30 s)**. These are planning totals for the named stages,
+not complete end-to-end wall-time bounds or typical runtimes: setup, independent
+reference-answer preparation, auxiliary checks, orchestration, and cleanup need
+their own allowance. Do not blindly reuse or raise one global timeout. Check the
+actual plan and every encompassing task/container/executor deadline so the
+declared stages and those allowances fit. A shorter outer deadline must not
+silently truncate later cases or turn an incomplete run into a completed result.
+
+Development `TIMING_TIMEOUT_SECONDS` retains its existing override semantics:
+a valid positive value replaces the correctness-replay, case build/export, and
+generic timing/legacy value-evaluation budgets, and can increase or decrease them.
+Target replay uses the smaller of that value and its group's watchdog. Comparator
+and audit limits are unaffected: the comparator remains 600 seconds, correctness
+axiom audit 60 seconds, and shared case binding-plus-axiom audit 300 seconds.
+The local wrapper's `--timeout` and the harness's `--timeout` use this override. It is forbidden for
+official runs and must not be used to make a new cohort fit an undersized platform
+deadline.
+
 ## Tools and regression checks
 
 ```bash

@@ -108,6 +108,8 @@ _CFG = json.loads((ROOT / "evaluation" / "config.json").read_text())
 _J = _CFG["judge"]
 COMPARATOR_TIMEOUT = _J["comparator_timeout_seconds"]
 AUDIT_TIMEOUT = _J["audit_timeout_seconds"]
+# Grouped binding and axiom checks share this independent per-case allowance.
+CASE_AUDIT_TIMEOUT = _J["case_audit_timeout_seconds"]
 def _int_env(name, default):
     """Positive-integer env override, ignoring junk (dev knobs must never break a real run)."""
     try:
@@ -120,6 +122,14 @@ def _int_env(name, default):
 # Dev override so the green gate can shrink the budget WITHOUT editing evaluation/config.json —
 # hand-editing it risks committing a tiny debug budget into the official configuration.
 TIMING_TIMEOUT = _int_env("TIMING_TIMEOUT_SECONDS", _J["timing_timeout_seconds"])
+# Grouped correctness replay and per-case preparation have independent budgets.
+# Keep the existing local-development override applying to both; official runs
+# reject that override before any submission is executed. Legacy v1 keeps its
+# original shared timing ceiling and four-field budget record.
+CORRECTNESS_REPLAY_TIMEOUT = _int_env(
+    "TIMING_TIMEOUT_SECONDS", _J["correctness_replay_timeout_seconds"])
+CASE_BUILD_EXPORT_TIMEOUT = _int_env(
+    "TIMING_TIMEOUT_SECONDS", _J["case_build_export_timeout_seconds"])
 # Legacy-v1 whole-phase ceiling retained for compatibility tests.
 # Grouped-v2 cases are independently bounded and deliberately do not share this deadline.
 # On legacy exhaustion, remaining slots are marked and a normal verdict is emitted.
@@ -2160,8 +2170,9 @@ def _performance_timeout_caps(performance_plan, n):
     """Return independent preparation and scored-replay caps for one slot.
 
     A group's published ``timeout_seconds`` limits only the measured target
-    replay. The unscored value oracle and theorem build/export retain the
-    evaluator timing timeout, while the axiom audit retains its audit timeout.
+    replay. Grouped theorem build/export has its own shared preparation budget;
+    the legacy value oracle retains the old timing timeout. Grouped binding and
+    axiom checks share a case audit budget separate from the correctness audit.
     Legacy callers may additionally intersect these caps with their aggregate
     development deadline. Grouped-v2 cases deliberately do not share one.
     """
@@ -2178,10 +2189,18 @@ def _performance_timeout_caps(performance_plan, n):
     )
     return {
         "value_eval": TIMING_TIMEOUT,
-        "build_export": TIMING_TIMEOUT,
-        "axiom_audit": AUDIT_TIMEOUT,
+        "build_export": (CASE_BUILD_EXPORT_TIMEOUT
+                         if performance_plan is not None else TIMING_TIMEOUT),
+        "axiom_audit": (CASE_AUDIT_TIMEOUT
+                        if performance_plan is not None else AUDIT_TIMEOUT),
         "target_replay": replay_timeout,
     }
+
+
+def _correctness_replay_timeout(performance_plan):
+    """Keep grouped proof verification independent of case preparation."""
+    return (CORRECTNESS_REPLAY_TIMEOUT
+            if performance_plan is not None else TIMING_TIMEOUT)
 
 
 def _collect_perf_slots(inputs, probe, deadline=None, performance_plan=None):
@@ -2381,6 +2400,9 @@ def _evaluation_cohort(problem, cfg, inputs, reps, result, performance_plan=None
             **common,
             "budgets": {
                 **common["budgets"],
+                "correctness_replay_timeout_seconds": CORRECTNESS_REPLAY_TIMEOUT,
+                "case_build_export_timeout_seconds": CASE_BUILD_EXPORT_TIMEOUT,
+                "case_audit_timeout_seconds": CASE_AUDIT_TIMEOUT,
                 # Grouped cases are independently bounded.  Zero is an explicit,
                 # sealed statement that no order-dependent aggregate deadline applies.
                 "perf_phase_budget_seconds": 0,
@@ -2698,7 +2720,9 @@ def judge(job_dir: Path, problem, submission_dir, reps, tag):
     # Correctness replay remains mandatory verification. Under computation-total-v1
     # its measured cost C is reported separately and never enters the ranking total T.
     correctness_status, correctness_payload = _measure_or_defer(
-        lambda: time_export(export_file, target=None))
+        lambda: time_export(
+            export_file, target=None,
+            timeout_cap=_correctness_replay_timeout(resolved_plan)))
     if not _export_matches(export_file, correctness_export_bytes):
         result["status"], result["reason"] = "error", "correctness export changed during timing"
         return finish()
