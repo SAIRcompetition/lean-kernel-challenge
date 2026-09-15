@@ -54,7 +54,9 @@ The proof covers **every `n : Nat`**, not just test cases. For packed inputs, th
 means all instances produced by the fixed decoder and generator, not every
 possible matrix or byte string.
 
-You may change the algorithm or representation; the proof need not use `rfl`.
+Submitted code must be human-readable. Compressed data and bytecode are not allowed.
+You may change the algorithm or representation within these rules; the proof
+need not use `rfl`.
 The implementation must be total and kernel-reducible to its output literal.
 Use only locked dependencies. Permitted proof axioms are `propext`, `Quot.sound`,
 and `Classical.choice`; `sorry` and `native_decide` are not accepted.

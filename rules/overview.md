@@ -68,13 +68,13 @@ post-deadline entries cannot replace the selection.
 ## Rules
 
 - **R1 — Format.** Submit only `Submission.lean`; do not modify fixed workspace files.
+  Submitted code must be human-readable. Compressed data and bytecode are not allowed.
 - **R2 — Computation.** Use only locked dependencies and a total implementation
   that kernel-reduces to its output literal. `partial` and `unsafe` are prohibited.
 - **R3 — Correctness.** Prove `∀ n, impl n = spec n` in Lean; passing tests is not enough.
 - **R4 — Proof restrictions.** `sorry`, `admit`, `native_decide`, and unapproved
   axioms cause rejection.
-- **R5 — Ranking.** Only computation instruction counts affect rank;
-  correctness-proof checking never contributes or breaks ties.
+- **R5 — Ranking.** Only computation instruction counts affect rank.
 
 Well-founded recursion, alternative algorithms and representations, hardcoded
 tables, and special cases are allowed if they satisfy these rules and the
