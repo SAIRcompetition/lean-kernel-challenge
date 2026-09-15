@@ -1,9 +1,7 @@
 # Example submissions
 
-Each Stage 1 problem has one complete example in `<problem>/Submission.lean`.
-All examples provide an implementation and a universal correctness proof.
-They are starting points, not guarantees that every performance case finishes
-within its limits.
+Each problem has one complete implementation and universal proof in
+`<problem>/Submission.lean`. Examples may exceed performance limits.
 
 | Problem | Example algorithm |
 | --- | --- |
@@ -18,22 +16,17 @@ within its limits.
 
 ## Use an example
 
-Examples are single submission files, not standalone Lean packages. To use one
-as your starting point, first back up your work, then place it in the matching
-`problems/<id>/` package as `Submission.lean`. Keep the fixed `Spec.lean` and
-environment files unchanged; follow the [participant quick start](../README.md#quick-start).
+Examples are single files, not standalone Lean packages. Back up your work,
+then copy an example to `problems/<id>/Submission.lean`. Keep `Spec.lean` and
+environment files unchanged and follow the [quick start](../README.md#quick-start).
 
-Alternatively, evaluate an example without replacing your code. From the
-repository root:
+Or evaluate it without replacing your code, from the repository root:
 
 ```bash
 bash evaluation/setup.sh --problem fib
 python3 evaluation/run.py --problem fib --submission examples/fib/Submission.lean
 ```
 
-Replace `fib` with the selected problem. This optional local evaluation checks
-correctness and measures kernel wall time, not official instruction-count rankings.
-See [local evaluation](../evaluation/README.md) and the
+Replace `fib` with your problem ID. This checks correctness and kernel wall time,
+not official scores. See [local evaluation](../evaluation/README.md) and
 [problem statements](../rules/problems/README.md).
-
-The public harness checks all eight examples.
