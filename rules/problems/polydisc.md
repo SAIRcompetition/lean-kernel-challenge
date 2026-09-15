@@ -1,4 +1,4 @@
-# Degree-24 Polynomial Discriminant (`polydisc`)
+# Polynomial Discriminant (`polydisc`)
 
 [Back to the Stage 1 problem guide](README.md)
 

@@ -13,7 +13,7 @@ Each problem page gives its specification, examples, and test sizes.
 | [Prime counting (`primecount`)](primecount.md) | Inclusive prime-counting bound | `Nat` |
 | [Matrix permanent (`permanent`)](permanent.md) | Packed dimension and seed | `Nat` |
 | [Rule 110 (`ca-rule110`)](ca-rule110.md) | Packed evolution steps and seed | `Nat` |
-| [SHA-256 chain (`sha256`)](sha256.md) | Packed chain length and seed | `Nat` |
+| [SHA-256 (`sha256`)](sha256.md) | Packed chain length and seed | `Nat` |
 | [Polynomial discriminant (`polydisc`)](polydisc.md) | Degree-24 width-band and instance selector | `Int` |
 
 ## Quick start

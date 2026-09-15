@@ -1,4 +1,4 @@
-# SHA-256 chain — participant workspace
+# SHA-256 — participant workspace
 
 Edit `Submission.lean` and prove `∀ n, impl n = sha256Spec n`. See the
 [problem statement](../../rules/problems/sha256.md) for the specification,

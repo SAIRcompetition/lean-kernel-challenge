@@ -11,7 +11,7 @@ Each problem has one complete implementation and universal proof in
 | [Prime counting](primecount/Submission.lean) | Trial division up to the square root |
 | [Matrix permanent](permanent/Submission.lean) | Sparse depth-first traversal with an occupied-column mask |
 | [Rule 110](ca-rule110/Submission.lean) | Bit-packed state and evolution |
-| [SHA-256 chain](sha256/Submission.lean) | A rolling 16-word message schedule |
+| [SHA-256](sha256/Submission.lean) | A rolling 16-word message schedule |
 | [Polynomial discriminant](polydisc/Submission.lean) | Subresultants with a Bareiss fallback |
 
 ## Use an example

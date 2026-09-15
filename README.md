@@ -68,7 +68,7 @@ the specification, examples, and limits.
 | [Prime counting (`primecount`)](rules/problems/primecount.md) | The number of primes up to n | [Submission](problems/primecount/Submission.lean) |
 | [Matrix permanent (`permanent`)](rules/problems/permanent.md) | The permanent of a generated 0/1 matrix | [Submission](problems/permanent/Submission.lean) |
 | [Rule 110 (`ca-rule110`)](rules/problems/ca-rule110.md) | Evolution of a seeded 256-cell cyclic row | [Submission](problems/ca-rule110/Submission.lean) |
-| [SHA-256 chain (`sha256`)](rules/problems/sha256.md) | Repeated hashing of a 32-byte digest | [Submission](problems/sha256/Submission.lean) |
+| [SHA-256 (`sha256`)](rules/problems/sha256.md) | Repeated hashing of a 32-byte digest | [Submission](problems/sha256/Submission.lean) |
 | [Polynomial discriminant (`polydisc`)](rules/problems/polydisc.md) | The exact discriminant of a generated monic degree-24 polynomial | [Submission](problems/polydisc/Submission.lean) |
 
 There is also one [worked example](examples/README.md) per problem at
