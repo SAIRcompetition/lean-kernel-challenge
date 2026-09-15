@@ -58,8 +58,9 @@ as `—`), never zero. See the [ranking rule](../rules/problems/README.md#scorin
 replaces the development budgets for correctness replay and each case's shared
 build/export work; it also sets the legacy value-evaluation budget. A positive
 override can increase or decrease those budgets. Target replay uses the smaller
-of this value and the group's limit. Comparator and audit limits remain fixed at
-600 and 60 seconds. With the default, correctness replay and shared build/export
+of this value and the group's limit. The comparator remains fixed at 600 seconds,
+the correctness axiom audit at 60 seconds, and each case's shared binding-plus-axiom
+audit at 300 seconds. With the default, correctness replay and shared build/export
 each have 120 seconds, while target replay retains its group's 30-, 60-, or
 120-second limit. Cases have independent budgets, so a run can take longer.
 

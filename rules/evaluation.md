@@ -34,7 +34,7 @@ Mathlib targets and the five repository-defined targets.
    for each case. Check that the export binds the verified implementation to
    this input and the judge-generated target, then audit its permitted axioms.
    Building and exporting share one 600-second budget for the case; binding and
-   axiom checks then share a separate 60-second budget.
+   axiom checks then share a separate 300-second budget.
 4. **Measure computation.** In three separate replay processes, measure only the
    target declaration's kernel check. It forces computation of `impl n` and
    comparison with the exact output literal.
@@ -86,7 +86,7 @@ organizer review. Infrastructure failures are not contestant performance failure
   binding check, including timeout or memory exhaustion, stops the run with
   `error` for organizer review and re-evaluation. An unfinished check does not
   establish that the implementation changed. Binding and case axiom audits share
-  one 60-second budget per case; the axiom audit receives only the time remaining
+  one 300-second budget per case; the axiom audit receives only the time remaining
   after the binding check.
 - Later cases continue after a case failure. Fatal evaluator failures require review
   and re-evaluation; unattempted cases remain explicitly unattempted. A timeout alone

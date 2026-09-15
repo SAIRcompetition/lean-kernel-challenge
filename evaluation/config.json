@@ -4,6 +4,7 @@
     "audit_timeout_seconds": 60,
     "correctness_replay_timeout_seconds": 300,
     "case_build_export_timeout_seconds": 600,
+    "case_audit_timeout_seconds": 300,
     "timing_timeout_seconds": 1800,
     "perf_phase_budget_seconds": 10800,
     "timing_reps": 3,

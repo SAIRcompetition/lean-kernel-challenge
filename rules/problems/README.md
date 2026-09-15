@@ -141,7 +141,7 @@ this does not apply to provisional reference inputs or seeds.
 | Correctness axiom audit | 60 s |
 | Correctness replay | 300 s per repetition; all three must finish |
 | Per-case theorem build and export | 600 s shared by build and export together |
-| Per-case performance-export binding and axiom audits | 60 s shared by both checks together |
+| Per-case performance-export binding and axiom audits | 300 s shared by both checks together |
 | Target replay | 30, 60, or 120 s per repetition, as specified by the problem's test group |
 
 All three target replays must finish within their watchdog; any published

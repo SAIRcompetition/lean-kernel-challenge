@@ -70,6 +70,7 @@ STAGE1_OFFICIAL_BUDGETS = {
     "timing_timeout_seconds": _PIPELINE_POLICY["judge"]["timing_timeout_seconds"],
     "correctness_replay_timeout_seconds": _PIPELINE_POLICY["judge"]["correctness_replay_timeout_seconds"],
     "case_build_export_timeout_seconds": _PIPELINE_POLICY["judge"]["case_build_export_timeout_seconds"],
+    "case_audit_timeout_seconds": _PIPELINE_POLICY["judge"]["case_audit_timeout_seconds"],
     "perf_phase_budget_seconds": 0,
 }
 STAGE1_OFFICIAL_TOOLCHAIN = _PIPELINE_POLICY["toolchain"]

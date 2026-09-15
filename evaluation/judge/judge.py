@@ -108,6 +108,8 @@ _CFG = json.loads((ROOT / "evaluation" / "config.json").read_text())
 _J = _CFG["judge"]
 COMPARATOR_TIMEOUT = _J["comparator_timeout_seconds"]
 AUDIT_TIMEOUT = _J["audit_timeout_seconds"]
+# Grouped binding and axiom checks share this independent per-case allowance.
+CASE_AUDIT_TIMEOUT = _J["case_audit_timeout_seconds"]
 def _int_env(name, default):
     """Positive-integer env override, ignoring junk (dev knobs must never break a real run)."""
     try:
@@ -2169,8 +2171,8 @@ def _performance_timeout_caps(performance_plan, n):
 
     A group's published ``timeout_seconds`` limits only the measured target
     replay. Grouped theorem build/export has its own shared preparation budget;
-    the legacy value oracle retains the old timing timeout. Axiom and binding
-    audits share the audit timeout.
+    the legacy value oracle retains the old timing timeout. Grouped binding and
+    axiom checks share a case audit budget separate from the correctness audit.
     Legacy callers may additionally intersect these caps with their aggregate
     development deadline. Grouped-v2 cases deliberately do not share one.
     """
@@ -2189,7 +2191,8 @@ def _performance_timeout_caps(performance_plan, n):
         "value_eval": TIMING_TIMEOUT,
         "build_export": (CASE_BUILD_EXPORT_TIMEOUT
                          if performance_plan is not None else TIMING_TIMEOUT),
-        "axiom_audit": AUDIT_TIMEOUT,
+        "axiom_audit": (CASE_AUDIT_TIMEOUT
+                        if performance_plan is not None else AUDIT_TIMEOUT),
         "target_replay": replay_timeout,
     }
 
@@ -2399,6 +2402,7 @@ def _evaluation_cohort(problem, cfg, inputs, reps, result, performance_plan=None
                 **common["budgets"],
                 "correctness_replay_timeout_seconds": CORRECTNESS_REPLAY_TIMEOUT,
                 "case_build_export_timeout_seconds": CASE_BUILD_EXPORT_TIMEOUT,
+                "case_audit_timeout_seconds": CASE_AUDIT_TIMEOUT,
                 # Grouped cases are independently bounded.  Zero is an explicit,
                 # sealed statement that no order-dependent aggregate deadline applies.
                 "perf_phase_budget_seconds": 0,
