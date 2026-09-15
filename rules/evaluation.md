@@ -212,6 +212,6 @@ first. A deliberate re-evaluation uses a new hidden seed and cohort and rescores
 the comparison set, rather than mixing results from different cohorts.
 
 After the final cohort closes, release its seed, exact input plan, results, and
-benchmark data under the [open-source policy](overview.md#open-source). Contestant
+benchmark data under an open-source license. Contestant
 code is published afterward under the submission-version, licensing, and
 authorization terms announced before launch.

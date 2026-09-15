@@ -23,15 +23,15 @@ The co-organizing institutions are [Lean FRO](https://lean-fro.org/) and the
 
 ## Background
 
-The Lean Kernel Challenge brings the community together to develop faster algorithms
-and better representations for verified computation. Through these collective
-contributions, the competition aims to support Lean's development and benefit
-Lean users worldwide.
-
-Verified computation uses the Lean kernel to check computational results as part
-of a proof. Stage 1 is the first, experimental stage of the series, beginning with
-fundamental problems. Later stages will cover a broader range of mathematical and
-scientific fields and more complex problems.
+The Lean Kernel Challenge brings the community together to improve verified
+computation in the Lean 4 kernel through faster algorithms and better representations,
+supporting Lean's development and users worldwide. Stage 1 is experimental and
+starts with fundamental problems; later stages will cover more complex problems
+across mathematics and science. We acknowledge the
+[Lean Kernel Arena](https://github.com/leanprover/lean-kernel-arena), which informed
+the challenge's design. Arena benchmarks alternative Lean proof checkers; Stage 1
+instead optimizes algorithms for fixed computational tasks, with correctness
+proved against supplied specifications and computation measured using a fixed kernel.
 
 ## Problems
 
@@ -40,19 +40,17 @@ cryptography, and discrete mathematics. Each provides a trusted Lean specificati
 Participants optimize an implementation and prove that it matches the specification
 for every input.
 
-See [Problems and Scoring](problems/README.md) for the eight statements,
-specifications, test groups, starter code, and scoring details.
+Find the [problem statements, test groups, and scoring rules](problems/README.md)
+in `rules/problems/`, the [participant templates](../problems/) in `problems/`,
+and [one complete example submission per problem](../examples/README.md) in
+`examples/<problem>/Submission.lean`.
 
 ## Key Dates
 
 - Stage 1 registration and team formation open: **August 26, 2026**
-- Stage 1 official launch: **September 15, 2026, 22:00 PT (America/Los_Angeles)**, equivalent to September 16, 2026, 05:00 UTC; tentative and subject to change
+- Stage 1 official launch: **September 15, 2026**
 - Stage 1 submission deadline: **November 20, 2026, 23:59 AoE (UTC−12)**
-- Stage 1 final evaluation: after the submission deadline; evaluation window to be announced
-- Stage 1 final results publication: after final evaluation completes; publication date and time to be announced
 - Stage 2 begins: **December 2026**; the exact date will be announced
-
-Any change to the tentative launch time will be announced before opening.
 
 ## Registration & Teams
 
@@ -66,24 +64,31 @@ The official repository is
 [SAIRcompetition/lean-kernel-challenge](https://github.com/SAIRcompetition/lean-kernel-challenge).
 The SAIR Playground and submission system open together on
 [SAIR](https://competition.sair.foundation/) at the Stage 1 official launch.
+Playground runs and edits do not constitute or replace a formal submission.
+
+Playground Standard mode allows **2 runs per day**, resetting at 00:00 UTC.
+Before launch, organizers will clarify whether this limit applies per team or
+per team/problem, whether formal submissions share the Standard allowance, and
+how failures or cancellations affect usage.
 
 ## Submission
 
-Submit one **`Submission.lean`** file, at most **1 MiB**. All other workspace files
-are locked. The [participant quick start](../README.md#quick-start) explains local
-builds; [submission requirements](problems/README.md#submission) give the exact
-interface, namespace, and permitted dependencies.
+For each problem, submit one **`Submission.lean`** file, at most **1 MiB**, containing:
+
+- `impl`: your algorithm.
+- `impl_correct`: a complete Lean proof that the algorithm matches the problem's
+  fixed specification for every input.
+
+Keep these declarations and any helpers in `namespace Submission`, and leave the
+fixed specification and environment files unchanged. See the
+[quick start](../README.md#quick-start) and
+[exact submission interface](problems/README.md#submission).
 
 Formal submissions may be updated before the cutoff. For each team and problem,
 the latest formal submission by recorded submission time is selected, even if an
 older submission performed better. A rejected, unscored, or failed latest entry
-does not restore an older result. Later Playground edits and post-deadline
-submissions cannot replace the selected entry.
-
-Standard mode allows **2 runs per day**, resetting at 00:00 UTC. Before launch,
-organizers will clarify whether this limit applies per team or per team/problem,
-whether formal submissions share the Standard allowance, and how failures or
-cancellations affect usage.
+does not restore an older result. Post-deadline submissions cannot replace the
+selected entry.
 
 ## Rules
 
@@ -91,9 +96,10 @@ cancellations affect usage.
 - **R2 — Computation.** Use a total, kernel-reducible implementation and only the locked
   dependencies. `partial` and `unsafe` are not permitted. Well-founded recursion is
   allowed only when the result remains kernel-reducible to an output literal.
-- **R3 — Correctness.** Prove `∀ n, impl n = spec n`, not just correctness on test cases.
+- **R3 — Correctness.** Provide a complete, kernel-checked proof of
+  `∀ n, impl n = spec n`. Passing test cases is not a substitute for this proof.
 - **R4 — Axioms.** Only `propext`, `Quot.sound`, and `Classical.choice` are permitted;
-  `sorry` and `native_decide` are not accepted.
+  submissions using `sorry`, `admit`, `native_decide`, or additional axioms are rejected.
 - **R5 — Ranking.** Rank by computation instructions only. Correctness-proof checking
   never contributes to the total or breaks ties.
 
@@ -120,23 +126,9 @@ Official use requires the [deployment checks](problems/README.md#implementation-
 and production-host validation. Local wall-time checks are not
 official instruction-count rankings.
 
-## Open Source
-
-After Stage 1's final official evaluation, its seed, exact input plan, results,
-and benchmark data will be released under an open-source license. Together with
-the algorithms and representations developed through the challenge, this record
-will support reproducible work and further contributions by the community.
-
-Participant code remains private during Stage 1 and will be published afterward.
-The covered submission versions, code license, and authorization terms will be
-announced before launch; the repository license does not determine the license
-of platform submissions.
-
 ## Team Participation and Anti-Cheating Policy
 
-- Each individual or organization can participate in only one team. The organizers
-  will clarify the organizational unit before launch, including how independent
-  teams sharing a university or parent institution are treated.
+- Each individual or organization can participate in only one team.
 - Teams must register members and sponsors in advance.
 - If coordinated cheating is detected (including sockpuppet teams), all related teams will be disqualified.
 
