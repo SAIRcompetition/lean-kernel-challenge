@@ -2,15 +2,13 @@
 
 ## Problem Statement
 
-Given a non-negative integer `n`, count the ways to write it as a sum of positive
-integers, ignoring the order of the summands. Repeated parts are allowed:
-`3 + 1` and `1 + 3` are the same partition. The empty sum is the unique
-partition of zero.
+Given a non-negative integer `n`, count its expressions as a sum of positive
+integers, ignoring order and allowing repeated parts. Thus `3 + 1` and `1 + 3`
+are the same partition, and the empty sum is the unique partition of zero.
 
-Implement a total Lean function that computes this count, and prove that it
-agrees with the locked [specification](../../evaluation/problems/partition/Spec.lean).
-The specification uses `partAux k n`, the number of partitions of `n` whose
-parts are at most `k`:
+Your total Lean function must equal the locked
+[specification](../../evaluation/problems/partition/Spec.lean), which defines
+`partAux k n` as the number of partitions of `n` with parts at most `k`:
 
 ```text
 partAux 0 0       = 1
@@ -20,29 +18,18 @@ partAux (k + 1) n = sum over j = 0, ..., floor(n / (k + 1))
 partitionSpec n   = partAux n n
 ```
 
-Here `j` is the multiplicity of the largest allowed part. Its bound ensures
-that the subtraction never removes more than `n`.
-
-Mathlib v4.33.1 separately represents an integer partition as
-[`Nat.Partition n`](https://leanprover-community.github.io/mathlib4_docs/Mathlib/Combinatorics/Enumerative/Partition/Basic.html#Nat.Partition)
-and supplies a finite instance, so `Fintype.card (Nat.Partition n)` is the
-standard library count; see the fixed definitions of
-[`Nat.Partition`](https://github.com/leanprover-community/mathlib4/blob/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/Combinatorics/Enumerative/Partition/Basic.lean#L55-L63)
-and its [`Fintype`](https://github.com/leanprover-community/mathlib4/blob/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/Combinatorics/Enumerative/Partition/Basic.lean#L203-L207).
-That cardinality is a possible future specification, not the current target:
-no theorem proving `partitionSpec n = Fintype.card (Nat.Partition n)` for all
-`n` is supplied. This problem remains core-Lean and repository-specified.
+Here `j` is the multiplicity of the largest allowed part; its bound keeps every
+subtraction within `n`.
 
 ## Input
 
-The argument `n : Nat` of your Lean function. It is the integer to partition;
-there is no packed encoding or seed. This is a function interface, **not**
-a standard-input text format.
+The Lean function argument `n : Nat`. It is a direct input, with no packing or
+seed, and is **not** standard-input text.
 
 ## Output
 
-Return the exact partition count as a `Nat`. Do not reduce it modulo another
-number. In particular, `impl 0` must return 1.
+Return the exact count as a `Nat`, without modular reduction. In particular,
+`impl 0` must return 1.
 
 ## Examples
 
@@ -64,12 +51,11 @@ For `n = 4`, the five partitions are:
 1 + 1 + 1 + 1
 ```
 
-The zero case counts the empty sum. These examples are kernel-checkable with
-`rfl` against the spec; they are not the hidden evaluation plan.
+The zero case counts the empty sum. These examples are not the hidden plan.
 
 ## Constraints and Scoring
 
-The current [configuration](../../evaluation/problems/partition/config.json) uses three
+The [configuration](../../evaluation/problems/partition/config.json) uses three
 groups and **six hidden cases**:
 
 | Group | Inclusive `n` range | Cases | Target watchdog per repetition |
@@ -78,10 +64,9 @@ groups and **six hidden cases**:
 | P2 | 22–26 | 2 | 60 s |
 | P3 | 32–36 | 2 | 120 s |
 
-Each range uses the geometric-range sampler with 15% deterministic seed-derived
-jitter: the two endpoints are jittered inward to produce distinct, ordered
-integers. Unseeded local runs use the endpoints. All submissions in a cohort
-receive the same hidden plan.
+Each range uses 15% deterministic seed-derived inward jitter to produce two
+distinct, ordered integers. Unseeded local runs use the endpoints. Every
+submission in a cohort receives the same hidden plan.
 
 Memory: **4096 MiB (4 GiB)**. The [shared scoring rules](README.md#scoring)
 and [resource limits](README.md#limits) apply.
@@ -95,20 +80,16 @@ impl : Nat → Nat
 impl_correct : ∀ n, impl n = partitionSpec n
 ```
 
-The theorem covers **every natural number**, including zero and inputs outside
-the test ranges. Any algorithm satisfying the
-[shared requirements](README.md#submission) is permitted;
-this problem uses core Lean without Mathlib.
+The theorem covers **every natural number**, including zero and values outside
+the test ranges. This core-Lean problem has no Mathlib dependency; the
+[shared requirements](README.md#submission) apply.
 
 ## Starter Code and Local Testing
 
 Start from the editable participant starter at
 [problems/partition/Submission.lean](../../problems/partition/Submission.lean).
-It uses the existing `partitionSpec` baseline and proves correctness by reflexivity.
-The two TODOs mark the implementation and proof to edit.
-
-The separate [worked example](../../examples/partition/Submission.lean) is a
-complete legal submission using the same specification baseline.
+The starter and [worked example](../../examples/partition/Submission.lean) use
+`partitionSpec` with a reflexive proof.
 
 Install `elan`, then run from the repository root:
 
@@ -117,15 +98,8 @@ cd problems/partition
 lake build
 ```
 
-No separate setup is needed. Edit and submit only `Submission.lean`; keep
-`Spec.lean` and the environment files unchanged. `lake build` compiles the code
-and proof; it is not an acceptance check or performance measurement.
+No separate setup is needed. Edit and submit only `Submission.lean`; keep the
+other files unchanged. `lake build` checks compilation, not acceptance or
+performance.
 See the [participant guide](../../problems/partition/README.md) and
 [optional kernel evaluation](../../evaluation/README.md).
-
-## Notes
-
-The baseline recursively enumerates multiplicities without memoization.
-A dynamic-programming table or another proved recurrence may avoid repeated
-subproblems. Any alternative must preserve the exact result for all inputs;
-compiled speed alone does not establish better kernel performance.

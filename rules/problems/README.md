@@ -81,49 +81,37 @@ required result, not the algorithm participants must use.
 
 ## Scoring
 
-The judge checks the required interface, permitted axioms, and universal proof.
-Only a pass is **Accepted**. It then measures each test case's kernel computation
-three times and takes the median instruction count:
+Acceptance requires a valid interface, permitted axioms, and a universal proof.
+For each test case, measure kernel computation three times:
 
 ```text
 I_i = median(instructions_i,1, instructions_i,2, instructions_i,3)
 T = I_1 + I_2 + ... + I_N
 ```
 
-- Rank by **T, lowest first**; equal totals tie. There are no group weights,
-  point conversions, or cross-problem totals.
-- Every case and required verification must finish successfully. Otherwise,
-  the submission has no complete total or rank, even if Accepted.
-- Correctness replay checks the definitions and universal proof three times.
-  Its median C is reported separately as **verification only**, never added
-  to T or used to break ties.
+Rank by **T, lowest first**; equal totals tie. All cases and required verification
+must pass, or there is no total or rank. There are no weights, point conversions,
+or cross-problem totals.
 
-Reports list every planned case's ID, group, outcome, and median instruction
-count. Failed or unattempted cases show `—`, never zero; incomplete correctness
-replay likewise shows C as `—`. Case IDs must not reveal hidden inputs.
-Infrastructure errors require review or re-evaluation, not a contestant
-performance penalty. See [Evaluation](../evaluation.md) for the full process.
+Report each planned case's ID, group, outcome, and median. Correctness replay
+is reported separately as **verification only** and never affects rank.
+Failed or unattempted measurements show `—`, not zero; case IDs must not reveal
+hidden inputs. See [Evaluation](../evaluation.md) for details.
 
 ## Limits
 
-Each problem page lists its test groups and sizes. Every submission in the same
-evaluation cohort receives the same resolved test plan; groups are not separate awards.
+Each problem page lists its test groups and sizes. Submissions in the same
+evaluation cohort use the same test plan.
 
 | Check | Time limit |
 | --- | --- |
 | Universal correctness comparator | 600 s |
 | Correctness axiom audit | 60 s |
-| Correctness replay | 300 s per repetition; all three must finish |
-| Per-case theorem build and export | 600 s shared by build and export together |
-| Per-case performance-export binding and axiom audits | 300 s shared by both checks together |
-| Target replay | 30, 60, or 120 s per repetition, as specified by the problem's test group |
+| Correctness replay | 300 s per repetition |
+| Case build and export | 600 s shared per case |
+| Case binding and axiom audits | 300 s shared per case |
+| Target replay | 30, 60, or 120 s per repetition, by test group |
 
-Memory is **8192 MiB (8 GiB) for permanent** and provisionally **4096 MiB (4 GiB)**
-for each other problem, with no extra swap. The cap applies to the whole job.
-Test groups and memory limits are fixed in `evaluation/problems/<id>/config.json`.
-
-All three replays must finish within their individual time limits. Ordinary
-case failures do not shorten or skip later cases; a failed or incomplete
-export-binding check stops the run for review. See
-[Evaluation](../evaluation.md#evaluation-process) for failure handling and
-[environment](../evaluation.md#environment) for host requirements.
+The whole-job memory cap is **8 GiB for permanent**, provisionally **4 GiB for
+each other problem**, with no extra swap. See [Evaluation](../evaluation.md)
+for failure handling and hardware requirements.

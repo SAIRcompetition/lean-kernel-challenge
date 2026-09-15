@@ -2,29 +2,28 @@
 
 ## Problem Statement
 
-Given a non-negative integer `n`, count the prime numbers at most `n`:
+Given a non-negative integer `n`, compute
 
 ```text
 π(n) = number of primes p with 2 ≤ p ≤ n.
 ```
 
-A prime is an integer at least 2 with no divisor other than 1 and itself.
-Neither 0 nor 1 is prime. Your implementation must agree with the locked
-[`primeCountSpec`](../../evaluation/problems/primecount/Spec.lean) for every input.
-That target is backed directly by Mathlib v4.33.1's official
-[`Nat.primeCounting`](https://leanprover-community.github.io/mathlib4_docs/Mathlib/NumberTheory/PrimeCounting.html#Nat.primeCounting),
-which counts primes less than or equal to its argument; see the
-[fixed source](https://github.com/leanprover-community/mathlib4/blob/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/NumberTheory/PrimeCounting.lean#L47-L58).
+A prime is at least 2 and has no divisors other than 1 and itself. Thus neither
+0 nor 1 is prime. The fixed
+[`primeCountSpec`](../../evaluation/problems/primecount/Spec.lean) is Mathlib
+v4.33.1's [`Nat.primeCounting`](https://leanprover-community.github.io/mathlib4_docs/Mathlib/NumberTheory/PrimeCounting.html#Nat.primeCounting),
+which counts primes at most its argument; see the
+[pinned source](https://github.com/leanprover-community/mathlib4/blob/0df444a360eaa60ab8c11dca51a86af692955474/Mathlib/NumberTheory/PrimeCounting.lean#L47-L58).
 
 ## Input
 
-One argument `n : Nat`, an **inclusive** upper bound. The judge calls `impl n`
-directly; there is no standard-input parser or input file to implement.
+One argument `n : Nat`, the inclusive upper bound. The judge calls `impl n`
+directly; there is no standard input or input file.
 
 ## Output
 
-Return `π(n)` as a `Nat`. Do not print the answer. Return the exact count, not
-a list of primes, an approximation, or a Boolean primality result.
+Return the exact count `π(n)` as a `Nat`, without printing. Do not return a list,
+approximation, or Boolean primality result.
 
 ## Examples
 
@@ -36,13 +35,12 @@ a list of primes, an approximation, or a Boolean primality result.
 | 10 | 4 |
 | 50 | 15 |
 
-For `n = 10`, the primes counted are `2`, `3`, `5`, and `7`, so the answer is 4.
-For `n = 2`, the bound itself is prime and is included, so the answer is 1.
+For `n = 10`, the counted primes are `2`, `3`, `5`, and `7`. Because the bound
+is inclusive, `π(2) = 1`.
 
 ## Constraints and Scoring
 
-The difficulty axis is the inclusive bound `n`. The official plan has three
-groups and six hidden cases in total.
+The difficulty axis is `n`. The official plan contains six hidden cases:
 
 | Group | Inclusive input range | Cases | Target replay limit, each repetition |
 | --- | ---: | ---: | ---: |
@@ -52,36 +50,31 @@ groups and six hidden cases in total.
 
 Each group uses `geometric_range`: two distinct, increasing values with
 deterministic 15% seed-derived jitter inward from the endpoints. Unseeded local
-plans use the endpoints. Official exact values remain hidden during evaluation.
+plans use the endpoints; official values remain hidden during evaluation.
 
-Memory: **4096 MiB (4 GiB)**. The [shared scoring rules](README.md#scoring)
-and [resource limits](README.md#limits) apply.
-The [fixed configuration](../../evaluation/problems/primecount/config.json) records this plan.
+Memory: **4096 MiB (4 GiB)**. See the [shared scoring rules](README.md#scoring),
+[resource limits](README.md#limits), and
+[fixed configuration](../../evaluation/problems/primecount/config.json).
 
 ## Submission Requirements
 
-Submit one `Submission.lean` containing these declarations inside
-`namespace Submission`:
+Inside `namespace Submission`, provide:
 
 ```text
 impl : Nat → Nat
 impl_correct : ∀ n, impl n = primeCountSpec n
 ```
 
-Prove equality for **all `n`**, including zero and inputs outside the test ranges.
-Your algorithm may differ from Mathlib's. Use only this problem's supplied pinned
-Mathlib closure and follow the
-[shared requirements](README.md#submission).
+Prove equality for every `n`, including zero and inputs outside the test ranges.
+The algorithm may differ from Mathlib's. Use only this problem's pinned Mathlib
+import closure and follow the [shared requirements](README.md#submission).
 
 ## Starter Code and Local Testing
 
-Start from the editable participant starter at
-[problems/primecount/Submission.lean](../../problems/primecount/Submission.lean).
-It includes a complete baseline using Mathlib's `Nat.minFac`, with a proof against
-`Nat.primeCounting`. The separate
+The editable [starter](../../problems/primecount/Submission.lean) counts using
+Mathlib's `Nat.minFac`. The separate
 [worked example](../../examples/primecount/Submission.lean) uses proved
-square-root trial division.
-The two TODOs mark the implementation and proof to edit.
+square-root trial division. Both target `Nat.primeCounting`.
 
 Install `elan`, Git, and Python 3.9+, then run from the repository root:
 
@@ -91,16 +84,7 @@ python3 setup.py
 lake build
 ```
 
-Setup prepares pinned dependencies. Edit and submit only `Submission.lean`;
-keep `Spec.lean` and the environment files unchanged. `lake build` compiles the
-code and proof; it is not an acceptance check or performance measurement.
-See the [participant guide](../../problems/primecount/README.md) and
+Setup prepares the pinned dependencies. Edit and submit only `Submission.lean`;
+keep `Spec.lean` and the environment files unchanged. See the
+[participant guide](../../problems/primecount/README.md) and
 [optional kernel evaluation](../../evaluation/README.md).
-
-## Notes
-
-The baseline tests each integer using Mathlib's least-prime-factor function
-`Nat.minFac`. The public worked example stops when `d × d > p` and proves its alternative predicate
-correct. Reusing prime information or changing the counting representation are possible alternatives,
-but native performance does not predict kernel-reduction performance. Any
-replacement must preserve the inclusive endpoint and the cases 0 and 1.
