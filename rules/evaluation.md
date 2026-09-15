@@ -33,6 +33,8 @@ Mathlib targets and the five repository-defined targets.
    compiled submission (`.olean` files); contestant source is not re-elaborated
    for each case. Check that the export binds the verified implementation to
    this input and the judge-generated target, then audit its permitted axioms.
+   Building and exporting share one 600-second budget for the case; binding and
+   axiom checks then share a separate 60-second budget.
 4. **Measure computation.** In three separate replay processes, measure only the
    target declaration's kernel check. It forces computation of `impl n` and
    comparison with the exact output literal.
@@ -68,6 +70,10 @@ organizer review. Infrastructure failures are not contestant performance failure
 
 [Check and case limits](problems/README.md#limits) apply independently:
 
+- The correctness comparator has 600 seconds, the correctness axiom audit has
+  60 seconds, and each of the three correctness replays has 300 seconds.
+  The group's 30-, 60-, or 120-second target-replay limit still applies separately
+  to each of its three repetitions.
 - Comparator timeout fails the correctness gate; correctness axiom-audit timeout
   is an infrastructure error. Timed correctness-replay failure leaves an otherwise
   Accepted submission unranked.
@@ -80,16 +86,26 @@ organizer review. Infrastructure failures are not contestant performance failure
   binding check, including timeout or memory exhaustion, stops the run with
   `error` for organizer review and re-evaluation. An unfinished check does not
   establish that the implementation changed. Binding and case axiom audits share
-  one 300-second budget per case.
+  one 60-second budget per case; the axiom audit receives only the time remaining
+  after the binding check.
 - Later cases continue after a case failure. Fatal evaluator failures require review
   and re-evaluation; unattempted cases remain explicitly unattempted. A timeout alone
   does not establish a reducibility violation.
 
 A cohort fixes inputs and seed commitment, answers, Spec and dependencies, ranking
 policy, repetitions, budgets, resource limits, toolchain, executor, and measurement
-boundaries. Changing these requires a new cohort and complete rescore; different
-cohorts or metrics are never mixed. See [standings and publication](#standings-and-publication)
+boundaries. Changing any of these requires a new cohort and complete rescore;
+adopting the revised budgets also requires a rebuilt image and aligned platform
+consumers. Different cohorts or metrics are never mixed. See [standings and publication](#standings-and-publication)
 for daily standings, final evaluation, and data release.
+
+An orchestration deadline must allow the declared stage budgets plus setup,
+reference-answer preparation, and orchestration overhead. It must not silently
+shorten later cases or remove them from the plan. The
+[maintainer guide](../evaluation/maintainers.md#stage-budgets-and-task-deadlines)
+gives planning totals and the compatibility requirements. These proposed limits
+do not establish that a hosted service has adopted them or that all valid proofs
+have been calibrated to finish within them.
 
 Official evaluation requires a secret `PERF_SEED`, rotated between cohorts. The
 isolated wrapper passes it once to the judge through stdin, never to contestant-controlled

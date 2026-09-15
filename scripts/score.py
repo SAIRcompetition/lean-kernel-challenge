@@ -54,14 +54,22 @@ with open(os.path.join(ROOT, "evaluation", "config.json")) as _config_file:
     _PIPELINE_POLICY = json.load(_config_file)
 _TIMING_POLICY = _PIPELINE_POLICY["timing"]
 STAGE1_OFFICIAL_REPS = _PIPELINE_POLICY["judge"]["timing_reps"]
-# Official cohorts must seal exactly the checked-in watchdog budgets and toolchain: the public
-# contract publishes these ceilings, and a verdict is otherwise free to carry any self-consistent
-# policy of its own (the seal hashes are unkeyed). Pinning them here fail-closes both a drifted
-# dev override sealed into an "official" run and a stale verdict from an older toolchain.
+# Official cohorts must seal an exact reviewed budget generation and toolchain: the seal
+# hashes are unkeyed, so an arbitrary self-consistent policy is not sufficient. Keep the
+# previous four-field generation fixed independently of live config so historical records
+# retain their original validity, hash, and scoring semantics.
+LEGACY_STAGE1_OFFICIAL_BUDGETS = {
+    "comparator_timeout_seconds": 3600,
+    "audit_timeout_seconds": 300,
+    "timing_timeout_seconds": 1800,
+    "perf_phase_budget_seconds": 0,
+}
 STAGE1_OFFICIAL_BUDGETS = {
     "comparator_timeout_seconds": _PIPELINE_POLICY["judge"]["comparator_timeout_seconds"],
     "audit_timeout_seconds": _PIPELINE_POLICY["judge"]["audit_timeout_seconds"],
     "timing_timeout_seconds": _PIPELINE_POLICY["judge"]["timing_timeout_seconds"],
+    "correctness_replay_timeout_seconds": _PIPELINE_POLICY["judge"]["correctness_replay_timeout_seconds"],
+    "case_build_export_timeout_seconds": _PIPELINE_POLICY["judge"]["case_build_export_timeout_seconds"],
     "perf_phase_budget_seconds": 0,
 }
 STAGE1_OFFICIAL_TOOLCHAIN = _PIPELINE_POLICY["toolchain"]
@@ -642,21 +650,22 @@ def _policy_v2_shape_error(policy):
             and len(inputs) == len(set(inputs))):
         return "evaluation cohort policy has invalid grouped inputs"
     budgets = policy.get("budgets")
-    budget_fields = {
-        "comparator_timeout_seconds", "audit_timeout_seconds",
-        "timing_timeout_seconds", "perf_phase_budget_seconds",
-    }
-    if not (isinstance(budgets, dict) and set(budgets) == budget_fields
-            and budgets.get("perf_phase_budget_seconds") == 0
+    legacy_budget_fields = set(LEGACY_STAGE1_OFFICIAL_BUDGETS)
+    current_budget_fields = set(STAGE1_OFFICIAL_BUDGETS)
+    if not (isinstance(budgets, dict)
+            and set(budgets) in (legacy_budget_fields, current_budget_fields)
+            and type(budgets.get("perf_phase_budget_seconds")) is int
+            and budgets["perf_phase_budget_seconds"] == 0
             and all(type(budgets.get(field)) is int and budgets[field] > 0
-                    for field in budget_fields - {"perf_phase_budget_seconds"})):
-        return "grouped evaluation must disable the aggregate performance-phase deadline"
+                    for field in set(budgets) - {"perf_phase_budget_seconds"})):
+        return "grouped evaluation must use a complete budget generation and disable the aggregate performance-phase deadline"
 
     common = {field: policy[field] for field in common_fields}
-    # Reuse the v1 validator for the shared fields.  Its legacy aggregate budget
-    # must be positive, whereas v2 deliberately seals zero (disabled).
+    # Reuse only v1's four shared budget fields. Its aggregate budget must be
+    # positive, whereas v2 seals zero (disabled). This projection is private to
+    # validation: never normalize or mutate the original sealed policy.
     common["budgets"] = {
-        **budgets,
+        **{field: budgets[field] for field in legacy_budget_fields},
         "perf_phase_budget_seconds": 1,
     }
     common["schema"] = "evaluation-policy-v1"
@@ -685,7 +694,10 @@ def _policy_v2_shape_error(policy):
         if (policy["executor"]["kind"] != "local"
                 or policy["timing_protocol"] != LOCAL_PROTOCOL):
             return "official grouped evaluation must use the local PMU protocol"
-        if budgets != STAGE1_OFFICIAL_BUDGETS:
+        expected_budgets = (LEGACY_STAGE1_OFFICIAL_BUDGETS
+                            if set(budgets) == legacy_budget_fields
+                            else STAGE1_OFFICIAL_BUDGETS)
+        if budgets != expected_budgets:
             return "official grouped evaluation has noncanonical watchdog budgets"
         if policy["toolchain"] != STAGE1_OFFICIAL_TOOLCHAIN:
             return "official grouped evaluation was sealed under a different toolchain"

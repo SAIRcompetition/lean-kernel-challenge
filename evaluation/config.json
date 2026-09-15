@@ -1,7 +1,9 @@
 {
   "judge": {
-    "comparator_timeout_seconds": 3600,
-    "audit_timeout_seconds": 300,
+    "comparator_timeout_seconds": 600,
+    "audit_timeout_seconds": 60,
+    "correctness_replay_timeout_seconds": 300,
+    "case_build_export_timeout_seconds": 600,
     "timing_timeout_seconds": 1800,
     "perf_phase_budget_seconds": 10800,
     "timing_reps": 3,
@@ -13,7 +15,7 @@
     "count": 4,
     "spacing": "geometric",
     "jitter": 0.15,
-    "note": "Compatibility defaults for legacy evaluation-policy-v1 records; not used by the eight Stage 1 problems. The judge-level perf_phase_budget_seconds is likewise legacy-only. Stage 1 problems define independent grouped cases in their fixed config.json files, and their evaluation-policy-v2 cohorts seal perf_phase_budget_seconds=0 so one case cannot consume another case's configured time allowance. Official evaluation requires a hidden PERF_SEED and seals the resolved schedule into the cohort policy; an unseeded schedule is for deterministic local development only."
+    "note": "Compatibility defaults for legacy evaluation-policy-v1 records; not used by the eight Stage 1 problems. The judge-level perf_phase_budget_seconds is likewise legacy-only. Stage 1 problems define independent grouped cases in their fixed config.json files, and their evaluation-policy-v2 cohorts seal perf_phase_budget_seconds=0 so one case cannot consume another case's configured time allowance. Official evaluation requires a hidden PERF_SEED and seals the resolved schedule into the cohort policy; an unseeded schedule is for deterministic local development only. The timing_timeout_seconds setting remains the legacy replay/value-oracle ceiling and the generic target-replay ceiling. Current grouped correctness replay and case build/export use their separate judge keys."
   },
   "timing": {
     "metric": "wall_time",
