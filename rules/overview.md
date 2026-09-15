@@ -33,23 +33,67 @@ of a proof. Stage 1 is the first, experimental stage of the series, beginning wi
 fundamental problems. Later stages will cover a broader range of mathematical and
 scientific fields and more complex problems.
 
-We acknowledge the
-[Lean Kernel Arena](https://github.com/leanprover/lean-kernel-arena), which informed
-the challenge's design. Arena benchmarks alternative Lean proof checkers; Stage 1
-instead optimizes algorithms for fixed computational tasks, with correctness
-proved against supplied specifications and computation measured using a fixed kernel.
+The Lean Kernel Challenge is inspired by the
+[Lean Kernel Arena](https://github.com/leanprover/lean-kernel-arena), and we thank
+its contributors. Lean Kernel Arena benchmarks alternative Lean proof checkers;
+the Lean Kernel Challenge focuses on algorithms and representations for verified
+computation, beginning in Stage 1 with fixed tasks evaluated by a fixed Lean kernel.
 
 ## Problems
 
 Stage 1 has eight problems covering algebra, number theory, combinatorics,
-cryptography, and discrete mathematics. Each provides a trusted Lean specification.
-Participants optimize an implementation and prove that it matches the specification
-for every input.
+cryptography, and discrete mathematics. Each has a fixed Lean specification.
 
-Find the [problem statements, test groups, and scoring rules](problems/README.md)
-in `rules/problems/`, the [participant templates](../problems/) in `problems/`,
-and [one complete example submission per problem](../examples/README.md) in
+Find [statements and test groups](problems/README.md) in `rules/problems/`,
+[starter templates](../problems/) in `problems/`, and
+[one complete example per problem](../examples/README.md) at
 `examples/<problem>/Submission.lean`.
+
+## Submission
+
+For each problem, submit one **`Submission.lean`** file (at most **1 MiB**) with:
+
+- `impl`: your algorithm.
+- `impl_correct`: a complete Lean proof that it matches the specification for every input.
+
+Keep the [required interface](problems/README.md#submission) and helpers in
+`namespace Submission`; leave fixed files unchanged. See the
+[quick start](../README.md#quick-start).
+
+You may update formal submissions before the cutoff. For each team and problem,
+the latest formal entry by recorded submission time is selected, not the best result.
+Rejected, unscored, or failed entries do not restore older submissions;
+post-deadline entries cannot replace the selection.
+
+## Rules
+
+- **R1 — Format.** Submit only `Submission.lean`; do not modify fixed workspace files.
+- **R2 — Computation.** Use only locked dependencies and a total implementation
+  that kernel-reduces to its output literal. `partial` and `unsafe` are prohibited.
+- **R3 — Correctness.** Prove `∀ n, impl n = spec n` in Lean; passing tests is not enough.
+- **R4 — Proof restrictions.** `sorry`, `admit`, `native_decide`, and unapproved
+  axioms cause rejection.
+- **R5 — Ranking.** Only computation instruction counts affect rank;
+  correctness-proof checking never contributes or breaks ties.
+
+Well-founded recursion, alternative algorithms and representations, hardcoded
+tables, and special cases are allowed if they satisfy these rules and the
+[resource limits](problems/README.md#limits). Inputs follow each problem's published policy.
+
+## Evaluation
+
+A submission is **Accepted** when its interface, universal proof, and axiom checks
+pass. Each problem has its own leaderboard: report each case's median computation
+instruction count over three kernel replays, then rank complete passes by their
+sum, lowest first; equal totals tie. Correctness replay is reported separately
+for verification only. Incomplete verification or any failed case means no complete
+total or rank.
+
+Daily standings publish only complete provisional editions; final evaluation runs
+separately after the deadline. See [Evaluation](evaluation.md) for measurement,
+environment, limits, local setup, and publication details. Official use requires
+[deployment and host validation](problems/README.md#implementation-status);
+local wall-time results are not official rankings.
 
 ## Key Dates
 
@@ -76,61 +120,6 @@ Playground Standard mode allows **2 runs per day**, resetting at 00:00 UTC.
 Before launch, organizers will clarify whether this limit applies per team or
 per team/problem, whether formal submissions share the Standard allowance, and
 how failures or cancellations affect usage.
-
-## Submission
-
-For each problem, submit one **`Submission.lean`** file, at most **1 MiB**, containing:
-
-- `impl`: your algorithm.
-- `impl_correct`: a complete Lean proof that the algorithm matches the problem's
-  fixed specification for every input.
-
-Keep these declarations and any helpers in `namespace Submission`, and leave the
-fixed specification and environment files unchanged. See the
-[quick start](../README.md#quick-start) and
-[exact submission interface](problems/README.md#submission).
-
-Formal submissions may be updated before the cutoff. For each team and problem,
-the latest formal submission by recorded submission time is selected, even if an
-older submission performed better. A rejected, unscored, or failed latest entry
-does not restore an older result. Post-deadline submissions cannot replace the
-selected entry.
-
-## Rules
-
-- **R1 — Format.** Submit only the single file described above; keep the fixed workspace unchanged.
-- **R2 — Computation.** Use a total, kernel-reducible implementation and only the locked
-  dependencies. `partial` and `unsafe` are not permitted. Well-founded recursion is
-  allowed only when the result remains kernel-reducible to an output literal.
-- **R3 — Correctness.** Provide a complete, kernel-checked proof of
-  `∀ n, impl n = spec n`. Passing test cases is not a substitute for this proof.
-- **R4 — Proof restrictions.** Submissions using `sorry`, `admit`, `native_decide`,
-  or unapproved axioms are rejected.
-- **R5 — Ranking.** Rank by computation instructions only. Correctness-proof checking
-  never contributes to the total or breaks ties.
-
-Different algorithms, representations, hardcoded tables, and special cases are
-allowed when covered by the universal proof. All implementations and proofs must
-still satisfy the published resource limits. Inputs are selected under the
-published problem policy.
-
-## Evaluation
-
-A submission is **Accepted** after its interface, universal proof, and permitted
-axioms pass verification. Each problem has an independent leaderboard. Report each
-test case's median computation instruction count over three kernel replays; rank
-complete passes by their sum, lowest first. Equal totals tie. Correctness-replay
-measurements are reported separately, for verification only.
-
-An Accepted submission with incomplete verification or a failed performance case
-has no complete total or rank. Daily standings are provisional and publish only
-complete editions; final results use a separate evaluation after the deadline.
-
-See [Evaluation](evaluation.md) for measurement boundaries, Lean and hardware
-specifications, resource limits, local deployment, and publication procedures.
-Official use requires the [deployment checks](problems/README.md#implementation-status)
-and production-host validation. Local wall-time checks are not
-official instruction-count rankings.
 
 ## Team Participation and Anti-Cheating Policy
 
