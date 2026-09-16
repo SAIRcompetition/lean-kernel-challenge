@@ -54,6 +54,10 @@ all instances produced by the fixed decoder and generator, not every possible
 matrix or byte string.
 
 Code must be human-readable; compressed data and bytecode are prohibited.
+Precomputed answer lookup tables and hardcoded input-specific answers are also
+prohibited, including answers encoded in conditional branches. Fixed algorithm
+constants, local transition rules, recurrence base cases, and tables generated
+during the measured kernel computation are allowed under [R2](../overview.md#rules).
 Use a total, kernel-reducible implementation and a complete proof. Different
 algorithms and proofs are allowed; `rfl` is not required. See
 [Rules R1–R5](../overview.md#rules) for submission restrictions.

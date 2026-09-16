@@ -71,14 +71,19 @@ post-deadline entries cannot replace the selection.
   Submitted code must be human-readable. Compressed data and bytecode are not allowed.
 - **R2 — Computation.** Use only locked dependencies and a total implementation
   that kernel-reduces to its output literal. `partial` and `unsafe` are prohibited.
+  Precomputed answer lookup tables and hardcoded input-specific answers are
+  prohibited, whether stored as data or encoded in conditional branches.
 - **R3 — Correctness.** Prove `∀ n, impl n = spec n` in Lean; passing tests is not enough.
 - **R4 — Proof restrictions.** `sorry`, `admit`, `native_decide`, and unapproved
   axioms cause rejection.
 - **R5 — Ranking.** Only computation instruction counts affect rank.
 
-Well-founded recursion, alternative algorithms and representations, hardcoded
-tables, and special cases are allowed if they satisfy these rules and the
-[resource limits](problems/README.md#limits). Inputs follow each problem's published policy.
+Fixed algorithm constants, local transition rules, and recurrence base cases are
+allowed, as are dynamic programming and memoization tables generated during the
+measured kernel computation. A correctness proof does not exempt a submission
+from the ban on precomputed answers. Alternative algorithms and representations
+must satisfy these rules and the [resource limits](problems/README.md#limits).
+Inputs follow each problem's published policy.
 
 ## Evaluation
 
