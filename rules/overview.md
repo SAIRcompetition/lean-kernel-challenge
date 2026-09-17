@@ -78,11 +78,11 @@ post-deadline entries cannot replace the selection.
   axioms cause rejection.
 - **R5 — Ranking.** Only computation instruction counts affect rank.
 
-Fixed algorithm constants, local transition rules, and recurrence base cases are
-allowed, as are dynamic programming and memoization tables generated during the
-measured kernel computation. A correctness proof does not exempt a submission
-from the ban on precomputed answers. Alternative algorithms and representations
-must satisfy these rules and the [resource limits](problems/README.md#limits).
+The challenge seeks faster algorithms and better representations for verified
+computation in the Lean kernel. Submissions that violate this purpose, including
+attempts to obtain scores through precomputed answers or manipulation of the
+evaluation process, are prohibited. All submissions must satisfy the
+[resource limits](problems/README.md#limits).
 Inputs follow each problem's published policy.
 
 ## Evaluation
